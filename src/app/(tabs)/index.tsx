@@ -63,7 +63,6 @@ export default function Home() {
     setSearchError('');
 
     try {
-      // 1. Find the target user by username
       const { data: targetProfile, error: profileError } = await supabase
         .from('profiles')
         .select('id, username')
@@ -81,34 +80,31 @@ export default function Home() {
         setSearchLoading(false);
         return;
       }
-
-      // 2. Check if a direct chat already exists
-      // We do this by finding a chat where both users are participants and is_group = false.
-      // For MVP, we'll just create a new chat to avoid complex querying, or handle it simply:
       
-      const { data: newChat, error: chatError } = await supabase
+      const uuid = require('react-native-uuid');
+      const newChatId = uuid.v4();
+
+      const { error: chatError } = await supabase
         .from('chats')
-        .insert([{ is_group: false, name: targetProfile.username }])
-        .select()
-        .single();
+        .insert([{ id: newChatId, is_group: false, name: targetProfile.username }]);
 
-      if (chatError || !newChat) throw chatError;
+      if (chatError) throw chatError;
 
-      // 3. Add participants
-      await supabase.from('chat_participants').insert([
-        { chat_id: newChat.id, user_id: user.id },
-        { chat_id: newChat.id, user_id: targetProfile.id }
+      const { error: participantError } = await supabase.from('chat_participants').insert([
+        { chat_id: newChatId, user_id: user.id },
+        { chat_id: newChatId, user_id: targetProfile.id }
       ]);
+      
+      if (participantError) throw participantError;
 
       setModalVisible(false);
       setSearchUsername('');
       
-      // 4. Navigate to chat
-      router.push({ pathname: '/chat', params: { id: newChat.id, name: targetProfile.username, avatar: 'https://i.pravatar.cc/150?u=' + newChat.id } });
+      router.push({ pathname: '/chat', params: { id: newChatId, name: targetProfile.username, avatar: 'https://i.pravatar.cc/150?u=' + newChatId } });
       
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setSearchError('An error occurred.');
+      setSearchError(e.message || 'An error occurred.');
     } finally {
       setSearchLoading(false);
     }
