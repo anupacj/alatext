@@ -1,5 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable, LayoutAnimation, UIManager } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, Phone, Video, Hash, Plus, Send, Smile, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck } from 'lucide-react-native';
 import ChatSettingsModal from '../components/ChatSettingsModal';
@@ -123,8 +127,10 @@ export default function Chat() {
             isMe: payload.new.sender_id === user?.id
           };
           
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setMessages(prev => [newMessage, ...prev]);
         } else if (payload.eventType === 'DELETE') {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
         } else if (payload.eventType === 'UPDATE') {
           setMessages(prev => prev.map(msg => msg.id === payload.new.id ? { ...msg, text: payload.new.content } : msg));
@@ -635,7 +641,7 @@ const styles = StyleSheet.create({
   },
   inputWrapper: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#383a40', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
   attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#b5bac1', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginBottom: 0 },
-  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 6, paddingBottom: 2, outlineStyle: 'none' },
+  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 8, paddingBottom: 0, marginTop: 4, outlineStyle: 'none' },
   emojiButton: { marginLeft: 12, padding: 2, marginBottom: 2 },
   systemMessageContainer: {
     paddingVertical: 12,
