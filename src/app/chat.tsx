@@ -65,6 +65,7 @@ export default function Chat() {
         .select(`
           id,
           content,
+          type,
           created_at,
           sender_id,
           profiles (
@@ -595,8 +596,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#313338',
   },
   inputWrapper: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#383a40', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
-  attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#b5bac1', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 4, paddingBottom: 4, lineHeight: 20, outlineStyle: 'none' },
+  attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#b5bac1', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginBottom: 0 },
+  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 4, paddingBottom: 4, outlineStyle: 'none' },
   emojiButton: { marginLeft: 12, padding: 2, marginBottom: 2 },
   systemMessageContainer: {
     paddingVertical: 12,
