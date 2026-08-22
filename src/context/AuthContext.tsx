@@ -21,8 +21,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setInitialized(true);
-      
-      // Update last seen
       if (session?.user) {
         supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', session.user.id).then();
       }
@@ -30,23 +28,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session?.user) {
-        supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', session.user.id).then();
-      }
     });
-
-    // Optional: heartbeat every 5 minutes to keep last seen fresh
-    const heartbeat = setInterval(() => {
-      if (session?.user) {
-        supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', session.user.id).then();
-      }
-    }, 5 * 60 * 1000);
 
     return () => {
       subscription.unsubscribe();
-      clearInterval(heartbeat);
     };
-  }, [session?.user]);
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    
+    // Heartbeat every 5 minutes
+    const heartbeat = setInterval(() => {
+      supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', session.user.id).then();
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(heartbeat);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!initialized) return;

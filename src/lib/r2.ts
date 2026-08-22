@@ -21,8 +21,8 @@ export const uploadAvatarToR2 = async (userId: string, base64Data: string, mimeT
   const fileExt = mimeType.split('/')[1] || 'jpeg';
   const fileName = `avatars/${userId}-${Date.now()}.${fileExt}`;
   
-  // Format the endpoint correctly (e.g., https://<accountid>.r2.cloudflarestorage.com/avatars/filename.jpg)
-  const bucketName = 'avatars';
+  // Format the endpoint correctly (e.g., https://<accountid>.r2.cloudflarestorage.com/alatext/avatars/filename.jpg)
+  const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || 'alatext';
   const uploadUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
   
   const arrayBuffer = decode(base64Data);
