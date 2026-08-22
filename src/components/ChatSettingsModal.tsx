@@ -92,7 +92,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
         await supabase.from('messages').insert({
           chat_id: chatId,
           sender_id: userId,
-          content: 'updated their chat wallpaper. Tap here to change yours!',
+          content: 'updated their chat wallpaper. Tap here to apply it too!',
           type: 'system'
         });
       }

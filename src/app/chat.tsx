@@ -182,6 +182,38 @@ export default function Chat() {
     updateLastRead();
   }, [id, user, messages.length]); // Re-run when new messages arrive
 
+  const handleApplyWallpaper = async () => {
+    if (!targetUser || !user || !id) return;
+    
+    // Fetch target user's chat settings
+    const { data: targetSettings } = await supabase
+      .from('chat_participants')
+      .select('*')
+      .eq('chat_id', id)
+      .eq('user_id', targetUser.id)
+      .single();
+      
+    if (targetSettings && targetSettings.wallpaper_url) {
+      const newSettings = {
+        wallpaper_url: targetSettings.wallpaper_url,
+        wallpaper_blur: targetSettings.wallpaper_blur,
+        wallpaper_dim: targetSettings.wallpaper_dim,
+        wallpaper_zoom: targetSettings.wallpaper_zoom,
+      };
+      
+      const { error } = await supabase
+        .from('chat_participants')
+        .update(newSettings)
+        .eq('chat_id', id)
+        .eq('user_id', user.id);
+        
+      if (!error) {
+        setChatSettings((prev: any) => ({ ...prev, ...newSettings }));
+        alert("Wallpaper applied to your chat!");
+      }
+    }
+  };
+
   const sendMessage = async () => {
     if (inputText.trim() === '' || !user || !id) return;
     
@@ -214,7 +246,13 @@ export default function Chat() {
       return (
         <View style={styles.systemMessageContainer}>
           {isWallpaperMsg ? (
-            <TouchableOpacity onPress={() => setSettingsVisible(true)}>
+            <TouchableOpacity onPress={() => {
+              if (item.isMe) {
+                setSettingsVisible(true);
+              } else {
+                handleApplyWallpaper();
+              }
+            }}>
               <Text style={[styles.systemMessageText, { color: '#5865F2' }]}>
                 <Text style={{ fontWeight: 'bold', color: '#949ba4' }}>{item.sender}</Text> {item.text}
               </Text>
@@ -597,7 +635,7 @@ const styles = StyleSheet.create({
   },
   inputWrapper: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#383a40', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
   attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#b5bac1', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginBottom: 0 },
-  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 4, paddingBottom: 4, outlineStyle: 'none' },
+  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 6, paddingBottom: 2, outlineStyle: 'none' },
   emojiButton: { marginLeft: 12, padding: 2, marginBottom: 2 },
   systemMessageContainer: {
     paddingVertical: 12,
