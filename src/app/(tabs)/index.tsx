@@ -82,7 +82,7 @@ export default function Home() {
       }
       
       const uuid = require('react-native-uuid');
-      const newChatId = uuid.v4();
+      const newChatId = (uuid.default ? uuid.default.v4() : uuid.v4());
 
       const { error: chatError } = await supabase
         .from('chats')
