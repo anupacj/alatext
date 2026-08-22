@@ -409,8 +409,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  messageContainer: { flexDirection: 'row', marginBottom: 18 }
-  messageContainerLeft: { justifyContent: 'flex-start' }
+  messageContainer: { flexDirection: 'row', marginBottom: 18 },
+  messageContainerLeft: { justifyContent: 'flex-start' },
   messageContainerRight: { justifyContent: 'flex-end' },
   messageAvatar: {
     width: 40,
@@ -420,8 +420,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
     backgroundColor: '#2b2d31',
   },
-  messageContent: { maxWidth: '80%' }
-  messageContentLeft: { alignItems: 'flex-start' }
+  messageContent: { maxWidth: '80%' },
+  messageContentLeft: { alignItems: 'flex-start' },
   messageContentRight: { alignItems: 'flex-end' },
   messageHeader: {
     flexDirection: 'row',
@@ -442,14 +442,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  messageText: { fontSize: 16, lineHeight: 22 }
-  messageTextLeft: { color: '#dbdee1' }
-  messageTextRight: { color: '#ffffff' }
-  messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 }
-  messageBubbleLeft: { backgroundColor: '#2b2d31', borderBottomLeftRadius: 4 }
-  messageBubbleRight: { backgroundColor: '#5865F2', borderBottomRightRadius: 4 }
-  messageTimeRight: { color: '#949ba4', fontSize: 12, fontWeight: '500', marginTop: 4 }
-  messageActions: { position: 'absolute', top: -10, right: 10, backgroundColor: '#2b2d31', borderRadius: 8, padding: 4, flexDirection: 'row', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 }
+  messageText: { fontSize: 16, lineHeight: 22 },
+  messageTextLeft: { color: '#dbdee1' },
+  messageTextRight: { color: '#ffffff' },
+  messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+  messageBubbleLeft: { backgroundColor: '#2b2d31', borderBottomLeftRadius: 4 },
+  messageBubbleRight: { backgroundColor: '#5865F2', borderBottomRightRadius: 4 },
+  messageTimeRight: { color: '#949ba4', fontSize: 12, fontWeight: '500', marginTop: 4 },
+  messageActions: { position: 'absolute', top: -10, right: 10, backgroundColor: '#2b2d31', borderRadius: 8, padding: 4, flexDirection: 'row', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
   actionIcon: { padding: 6 },
   inputArea: {
     paddingHorizontal: 16,
@@ -488,5 +488,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
 
 
