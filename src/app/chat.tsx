@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, Image, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, Smile, User, MoreVertical } from 'lucide-react-native';
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, Smile, User, MoreVertical, Trash2 } from 'lucide-react-native';
 import ChatSettingsModal from '../components/ChatSettingsModal';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +15,7 @@ export default function Chat() {
   const [targetUser, setTargetUser] = useState<any>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [chatSettings, setChatSettings] = useState<any>(null);
+  const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -90,29 +91,35 @@ export default function Chat() {
     const channel = supabase
       .channel(`chat_${id}`)
       .on('postgres_changes', { 
-        event: 'INSERT', 
+        event: '*', 
         schema: 'public', 
         table: 'messages',
         filter: `chat_id=eq.${id}`
       }, async (payload) => {
-        // Fetch sender profile for new message
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('username, avatar_url')
-          .eq('id', payload.new.sender_id)
-          .single();
+        if (payload.eventType === 'INSERT') {
+          // Fetch sender profile for new message
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('username, avatar_url')
+            .eq('id', payload.new.sender_id)
+            .single();
 
-        const newMessage = {
-          id: payload.new.id,
-          sender: profileData?.username || 'Unknown',
-          text: payload.new.content,
-          type: payload.new.type || 'text',
-          time: new Date(payload.new.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          avatar: profileData?.avatar_url || null,
-          isMe: payload.new.sender_id === user?.id
-        };
-        
-        setMessages(prev => [newMessage, ...prev]);
+          const newMessage = {
+            id: payload.new.id,
+            sender: profileData?.username || 'Unknown',
+            text: payload.new.content,
+            type: payload.new.type || 'text',
+            time: new Date(payload.new.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            avatar: profileData?.avatar_url || null,
+            isMe: payload.new.sender_id === user?.id
+          };
+          
+          setMessages(prev => [newMessage, ...prev]);
+        } else if (payload.eventType === 'DELETE') {
+          setMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
+        } else if (payload.eventType === 'UPDATE') {
+          setMessages(prev => prev.map(msg => msg.id === payload.new.id ? { ...msg, text: payload.new.content } : msg));
+        }
       })
       .subscribe();
 
@@ -139,6 +146,14 @@ export default function Chat() {
     }
   };
 
+  const deleteMessage = async (msgId: string) => {
+    // Optimistic delete
+    setMessages(prev => prev.filter(msg => msg.id !== msgId));
+    setHoveredMsg(null);
+    const { error } = await supabase.from('messages').delete().eq('id', msgId).eq('sender_id', user?.id);
+    if (error) console.error('Error deleting message:', error);
+  };
+
   const renderMessage = ({ item }: { item: any }) => {
     if (item.type === 'system') {
       return (
@@ -151,22 +166,50 @@ export default function Chat() {
     }
     
     return (
-      <View style={styles.messageContainer}>
-        {item.avatar ? (
-          <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
-        ) : (
-          <View style={[styles.messageAvatar, { justifyContent: 'center', alignItems: 'center' }]}>
-            <User size={20} color="#b5bac1" />
+      <Pressable 
+        style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft]}
+        onHoverIn={() => Platform.OS === 'web' && setHoveredMsg(item.id)}
+        onHoverOut={() => Platform.OS === 'web' && setHoveredMsg(null)}
+        onLongPress={() => setHoveredMsg(hoveredMsg === item.id ? null : item.id)}
+      >
+        {!item.isMe && (
+          item.avatar ? (
+            <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
+          ) : (
+            <View style={[styles.messageAvatar, { justifyContent: 'center', alignItems: 'center' }]}>
+              <User size={20} color="#b5bac1" />
+            </View>
+          )
+        )}
+        <View style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}>
+          {!item.isMe && (
+            <View style={styles.messageHeader}>
+              <Text style={styles.messageSender}>{item.sender}</Text>
+              <Text style={styles.messageTime}>{item.time}</Text>
+            </View>
+          )}
+          <View style={[styles.messageBubble, item.isMe ? styles.messageBubbleRight : styles.messageBubbleLeft]}>
+            <Text style={[
+              styles.messageText, 
+              item.isMe ? styles.messageTextRight : styles.messageTextLeft,
+              chatSettings?.font_family && chatSettings.font_family !== 'system' ? { fontFamily: chatSettings.font_family } : {}
+            ]}>
+              {item.text}
+            </Text>
+          </View>
+          {item.isMe && (
+            <Text style={styles.messageTimeRight}>{item.time}</Text>
+          )}
+        </View>
+        
+        {hoveredMsg === item.id && item.isMe && (
+          <View style={styles.messageActions}>
+            <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
+              <Trash2 size={16} color="#f23f43" />
+            </TouchableOpacity>
           </View>
         )}
-        <View style={styles.messageContent}>
-          <View style={styles.messageHeader}>
-            <Text style={[styles.messageSender, item.isMe && styles.mySenderName]}>{item.sender}</Text>
-            <Text style={styles.messageTime}>{item.time}</Text>
-          </View>
-          <Text style={[styles.messageText, chatSettings?.font_family && chatSettings.font_family !== 'system' ? { fontFamily: chatSettings.font_family } : {}]}>{item.text}</Text>
-        </View>
-      </View>
+      </Pressable>
     );
   };
 
@@ -366,10 +409,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  messageContainer: {
-    flexDirection: 'row',
-    marginBottom: 18,
-  },
+  messageContainer: { flexDirection: 'row', marginBottom: 18 }
+  messageContainerLeft: { justifyContent: 'flex-start' }
+  messageContainerRight: { justifyContent: 'flex-end' },
   messageAvatar: {
     width: 40,
     height: 40,
@@ -378,9 +420,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
     backgroundColor: '#2b2d31',
   },
-  messageContent: {
-    flex: 1,
-  },
+  messageContent: { maxWidth: '80%' }
+  messageContentLeft: { alignItems: 'flex-start' }
+  messageContentRight: { alignItems: 'flex-end' },
   messageHeader: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -400,25 +442,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  messageText: {
-    color: '#dbdee1',
-    fontSize: 16,
-    lineHeight: 22,
-  },
+  messageText: { fontSize: 16, lineHeight: 22 }
+  messageTextLeft: { color: '#dbdee1' }
+  messageTextRight: { color: '#ffffff' }
+  messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 }
+  messageBubbleLeft: { backgroundColor: '#2b2d31', borderBottomLeftRadius: 4 }
+  messageBubbleRight: { backgroundColor: '#5865F2', borderBottomRightRadius: 4 }
+  messageTimeRight: { color: '#949ba4', fontSize: 12, fontWeight: '500', marginTop: 4 }
+  messageActions: { position: 'absolute', top: -10, right: 10, backgroundColor: '#2b2d31', borderRadius: 8, padding: 4, flexDirection: 'row', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 }
+  actionIcon: { padding: 6 },
   inputArea: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
     backgroundColor: '#313338',
   },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    backgroundColor: '#383a40',
-    borderRadius: 24,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
+  inputWrapper: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#383a40', borderRadius: 24, paddingHorizontal: 12, paddingVertical: 8, minHeight: 48 },
   attachButton: {
     width: 28,
     height: 28,
@@ -429,14 +468,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
     marginBottom: 4,
   },
-  textInput: {
-    flex: 1,
-    color: '#dbdee1',
-    fontSize: 16,
-    maxHeight: 120,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
+  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 4, paddingBottom: 4, marginVertical: 8 },
   emojiButton: {
     marginLeft: 12,
     marginBottom: 4,
@@ -456,3 +488,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+
