@@ -150,7 +150,7 @@ export default function Chat() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backButton}>
             <ChevronLeft size={28} color="#b5bac1" />
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
