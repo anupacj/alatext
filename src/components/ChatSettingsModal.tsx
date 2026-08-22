@@ -10,7 +10,11 @@ const FONTS = [
   { name: 'System', value: 'system' },
   { name: 'Serif', value: 'serif' },
   { name: 'Monospace', value: 'monospace' },
-  { name: 'Cursive', value: 'cursive' }
+  { name: 'Cursive', value: 'cursive' },
+  { name: 'Fantasy', value: 'fantasy' },
+  { name: 'Arial', value: 'Arial' },
+  { name: 'Georgia', value: 'Georgia' },
+  { name: 'Verdana', value: 'Verdana' }
 ];
 
 interface ChatSettingsModalProps {

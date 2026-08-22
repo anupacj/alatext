@@ -303,8 +303,8 @@ export default function Chat() {
                 }}
                 multiline
               />
-              <TouchableOpacity style={styles.emojiButton} onPress={sendMessage}>
-                {inputText.trim() ? <Send size={22} color="#5865F2" /> : <Smile size={22} color="#b5bac1" />}
+              <TouchableOpacity style={styles.emojiButton} onPress={sendMessage} disabled={!inputText.trim()}>
+                <Send size={22} color={inputText.trim() ? "#5865F2" : "#4e5058"} />
               </TouchableOpacity>
             </View>
           </View>
@@ -457,23 +457,10 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
     backgroundColor: '#313338',
   },
-  inputWrapper: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#383a40', borderRadius: 24, paddingHorizontal: 12, paddingVertical: 8, minHeight: 48 },
-  attachButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#b5bac1',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    marginBottom: 4,
-  },
-  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 4, paddingBottom: 4, marginVertical: 8 },
-  emojiButton: {
-    marginLeft: 12,
-    marginBottom: 4,
-    padding: 2,
-  },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#383a40', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
+  attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#b5bac1', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 0, paddingBottom: 0, outlineStyle: 'none' },
+  emojiButton: { marginLeft: 12, padding: 2 },
   systemMessageContainer: {
     paddingVertical: 12,
     paddingHorizontal: 16,
