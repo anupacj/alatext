@@ -205,7 +205,12 @@ export default function Chat() {
                 placeholderTextColor="#949ba4"
                 value={inputText}
                 onChangeText={setInputText}
-                onSubmitEditing={sendMessage}
+                onKeyPress={(e: any) => {
+                  if (Platform.OS === 'web' && e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
                 multiline
               />
               <TouchableOpacity style={styles.emojiButton} onPress={sendMessage}>
