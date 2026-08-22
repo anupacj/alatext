@@ -30,21 +30,43 @@ export default function Home() {
               id,
               name,
               is_group,
-              avatar_url
+              avatar_url,
+              chat_participants (
+                user_id,
+                profiles (
+                  username,
+                  display_name,
+                  avatar_url
+                )
+              )
             )
           `)
           .eq('user_id', user.id);
           
         if (error) throw error;
         
-        const formattedChats = data?.map((item: any) => ({
-          id: item.chats.id,
-          name: item.chats.name || 'Chat',
-          avatar: item.chats.avatar_url || 'https://i.pravatar.cc/150?u=' + item.chats.id,
-          lastMessage: 'Tap to view messages...',
-          time: '',
-          unread: 0
-        })) || [];
+        const formattedChats = data?.map((item: any) => {
+          const chat = item.chats;
+          let chatName = chat.name || 'Chat';
+          let chatAvatar = chat.avatar_url;
+          
+          if (!chat.is_group && chat.chat_participants) {
+            const otherUser = chat.chat_participants.find((p: any) => p.user_id !== user.id)?.profiles;
+            if (otherUser) {
+              chatName = otherUser.display_name || otherUser.username;
+              chatAvatar = otherUser.avatar_url;
+            }
+          }
+          
+          return {
+            id: chat.id,
+            name: chatName,
+            avatar: chatAvatar || null,
+            lastMessage: 'Tap to view messages...',
+            time: '',
+            unread: 0
+          };
+        }) || [];
         
         setChats(formattedChats);
       } catch (e) {
@@ -100,7 +122,7 @@ export default function Home() {
       setModalVisible(false);
       setSearchUsername('');
       
-      router.push({ pathname: '/chat', params: { id: newChatId, name: targetProfile.username, avatar: 'https://i.pravatar.cc/150?u=' + newChatId } });
+      router.push({ pathname: '/chat', params: { id: newChatId, name: targetProfile.username, avatar: null } });
       
     } catch (e: any) {
       console.error(e);
@@ -114,9 +136,15 @@ export default function Home() {
     <TouchableOpacity 
       style={styles.chatItem} 
       activeOpacity={0.7}
-      onPress={() => router.push({ pathname: '/chat', params: { id: item.id, name: item.name, avatar: item.avatar } })}
+      onPress={() => router.push({ pathname: '/chat', params: { id: item.id, name: item.name, avatar: item.avatar || '' } })}
     >
-      <Image source={{ uri: item.avatar }} style={styles.avatar} />
+      {item.avatar ? (
+        <Image source={{ uri: item.avatar }} style={styles.avatar} />
+      ) : (
+        <View style={[styles.avatar, { justifyContent: 'center', alignItems: 'center' }]}>
+          <User size={24} color="#b5bac1" />
+        </View>
+      )}
       <View style={styles.chatContent}>
         <View style={styles.chatHeader}>
           <Text style={styles.chatName}>{item.name}</Text>

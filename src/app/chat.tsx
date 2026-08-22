@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, Image, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, Smile } from 'lucide-react-native';
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, Smile, User } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -63,7 +63,7 @@ export default function Chat() {
           sender: msg.profiles?.username || 'Unknown',
           text: msg.content,
           time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          avatar: msg.profiles?.avatar_url || 'https://i.pravatar.cc/150?u=' + msg.sender_id,
+          avatar: msg.profiles?.avatar_url || null,
           isMe: msg.sender_id === user.id
         }));
         setMessages(formatted);
@@ -93,7 +93,7 @@ export default function Chat() {
           sender: profileData?.username || 'Unknown',
           text: payload.new.content,
           time: new Date(payload.new.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          avatar: profileData?.avatar_url || 'https://i.pravatar.cc/150?u=' + payload.new.sender_id,
+          avatar: profileData?.avatar_url || null,
           isMe: payload.new.sender_id === user?.id
         };
         
@@ -126,7 +126,13 @@ export default function Chat() {
 
   const renderMessage = ({ item }: { item: any }) => (
     <View style={styles.messageContainer}>
-      <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
+      {item.avatar ? (
+        <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
+      ) : (
+        <View style={[styles.messageAvatar, { justifyContent: 'center', alignItems: 'center' }]}>
+          <User size={20} color="#b5bac1" />
+        </View>
+      )}
       <View style={styles.messageContent}>
         <View style={styles.messageHeader}>
           <Text style={[styles.messageSender, item.isMe && styles.mySenderName]}>{item.sender}</Text>
