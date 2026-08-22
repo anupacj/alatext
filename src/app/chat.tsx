@@ -209,11 +209,20 @@ export default function Chat() {
 
   const renderMessage = ({ item, index }: { item: any, index: number }) => {
     if (item.type === 'system') {
+      const isWallpaperMsg = item.text.includes('Tap here');
       return (
         <View style={styles.systemMessageContainer}>
-          <Text style={styles.systemMessageText}>
-            <Text style={{ fontWeight: 'bold' }}>{item.sender}</Text> {item.text}
-          </Text>
+          {isWallpaperMsg ? (
+            <TouchableOpacity onPress={() => setSettingsVisible(true)}>
+              <Text style={[styles.systemMessageText, { color: '#5865F2' }]}>
+                <Text style={{ fontWeight: 'bold', color: '#949ba4' }}>{item.sender}</Text> {item.text}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.systemMessageText}>
+              <Text style={{ fontWeight: 'bold' }}>{item.sender}</Text> {item.text}
+            </Text>
+          )}
         </View>
       );
     }
@@ -585,10 +594,10 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
     backgroundColor: '#313338',
   },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#383a40', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#383a40', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
   attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#b5bac1', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 0, paddingBottom: 0, outlineStyle: 'none' },
-  emojiButton: { marginLeft: 12, padding: 2 },
+  textInput: { flex: 1, color: '#dbdee1', fontSize: 16, maxHeight: 120, paddingTop: 4, paddingBottom: 4, lineHeight: 20, outlineStyle: 'none' },
+  emojiButton: { marginLeft: 12, padding: 2, marginBottom: 2 },
   systemMessageContainer: {
     paddingVertical: 12,
     paddingHorizontal: 16,
