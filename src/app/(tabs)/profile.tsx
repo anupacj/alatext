@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
+import { Settings, User, Camera, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadAvatarToR2 } from '../../lib/r2';
@@ -98,7 +98,7 @@ export default function Profile() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Profile</Text>
           <TouchableOpacity style={styles.iconButton}>
-            <Ionicons name="settings-sharp" size={24} color="#b5bac1" />
+            <Settings size={24} color="#b5bac1" />
           </TouchableOpacity>
         </View>
 
@@ -108,11 +108,11 @@ export default function Profile() {
               <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
             ) : (
               <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={48} color="#ffffff" />
+                <User size={48} color="#ffffff" />
               </View>
             )}
             <View style={styles.editBadge}>
-              <Ionicons name="camera" size={16} color="#ffffff" />
+              <Camera size={16} color="#ffffff" />
             </View>
           </TouchableOpacity>
           
@@ -144,7 +144,7 @@ export default function Profile() {
           <View style={{ flex: 1 }} />
 
           <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
-            <Ionicons name="log-out-outline" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+            <LogOut size={20} color="#ffffff" style={{ marginRight: 8 }} />
             <Text style={styles.logoutText}>Log Out</Text>
           </TouchableOpacity>
         </View>

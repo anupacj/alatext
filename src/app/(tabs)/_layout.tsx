@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { MessageCircle, User } from 'lucide-react-native';
 import { Platform, View, StyleSheet } from 'react-native';
 
 export default function TabsLayout() {
@@ -19,7 +19,7 @@ export default function TabsLayout() {
         options={{
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconContainer, focused && styles.iconContainerFocused]}>
-              <Ionicons name={focused ? "chatbubbles" : "chatbubbles-outline"} size={24} color={color} />
+              <MessageCircle size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
             </View>
           ),
         }}
@@ -29,7 +29,7 @@ export default function TabsLayout() {
         options={{
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconContainer, focused && styles.iconContainerFocused]}>
-              <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
+              <User size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
             </View>
           ),
         }}

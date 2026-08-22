@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, Image, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, Smile } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -151,7 +151,7 @@ export default function Chat() {
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={28} color="#b5bac1" />
+            <ChevronLeft size={28} color="#b5bac1" />
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>
@@ -163,10 +163,10 @@ export default function Chat() {
             )}
           </View>
           <TouchableOpacity style={styles.headerIconButton}>
-            <Ionicons name="call" size={20} color="#b5bac1" />
+            <Phone size={20} color="#b5bac1" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton}>
-            <Ionicons name="videocam" size={22} color="#b5bac1" />
+            <Video size={22} color="#b5bac1" />
           </TouchableOpacity>
         </View>
 
@@ -177,7 +177,7 @@ export default function Chat() {
           {messages.length === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={styles.hashCircle}>
-                <Ionicons name="hashtag" size={40} color="#ffffff" />
+                <Hash size={40} color="#ffffff" />
               </View>
               <Text style={styles.welcomeTitle}>Welcome to #{name || 'chat'}!</Text>
               <Text style={styles.welcomeSubtitle}>This is the start of this conversation.</Text>
@@ -197,7 +197,7 @@ export default function Chat() {
           <View style={styles.inputArea}>
             <View style={styles.inputWrapper}>
               <TouchableOpacity style={styles.attachButton}>
-                <Ionicons name="add" size={20} color="#383a40" />
+                <Plus size={20} color="#383a40" />
               </TouchableOpacity>
               <TextInput
                 style={styles.textInput}
@@ -209,7 +209,7 @@ export default function Chat() {
                 multiline
               />
               <TouchableOpacity style={styles.emojiButton} onPress={sendMessage}>
-                <Ionicons name={inputText.trim() ? "send" : "happy"} size={22} color={inputText.trim() ? "#5865F2" : "#b5bac1"} />
+                {inputText.trim() ? <Send size={22} color="#5865F2" /> : <Smile size={22} color="#b5bac1" />}
               </TouchableOpacity>
             </View>
           </View>

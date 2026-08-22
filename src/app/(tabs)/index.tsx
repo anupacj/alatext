@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, FlatList, TouchableOpacity, Image, SafeAreaView, Platform, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { User, Search, MessageSquare, Plus } from 'lucide-react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 
@@ -146,12 +146,12 @@ export default function Home() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.userAvatarMini}>
-              <Ionicons name="person" size={16} color="#fff" />
+              <User size={16} color="#fff" />
             </View>
             <Text style={styles.headerTitle}>ala chat</Text>
           </View>
           <TouchableOpacity style={styles.iconButton}>
-            <Ionicons name="search" size={20} color="#b5bac1" />
+            <Search size={20} color="#b5bac1" />
           </TouchableOpacity>
         </View>
         
@@ -161,7 +161,7 @@ export default function Home() {
           </View>
         ) : chats.length === 0 ? (
           <View style={styles.centerContainer}>
-            <Ionicons name="chatbox-ellipses-outline" size={64} color="#4f545c" />
+            <MessageSquare size={64} color="#4f545c" />
             <Text style={styles.emptyText}>No chats yet</Text>
             <Text style={styles.emptySubtext}>Tap the + button to start texting!</Text>
           </View>
@@ -180,7 +180,7 @@ export default function Home() {
           activeOpacity={0.8}
           onPress={() => setModalVisible(true)}
         >
-          <Ionicons name="add" size={32} color="#ffffff" />
+          <Plus size={32} color="#ffffff" />
         </TouchableOpacity>
 
         {/* New Chat Modal */}
