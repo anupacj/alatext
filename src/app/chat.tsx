@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, Image, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, Smile, User } from 'lucide-react-native';
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, Smile, User, MoreVertical } from 'lucide-react-native';
+import ChatSettingsModal from '../components/ChatSettingsModal';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,13 +13,25 @@ export default function Chat() {
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [targetUser, setTargetUser] = useState<any>(null);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [chatSettings, setChatSettings] = useState<any>(null);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     if (!id || !user) return;
 
-    // Fetch target user profile for "Last Seen"
-    const fetchTargetUser = async () => {
+    // Fetch target user profile and our own settings
+    const fetchTargetUserAndSettings = async () => {
+      // Fetch our settings
+      const { data: mySettings } = await supabase
+        .from('chat_participants')
+        .select('*')
+        .eq('chat_id', id)
+        .eq('user_id', user.id)
+        .single();
+        
+      if (mySettings) setChatSettings(mySettings);
+
       // Find the other participant
       const { data: participants } = await supabase
         .from('chat_participants')
@@ -36,7 +49,7 @@ export default function Chat() {
         if (profile) setTargetUser(profile);
       }
     };
-    fetchTargetUser();
+    fetchTargetUserAndSettings();
 
     // Fetch initial messages
     const fetchMessages = async () => {
@@ -62,6 +75,7 @@ export default function Chat() {
           id: msg.id,
           sender: msg.profiles?.username || 'Unknown',
           text: msg.content,
+          type: msg.type || 'text',
           time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           avatar: msg.profiles?.avatar_url || null,
           isMe: msg.sender_id === user.id
@@ -92,6 +106,7 @@ export default function Chat() {
           id: payload.new.id,
           sender: profileData?.username || 'Unknown',
           text: payload.new.content,
+          type: payload.new.type || 'text',
           time: new Date(payload.new.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           avatar: profileData?.avatar_url || null,
           isMe: payload.new.sender_id === user?.id
@@ -124,24 +139,36 @@ export default function Chat() {
     }
   };
 
-  const renderMessage = ({ item }: { item: any }) => (
-    <View style={styles.messageContainer}>
-      {item.avatar ? (
-        <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
-      ) : (
-        <View style={[styles.messageAvatar, { justifyContent: 'center', alignItems: 'center' }]}>
-          <User size={20} color="#b5bac1" />
+  const renderMessage = ({ item }: { item: any }) => {
+    if (item.type === 'system') {
+      return (
+        <View style={styles.systemMessageContainer}>
+          <Text style={styles.systemMessageText}>
+            <Text style={{ fontWeight: 'bold' }}>{item.sender}</Text> {item.text}
+          </Text>
         </View>
-      )}
-      <View style={styles.messageContent}>
-        <View style={styles.messageHeader}>
-          <Text style={[styles.messageSender, item.isMe && styles.mySenderName]}>{item.sender}</Text>
-          <Text style={styles.messageTime}>{item.time}</Text>
+      );
+    }
+    
+    return (
+      <View style={styles.messageContainer}>
+        {item.avatar ? (
+          <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
+        ) : (
+          <View style={[styles.messageAvatar, { justifyContent: 'center', alignItems: 'center' }]}>
+            <User size={20} color="#b5bac1" />
+          </View>
+        )}
+        <View style={styles.messageContent}>
+          <View style={styles.messageHeader}>
+            <Text style={[styles.messageSender, item.isMe && styles.mySenderName]}>{item.sender}</Text>
+            <Text style={styles.messageTime}>{item.time}</Text>
+          </View>
+          <Text style={[styles.messageText, chatSettings?.font_family && chatSettings.font_family !== 'system' ? { fontFamily: chatSettings.font_family } : {}]}>{item.text}</Text>
         </View>
-        <Text style={styles.messageText}>{item.text}</Text>
       </View>
-    </View>
-  );
+    );
+  };
 
   const getLastSeen = (dateString?: string) => {
     if (!dateString) return 'Offline';
@@ -155,6 +182,17 @@ export default function Chat() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
+        {chatSettings?.wallpaper_url && (
+          <Image 
+            source={{ uri: chatSettings.wallpaper_url }} 
+            style={[StyleSheet.absoluteFillObject, { resizeMode: 'cover', transform: [{ scale: chatSettings.wallpaper_zoom || 1 }] }]}
+            blurRadius={(chatSettings.wallpaper_blur || 0) * 20}
+          />
+        )}
+        {chatSettings?.wallpaper_url && (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(0,0,0,${chatSettings.wallpaper_dim || 0})` }]} />
+        )}
+        
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backButton}>
             <ChevronLeft size={28} color="#b5bac1" />
@@ -174,10 +212,13 @@ export default function Chat() {
           <TouchableOpacity style={styles.headerIconButton}>
             <Video size={22} color="#b5bac1" />
           </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}>
+            <MoreVertical size={24} color="#b5bac1" />
+          </TouchableOpacity>
         </View>
 
         <KeyboardAvoidingView 
-          style={{ flex: 1 }} 
+          style={{ flex: 1, backgroundColor: chatSettings?.wallpaper_url ? 'transparent' : '#313338' }} 
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           {messages.length === 0 ? (
@@ -200,8 +241,8 @@ export default function Chat() {
             />
           )}
 
-          <View style={styles.inputArea}>
-            <View style={styles.inputWrapper}>
+          <View style={[styles.inputArea, chatSettings?.wallpaper_url && { backgroundColor: 'transparent' }]}>
+            <View style={[styles.inputWrapper, chatSettings?.wallpaper_url && { backgroundColor: 'rgba(56, 58, 64, 0.8)' }]}>
               <TouchableOpacity style={styles.attachButton}>
                 <Plus size={20} color="#383a40" />
               </TouchableOpacity>
@@ -225,6 +266,15 @@ export default function Chat() {
             </View>
           </View>
         </KeyboardAvoidingView>
+
+        <ChatSettingsModal
+          visible={settingsVisible}
+          onClose={() => setSettingsVisible(false)}
+          chatId={id as string}
+          userId={user.id}
+          currentSettings={chatSettings}
+          onSettingsSaved={setChatSettings}
+        />
       </View>
     </SafeAreaView>
   );
@@ -391,5 +441,18 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     marginBottom: 4,
     padding: 2,
+  },
+  systemMessageContainer: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 8,
+  },
+  systemMessageText: {
+    color: '#949ba4',
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });

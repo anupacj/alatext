@@ -14,14 +14,17 @@ const aws = new AwsClient({
 });
 
 export const uploadAvatarToR2 = async (userId: string, base64Data: string, mimeType: string): Promise<string> => {
+  return uploadImageToR2(`avatars/${userId}-${Date.now()}`, base64Data, mimeType);
+};
+
+export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mimeType: string): Promise<string> => {
   if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT) {
     throw new Error('R2 credentials are not configured in .env');
   }
 
   const fileExt = mimeType.split('/')[1] || 'jpeg';
-  const fileName = `avatars/${userId}-${Date.now()}.${fileExt}`;
+  const fileName = `${pathPrefix}.${fileExt}`;
   
-  // Format the endpoint correctly (e.g., https://<accountid>.r2.cloudflarestorage.com/alatext/avatars/filename.jpg)
   const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || 'alatext';
   const uploadUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
   
