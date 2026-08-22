@@ -11,7 +11,7 @@ SplashScreen.preventAutoHideAsync();
 const fontStyles = `
   @font-face {
     font-family: 'Ionicons';
-    src: url(${require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf')}) format('truetype');
+    src: url('https://unpkg.com/@expo/vector-icons@14.0.2/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf') format('truetype');
   }
 `;
 
