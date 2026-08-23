@@ -38,6 +38,7 @@ export default function Home() {
         .from("chat_participants")
         .select(`
           chat_id,
+          last_read_at,
           chats (
             id, name, is_group, avatar_url,
             chat_participants (
@@ -72,9 +73,32 @@ export default function Home() {
         const lastMsgTime = lastMsg
           ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
           : "";
-        return { id: chat.id, name: chatName, avatar: chatAvatar || null, lastMessage: lastMsgText, time: lastMsgTime, unread: 0, isGroup: chat.is_group };
+          
+        let unread = 0;
+        if (lastMsg) {
+          if (item.last_read_at) {
+            if (new Date(lastMsg.created_at) > new Date(item.last_read_at)) {
+              unread = 1;
+            }
+          } else {
+            unread = 1;
+          }
+        }
+
+        return { 
+          id: chat.id, 
+          name: chatName, 
+          avatar: chatAvatar || null, 
+          lastMessage: lastMsgText, 
+          time: lastMsgTime, 
+          unread, 
+          isGroup: chat.is_group,
+          timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0
+        };
       }));
-      const valid = formatted.filter(Boolean) as ChatItem[];
+      const valid = formatted.filter(Boolean) as any[];
+      valid.sort((a, b) => b.timestamp - a.timestamp);
+      
       setChats(valid);
       AsyncStorage.setItem(`user_${user.id}_chats`, JSON.stringify(valid)).catch(() => {});
     } catch (e) { console.error("Error fetching chats", e); }
@@ -154,12 +178,12 @@ export default function Home() {
       )}
       <View style={styles.chatContent}>
         <View style={styles.chatHeader}>
-          <Text style={styles.chatName}>{item.name}</Text>
-          <Text style={styles.chatTime}>{item.time}</Text>
+          <Text style={[styles.chatName, item.unread > 0 && styles.chatNameUnread]}>{item.name}</Text>
+          <Text style={[styles.chatTime, item.unread > 0 && { color: "#f2f3f5", fontWeight: "bold" }]}>{item.time}</Text>
         </View>
         <View style={styles.messageRow}>
           <Text style={[styles.lastMessage, item.unread > 0 && styles.lastMessageUnread]} numberOfLines={1}>{item.lastMessage}</Text>
-          {item.unread > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{item.unread}</Text></View>}
+          {item.unread > 0 && <View style={styles.badge}></View>}
         </View>
       </View>
     </TouchableOpacity>
@@ -284,11 +308,12 @@ const styles = StyleSheet.create({
   chatContent: { flex: 1, justifyContent: "center" },
   chatHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
   chatName: { color: "#f2f3f5", fontSize: 17, fontWeight: "600" },
+  chatNameUnread: { color: "#ffffff", fontWeight: "900" },
   chatTime: { color: "#949ba4", fontSize: 12, fontWeight: "500" },
   messageRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   lastMessage: { color: "#949ba4", fontSize: 15, flex: 1, paddingRight: 16 },
-  lastMessageUnread: { color: "#dbdee1", fontWeight: "500" },
-  badge: { backgroundColor: "#f23f43", borderRadius: 12, paddingHorizontal: 6, height: 20, minWidth: 20, justifyContent: "center", alignItems: "center" },
+  lastMessageUnread: { color: "#ffffff", fontWeight: "800" },
+  badge: { backgroundColor: "#f23f43", borderRadius: 4, width: 8, height: 8, alignSelf: "center", marginLeft: 8 },
   badgeText: { color: "#ffffff", fontSize: 12, fontWeight: "bold" },
   fab: { position: "absolute", bottom: 100, right: 24, width: 56, height: 56, borderRadius: 16, backgroundColor: "#5865F2", justifyContent: "center", alignItems: "center", elevation: 6, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 },
