@@ -13,6 +13,7 @@ import EmojiPicker from "rn-emoji-keyboard";
 import ChatSettingsModal, { FONT_OPTIONS } from "../components/ChatSettingsModal";
 import { HeartPing } from "../components/HeartPing";
 import { DoodleOverlay } from "../components/DoodleOverlay";
+import ChatInfoModal from "../components/ChatInfoModal";
 import { supabase } from "../lib/supabase";
 import { uploadChatImageToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
@@ -41,14 +42,16 @@ interface Message {
 }
 
 
-export default function Chat() {
-  const router = useRouter();
-  const { id, name } = useLocalSearchParams();
+export default function ChatScreen() {
+  const { id, name, avatar } = useLocalSearchParams();
   const { user } = useAuth();
+  const router = useRouter();
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [targetUser, setTargetUser] = useState<any>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [infoVisible, setInfoVisible] = useState(false);
   const [chatSettings, setChatSettings] = useState<any>(null);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; sender: string } | null>(null);
@@ -304,8 +307,8 @@ export default function Chat() {
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
             <ChevronLeft size={28} color="#b5bac1" />
           </TouchableOpacity>
-            <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle}><Text style={styles.hashIcon}># </Text>{name || "chat"}</Text>
+            <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setInfoVisible(true)}>
+            <Text style={styles.headerTitle}><Text style={styles.hashIcon}># </Text>{name || "chat"}</Text>
               
               {chatSettings?.anniversary_date && !isGroup && (
                 <Text style={styles.streakText}>
@@ -318,7 +321,7 @@ export default function Chat() {
                   {isTargetOnline ? "● Online" : "○ Offline"}
                 </Text>
               )}
-            </View>
+            </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton} onPress={() => {
             if (typingChannelRef.current) {
               typingChannelRef.current.send({ type: "broadcast", event: "ping" });
@@ -444,6 +447,16 @@ export default function Chat() {
         {settingsVisible && (
           <ChatSettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)}
             chatId={id as string} userId={user.id} currentSettings={chatSettings} onSettingsSaved={setChatSettings} />
+        )}
+        {infoVisible && (
+          <ChatInfoModal 
+            visible={infoVisible} 
+            onClose={() => setInfoVisible(false)} 
+            chatId={id as string} 
+            isGroup={isGroup} 
+            targetUser={targetUser} 
+            currentUserId={user.id} 
+          />
         )}
       </View>
       <Modal visible={!!imageViewerUrl} transparent animationType="fade" onRequestClose={() => setImageViewerUrl(null)}>
