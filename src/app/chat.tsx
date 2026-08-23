@@ -59,7 +59,7 @@ export default function Chat() {
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
   const isTargetOnline = targetUser && targetUser.updated_at 
-    ? Date.now() - new Date(targetUser.updated_at).getTime() < 6 * 60 * 1000 
+    ? Date.now() - new Date(targetUser.updated_at).getTime() < 45 * 1000 
     : false;
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pingVisible, setPingVisible] = useState(false);

@@ -38,10 +38,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!session?.user) return;
     
-    // Heartbeat every 5 minutes
+    // Heartbeat every 30 seconds for accurate presence
     const heartbeat = setInterval(() => {
       supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', session.user.id).then();
-    }, 5 * 60 * 1000);
+    }, 30 * 1000);
 
     return () => clearInterval(heartbeat);
   }, [session?.user?.id]);

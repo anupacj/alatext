@@ -19,14 +19,18 @@ export function HeartPing({ visible, onComplete }: { visible: boolean, onComplet
         withTiming(1.2, { duration: 200 }),
         withSpring(2, { damping: 12, stiffness: 150 }),
         withTiming(1.8, { duration: 150 }),
-        withSpring(15, { damping: 20, stiffness: 50 }, () => {
-          opacity.value = withTiming(0, { duration: 300 }, () => {
-            scale.value = 0;
-            runOnJS(setIsActive)(false);
-            runOnJS(onComplete)();
-          });
-        })
+        withSpring(15, { damping: 20, stiffness: 50 })
       );
+      
+      // Use setTimeout instead of Reanimated worklet callbacks to prevent Web crashes
+      setTimeout(() => {
+        opacity.value = withTiming(0, { duration: 300 });
+        setTimeout(() => {
+          scale.value = 0;
+          setIsActive(false);
+          onComplete();
+        }, 300);
+      }, 1200);
     }
   }, [visible]);
 
