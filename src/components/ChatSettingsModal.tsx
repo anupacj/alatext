@@ -81,6 +81,11 @@ export const FONT_OPTIONS = [
   { label: "Changa One", value: "Changa One" },
   { label: "Caveat", value: "Caveat" },
   { label: "Cinzel", value: "Cinzel" },
+  { label: "Concert One", value: "Concert One" },
+  { label: "Nothing You Could Do", value: "Nothing You Could Do" },
+  { label: "Chewy", value: "Chewy" },
+  { label: "La Belle Aurore", value: "La Belle Aurore" },
+  { label: "Balsamiq Sans", value: "Balsamiq Sans" },
 ];
 
 interface ChatSettingsModalProps {
