@@ -420,8 +420,6 @@ export default function ChatScreen() {
           }}>
             <Heart size={22} color="#f23f43" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton}><Phone size={20} color="#b5bac1" /></TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton}><Video size={22} color="#b5bac1" /></TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color="#b5bac1" /></TouchableOpacity>
         </View>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: chatSettings?.wallpaper_url ? "transparent" : "#313338" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -440,7 +438,7 @@ export default function ChatScreen() {
               ListFooterComponent={loadingOlder ? <ActivityIndicator color="#5865F2" style={{ paddingVertical: 12 }} /> : null} />
           )}
           {isTyping && targetUser && (
-            <View style={styles.typingBanner}><Text style={styles.typingText}>{targetUser.username} is typing...</Text></View>
+            <View style={styles.typingBanner}><Text style={styles.typingText}>{targetUser.username} is typing<SendingDots /></Text></View>
           )}
           {replyingTo && (
             <View style={styles.replyBanner}>
@@ -701,7 +699,8 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     { borderRadius: radius },
     item.isMe 
       ? { backgroundColor: gradientEnabled ? "transparent" : sentColor, borderBottomRightRadius: 4 } 
-      : { backgroundColor: receivedColor, borderBottomLeftRadius: 4 }
+      : { backgroundColor: receivedColor, borderBottomLeftRadius: 4 },
+    item.type === "image" && { paddingHorizontal: 4, paddingVertical: 4 }
   ];
   if (item.isMe) { if (groupWithPrev) bubbleStyles.push({ borderTopRightRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomRightRadius: 4 }); }
   else { if (groupWithPrev) bubbleStyles.push({ borderTopLeftRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomLeftRadius: 4 }); }
