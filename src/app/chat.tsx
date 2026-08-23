@@ -55,7 +55,8 @@ export default function Chat() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
-  const [isTargetOnline, setIsTargetOnline] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const isTargetOnline = targetUser ? onlineUsers.has(targetUser.id) : false;
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
@@ -158,25 +159,22 @@ export default function Chat() {
 
     const onSync = () => {
       const state = presenceChannel.presenceState();
-      setTargetUser((prev: any) => {
-        if (prev && state[prev.id]) {
-          setIsTargetOnline(true);
-        } else {
-          setIsTargetOnline(false);
-        }
-        return prev;
+      const onlineSet = new Set<string>();
+      Object.keys(state).forEach(key => {
+        const presences = state[key] as any[];
+        if (presences.length > 0) onlineSet.add(key);
       });
+      setOnlineUsers(onlineSet);
     };
 
     presenceChannel.on("presence", { event: "sync" }, onSync);
     
-    // If it's not subscribed yet, subscribe
     if (presenceChannel.state !== "joined" && presenceChannel.state !== "joining") {
       presenceChannel.subscribe(async (status) => {
         if (status === "SUBSCRIBED") onSync();
       });
     } else {
-      onSync(); // Sync immediately if already joined
+      onSync();
     }
 
     return () => {
