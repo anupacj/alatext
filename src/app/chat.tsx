@@ -37,6 +37,7 @@ interface Message {
   reply_to_id?: string | null;
   reply_to_content?: string | null;
   reply_to_sender?: string | null;
+  custom_font?: string | null;
 }
 
 
