@@ -310,13 +310,7 @@ export default function ChatScreen() {
             <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setInfoVisible(true)}>
             <Text style={styles.headerTitle}><Text style={styles.hashIcon}># </Text>{name || "chat"}</Text>
               
-              {chatSettings?.anniversary_date && !isGroup && (
-                <Text style={styles.streakText}>
-                  💕 {Math.floor((Date.now() - new Date(chatSettings.anniversary_date).getTime()) / (1000 * 60 * 60 * 24))} days together
-                </Text>
-              )}
-              
-              {targetUser && !isGroup && !chatSettings?.anniversary_date && (
+              {targetUser && !isGroup && (
                 <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
                   {isTargetOnline ? "● Online" : "○ Offline"}
                 </Text>
@@ -324,7 +318,7 @@ export default function ChatScreen() {
             </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton} onPress={() => {
             if (typingChannelRef.current) {
-              typingChannelRef.current.send({ type: "broadcast", event: "ping" });
+              typingChannelRef.current.send({ type: "broadcast", event: "ping", payload: {} });
               setPingVisible(true);
             }
           }}>

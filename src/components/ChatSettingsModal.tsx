@@ -287,33 +287,6 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
               ))}
             </View>
 
-            {/* ANNIVERSARY */}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>💕 Anniversary / Streak Date</Text>
-            {Platform.OS === 'web' ? (
-              <input 
-                type="date" 
-                style={{
-                  backgroundColor: "#1e1f22",
-                  color: "#dbdee1",
-                  border: "none",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  marginBottom: "16px",
-                  fontSize: "14px",
-                  outline: "none",
-                  width: "100%",
-                  colorScheme: "dark"
-                } as any}
-                value={anniversaryDate ? new Date(anniversaryDate).toISOString().split('T')[0] : ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setAnniversaryDate(val ? new Date(val).toISOString() : null);
-                }}
-              />
-            ) : (
-              <Text style={{ color: '#949ba4', marginBottom: 16 }}>Date picker available on Web.</Text>
-            )}
-
             {/* FONTS */}
             <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Font Style</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
