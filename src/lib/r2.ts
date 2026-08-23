@@ -1,4 +1,4 @@
-﻿import { AwsClient } from "aws4fetch";
+import { AwsClient } from "aws4fetch";
 import { decode } from "base64-arraybuffer";
 
 const R2_ACCESS_KEY_ID = process.env.EXPO_PUBLIC_R2_ACCESS_KEY_ID as string;
@@ -37,4 +37,16 @@ export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mi
   });
   if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
   return `${R2_PUBLIC_URL}/${fileName}`;
+};
+
+export const deleteFileFromR2ByUrl = async (publicUrl: string) => {
+  if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT || !publicUrl.startsWith(R2_PUBLIC_URL)) return;
+  const fileName = publicUrl.replace(`${R2_PUBLIC_URL}/`, '');
+  const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || "alatext";
+  const deleteUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
+  try {
+    await aws.fetch(deleteUrl.toString(), { method: "DELETE" });
+  } catch (e) {
+    console.error("Failed to delete from R2:", e);
+  }
 };

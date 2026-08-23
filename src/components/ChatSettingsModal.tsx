@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as ImagePicker from "expo-image-picker";
-import { X, Upload, Trash2, Image as ImageIcon } from "lucide-react-native";
-import { uploadImageToR2 } from "../lib/r2";
+import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle } from "lucide-react-native";
+import { uploadImageToR2, deleteFileFromR2ByUrl } from "../lib/r2";
 import { supabase } from "../lib/supabase";
+import { useRouter } from "expo-router";
 
 const FONTS = [
   { name: "System", value: "system" },
@@ -92,6 +93,7 @@ interface ChatSettingsModalProps {
 }
 
 export default function ChatSettingsModal({ visible, onClose, chatId, userId, currentSettings, onSettingsSaved }: ChatSettingsModalProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState(currentSettings?.wallpaper_url || null);
   const [dim, setDim] = useState(currentSettings?.wallpaper_dim || 0);
@@ -173,6 +175,42 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
       onClose();
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const handleDeleteChat = async () => {
+    if (Platform.OS === 'web') {
+      const confirmDelete = window.confirm("Are you sure you want to delete this chat forever? This removes all messages, media, and history for BOTH people. This cannot be undone.");
+      if (!confirmDelete) return;
+    }
+    
+    setLoading(true);
+    try {
+      // 1. Delete all images from Cloudflare R2
+      const { data: images } = await supabase.from("messages").select("content").eq("chat_id", chatId).eq("type", "image");
+      if (images && images.length > 0) {
+        for (const msg of images) {
+          if (msg.content) await deleteFileFromR2ByUrl(msg.content);
+        }
+      }
+
+      // 2. Call the RPC to completely obliterate the chat
+      const { error } = await supabase.rpc("delete_chat_completely", { p_chat_id: chatId });
+      if (error) {
+        console.error("RPC failed, falling back to manual delete", error);
+        await supabase.from("messages").delete().eq("chat_id", chatId);
+        await supabase.from("chat_participants").delete().eq("chat_id", chatId);
+        await supabase.from("chats").delete().eq("id", chatId);
+      }
+
+      // 3. Close and route away
+      onClose();
+      router.replace("/(tabs)");
+    } catch (e) {
+      console.error(e);
+      if (Platform.OS === 'web') alert("Failed to delete chat completely.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const shapeRadius = BUBBLE_SHAPES.find(s => s.value === bubbleShape)?.radius ?? 18;
@@ -357,6 +395,11 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} disabled={loading}>
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Settings</Text>}
             </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteChat} disabled={loading}>
+              <AlertTriangle size={16} color="#f43f5e" style={{ marginRight: 6 }} />
+              <Text style={styles.deleteBtnText}>Delete Chat Forever</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -417,4 +460,6 @@ const styles = StyleSheet.create({
   footer: { padding: 20, borderTopWidth: 1, borderTopColor: "#1e1f22", backgroundColor: "#313338" },
   saveBtn: { backgroundColor: "#23a559", paddingVertical: 14, borderRadius: 6, alignItems: "center" },
   saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  deleteBtn: { marginTop: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", paddingVertical: 12, backgroundColor: "rgba(244, 63, 94, 0.1)", borderRadius: 6, borderWidth: 1, borderColor: "rgba(244, 63, 94, 0.2)" },
+  deleteBtnText: { color: "#f43f5e", fontSize: 14, fontWeight: "600" },
 });
