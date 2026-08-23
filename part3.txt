@@ -1,0 +1,144 @@
+﻿
+// --- MessageRow Component for Animations & Gradients ---
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl }: any) => {
+  const isNew = index === 0;
+  const scale = useSharedValue(isNew ? 0.8 : 1);
+  const opacity = useSharedValue(isNew ? 0 : 1);
+
+  useEffect(() => {
+    if (isNew) {
+      scale.value = withSpring(1, { damping: 14, stiffness: 200 });
+      opacity.value = withSpring(1);
+    }
+  }, [isNew, scale, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  if (item.type === "system") {
+    const isWallpaperMsg = item.text.includes("Tap here");
+    return (
+      <View style={styles.systemMessageContainer}>
+        {isWallpaperMsg ? (
+          <TouchableOpacity onPress={() => item.isMe ? setSettingsVisible(true) : handleApplyWallpaper()}>
+            <Text style={[styles.systemMessageText, { color: "#5865F2" }]}>
+              <Text style={{ fontWeight: "bold", color: "#949ba4" }}>{item.sender}</Text> {item.text}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.systemMessageText}>
+            <Text style={{ fontWeight: "bold" }}>{item.sender}</Text> {item.text}
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  const prevMsg = index < messages.length - 1 ? messages[index + 1] : null;
+  const nextMsg = index > 0 ? messages[index - 1] : null;
+  const groupWithPrev = !!(prevMsg && prevMsg.sender_id === item.sender_id && prevMsg.type !== "system" && Math.abs(item.created_at_ts - prevMsg.created_at_ts) < 60000);
+  const groupWithNext = !!(nextMsg && nextMsg.sender_id === item.sender_id && nextMsg.type !== "system" && Math.abs(item.created_at_ts - nextMsg.created_at_ts) < 60000);
+  const showMeta = !groupWithNext;
+
+  // Cosmetic overrides
+  const sentColor = chatSettings?.bubble_color_sent || "#5865F2";
+  const receivedColor = chatSettings?.bubble_color_received || "#2b2d31";
+  const gradientEnabled = chatSettings?.bubble_gradient_enabled || false;
+  const gradientColor2 = chatSettings?.bubble_gradient_color2 || "#a78bfa";
+  const shape = chatSettings?.bubble_shape || "round";
+  
+  let radius = 18;
+  if (shape === "soft") radius = 10;
+  if (shape === "sharp") radius = 4;
+
+  const bubbleStyles: any[] = [
+    styles.messageBubble, 
+    { borderRadius: radius },
+    item.isMe 
+      ? { backgroundColor: gradientEnabled ? "transparent" : sentColor, borderBottomRightRadius: 4 } 
+      : { backgroundColor: receivedColor, borderBottomLeftRadius: 4 }
+  ];
+  if (item.isMe) { if (groupWithPrev) bubbleStyles.push({ borderTopRightRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomRightRadius: 4 }); }
+  else { if (groupWithPrev) bubbleStyles.push({ borderTopLeftRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomLeftRadius: 4 }); }
+
+  const isRead = item.isMe && targetUser?.last_read_at && item.created_at_ts <= new Date(targetUser.last_read_at).getTime();
+
+  const renderBubbleContent = () => {
+    if (item.type === "image") {
+      return (
+        <TouchableOpacity onPress={() => setImageViewerUrl(item.text)}>
+          <Image source={{ uri: item.text }} style={styles.inlineImage} resizeMode="cover" />
+        </TouchableOpacity>
+      );
+    }
+    return (
+      <Text style={[styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft,
+        chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
+        {item.text}
+      </Text>
+    );
+  };
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
+        onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
+        onHoverOut={() => Platform.OS === "web" && setHoveredMsg(null)}
+        onLongPress={() => setHoveredMsg(hoveredMsg === item.id ? null : item.id)}
+      >
+        {!item.isMe && (
+          <View style={styles.avatarSlot}>
+            {showMeta && (item.avatar
+              ? <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
+              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color="#b5bac1" /></View>
+            )}
+          </View>
+        )}
+        <View style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}>
+          {(!item.isMe && showMeta && !groupWithPrev) && <Text style={styles.messageSender}>{item.sender}</Text>}
+          {item.reply_to_content && (
+            <View style={[styles.replyQuote, item.isMe ? styles.replyQuoteRight : styles.replyQuoteLeft]}>
+              <Text style={styles.replyQuoteSender}>{item.reply_to_sender}</Text>
+              <Text style={styles.replyQuoteText} numberOfLines={2}>{item.reply_to_content}</Text>
+            </View>
+          )}
+          
+          {item.isMe && gradientEnabled ? (
+            <LinearGradient colors={[sentColor, gradientColor2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={bubbleStyles}>
+              {renderBubbleContent()}
+            </LinearGradient>
+          ) : (
+            <View style={bubbleStyles}>
+              {renderBubbleContent()}
+            </View>
+          )}
+
+          {item.isMe && showMeta && (
+            <View style={styles.msgMeta}>
+              <Text style={styles.timeText}>{item.time}</Text>
+              {isRead ? <CheckCheck size={14} color="#5865F2" style={styles.checkIcon} /> : <Check size={14} color="#949ba4" style={styles.checkIcon} />}
+            </View>
+          )}
+          {!item.isMe && showMeta && <Text style={[styles.timeText, { alignSelf: "flex-start", marginTop: 4 }]}>{item.time}</Text>}
+        </View>
+        {hoveredMsg === item.id && item.isMe && (
+          <View style={styles.messageActions}>
+            <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
+              <Reply size={16} color="#b5bac1" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
+              <Edit2 size={16} color="#b5bac1" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
+              <Trash2 size={16} color="#f23f43" />
+            </TouchableOpacity>
+          </View>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+});
+
