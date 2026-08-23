@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
   Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
@@ -53,6 +53,7 @@ export default function Chat() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
+  const [isTargetOnline, setIsTargetOnline] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
@@ -145,8 +146,46 @@ export default function Chat() {
       }).subscribe();
     typingChannelRef.current = tChannel;
 
+    // Subscribe to global presence to track if target user is online
+    const presenceChannel = supabase.channel("presence_global");
+    presenceChannel
+      .on("presence", { event: "sync" }, () => {
+        const state = presenceChannel.presenceState();
+        // Check if any key in presence state matches targetUser's id
+        setIsTargetOnline(false); // reset first, will be set below
+        Object.keys(state).forEach(key => {
+          const presences = state[key] as any[];
+          if (presences.some((p: any) => p.user_id && p.user_id !== user?.id)) {
+            // We'll refine this once targetUser is loaded
+          }
+        });
+      })
+      .on("presence", { event: "join" }, ({ key }) => {
+        setTargetUser((prev: any) => {
+          if (prev && key === prev.id) setIsTargetOnline(true);
+          return prev;
+        });
+      })
+      .on("presence", { event: "leave" }, ({ key }) => {
+        setTargetUser((prev: any) => {
+          if (prev && key === prev.id) setIsTargetOnline(false);
+          return prev;
+        });
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          // After subscribing, sync the current state
+          const state = presenceChannel.presenceState();
+          setTargetUser((prev: any) => {
+            if (prev) setIsTargetOnline(!!state[prev.id]);
+            return prev;
+          });
+        }
+      });
+
     return () => {
       supabase.removeChannel(channel); supabase.removeChannel(pChannel); supabase.removeChannel(tChannel);
+      supabase.removeChannel(presenceChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [id, user?.id]);
@@ -370,7 +409,11 @@ export default function Chat() {
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}><Text style={styles.hashIcon}># </Text>{name || "chat"}</Text>
-            {targetUser && !isGroup && <Text style={styles.lastSeenText}>{getLastSeen(targetUser.updated_at)}</Text>}
+            {targetUser && !isGroup && (
+              <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
+                {isTargetOnline ? "● Online" : "○ Offline"}
+              </Text>
+            )}
           </View>
           <TouchableOpacity style={styles.headerIconButton}><Phone size={20} color="#b5bac1" /></TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton}><Video size={22} color="#b5bac1" /></TouchableOpacity>
@@ -461,6 +504,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: "#f2f3f5", fontSize: 17, fontWeight: "700" },
   hashIcon: { color: "#80848e", fontSize: 20, fontWeight: "400" },
   lastSeenText: { color: "#23a559", fontSize: 12, fontWeight: "600", marginTop: 2 },
+  offlineText: { color: "#949ba4" },
   headerIconButton: { marginLeft: 16 },
   emptyContainer: { flex: 1, justifyContent: "flex-end", padding: 16, paddingBottom: 40 },
   hashCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#4e5058", justifyContent: "center", alignItems: "center", marginBottom: 16 },
