@@ -104,6 +104,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
   const [gradientEnabled, setGradientEnabled] = useState(currentSettings?.bubble_gradient_enabled || false);
   const [gradientColor2, setGradientColor2] = useState(currentSettings?.bubble_gradient_color2 || "#a78bfa");
   const [wallpaperDoodle, setWallpaperDoodle] = useState(currentSettings?.wallpaper_doodle || "none");
+  const [anniversaryDate, setAnniversaryDate] = useState(currentSettings?.anniversary_date || null);
 
   useEffect(() => {
     if (visible && currentSettings) {
@@ -118,6 +119,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
       setGradientEnabled(currentSettings.bubble_gradient_enabled || false);
       setGradientColor2(currentSettings.bubble_gradient_color2 || "#a78bfa");
       setWallpaperDoodle(currentSettings.wallpaper_doodle || "none");
+      setAnniversaryDate(currentSettings.anniversary_date || null);
     }
   }, [visible, currentSettings]);
 
@@ -160,6 +162,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
         bubble_gradient_enabled: gradientEnabled,
         bubble_gradient_color2: gradientColor2,
         wallpaper_doodle: wallpaperDoodle,
+        anniversary_date: anniversaryDate,
       };
       const { error } = await supabase.from("chat_participants").update(updates).eq("chat_id", chatId).eq("user_id", userId);
       if (error) throw error;
@@ -245,6 +248,33 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* ANNIVERSARY */}
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>💕 Anniversary / Streak Date</Text>
+            {Platform.OS === 'web' ? (
+              <input 
+                type="date" 
+                style={{
+                  backgroundColor: "#1e1f22",
+                  color: "#dbdee1",
+                  border: "none",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  marginBottom: "16px",
+                  fontSize: "14px",
+                  outline: "none",
+                  width: "100%",
+                  colorScheme: "dark"
+                } as any}
+                value={anniversaryDate ? new Date(anniversaryDate).toISOString().split('T')[0] : ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setAnniversaryDate(val ? new Date(val).toISOString() : null);
+                }}
+              />
+            ) : (
+              <Text style={{ color: '#949ba4', marginBottom: 16 }}>Date picker available on Web.</Text>
+            )}
 
             {/* FONTS */}
             <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Font Style</Text>
