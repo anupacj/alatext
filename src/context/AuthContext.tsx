@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useEffect, useRef, useState, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { Session } from "@supabase/supabase-js";
 import { useRouter, useSegments } from "expo-router";

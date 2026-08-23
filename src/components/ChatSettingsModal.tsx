@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as ImagePicker from "expo-image-picker";
@@ -316,7 +316,9 @@ const styles = StyleSheet.create({
   wallpaperPreviewContainer: { height: 160, borderRadius: 8, overflow: "hidden", backgroundColor: "#1e1f22", marginBottom: 16 },
   previewBox: { flex: 1, width: "100%", height: "100%" },
   previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  dimOverlay: { ...StyleSheet.absoluteFillObject },
+  dimOverlay: {
+    ...StyleSheet.absoluteFill,
+  },
   emptyPreviewBox: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { color: "#80848e", marginTop: 8, fontSize: 14 },
   wallpaperActions: { flexDirection: "row", gap: 12, marginBottom: 20 },

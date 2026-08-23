@@ -306,11 +306,11 @@ export default function Chat() {
       <View style={styles.container}>
         {chatSettings?.wallpaper_url && (
           <Image source={{ uri: chatSettings.wallpaper_url }}
-            style={[StyleSheet.absoluteFillObject, { resizeMode: "cover", transform: [{ scale: chatSettings.wallpaper_zoom || 1 }] }]}
+            style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings.wallpaper_zoom || 1 }] }]}
             blurRadius={(chatSettings.wallpaper_blur || 0) * 20} />
         )}
         {chatSettings?.wallpaper_url && (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(0,0,0,${chatSettings.wallpaper_dim || 0})` }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings.wallpaper_dim || 0})` }]} />
         )}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
@@ -424,6 +424,9 @@ const styles = StyleSheet.create({
   messageContainerLeft: { justifyContent: "flex-start" },
   messageContainerRight: { justifyContent: "flex-end" },
   avatarSlot: { width: 40, marginRight: 16 },
+  previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  dimOverlay: { ...StyleSheet.absoluteFill },
+  emptyPreviewBox: { flex: 1, justifyContent: "center", alignItems: "center" },
   messageAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#2b2d31" },
   avatarFallback: { justifyContent: "center", alignItems: "center" },
   messageContent: { maxWidth: "80%" },

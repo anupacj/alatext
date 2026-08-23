@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity, Image,
   SafeAreaView, Platform, ActivityIndicator, Modal, TextInput,
@@ -57,7 +57,7 @@ export default function Home() {
           .limit(1);
         const lastMsg = lastMsgData?.[0];
         const lastMsgText = lastMsg
-          ? lastMsg.type === "image" ? "📷 Image" : lastMsg.content
+          ? lastMsg.type === "image" ? "?? Image" : lastMsg.content
           : "Tap to view messages...";
         const lastMsgTime = lastMsg
           ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
