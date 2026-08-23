@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { User, Search, MessageSquare, Plus, Users, X, Check } from "lucide-react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 
@@ -25,6 +26,14 @@ export default function Home() {
   const fetchChats = useCallback(async () => {
     if (!user) return;
     try {
+      const cacheKey = `user_${user.id}_chats`;
+      const cached = await AsyncStorage.getItem(cacheKey);
+      if (cached) {
+        setChats(prev => prev.length === 0 ? JSON.parse(cached) : prev);
+      }
+    } catch (e) {}
+
+    try {
       const { data, error } = await supabase
         .from("chat_participants")
         .select(`
@@ -43,6 +52,7 @@ export default function Home() {
       // For each chat, fetch last message
       const formatted = await Promise.all((data || []).map(async (item: any) => {
         const chat = item.chats;
+        if (!chat) return null;
         let chatName = chat.name || "Chat";
         let chatAvatar = chat.avatar_url;
         if (!chat.is_group && chat.chat_participants) {
@@ -57,14 +67,16 @@ export default function Home() {
           .limit(1);
         const lastMsg = lastMsgData?.[0];
         const lastMsgText = lastMsg
-          ? lastMsg.type === "image" ? "?? Image" : lastMsg.content
+          ? lastMsg.type === "image" ? "📷 Image" : lastMsg.content
           : "Tap to view messages...";
         const lastMsgTime = lastMsg
           ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
           : "";
         return { id: chat.id, name: chatName, avatar: chatAvatar || null, lastMessage: lastMsgText, time: lastMsgTime, unread: 0, isGroup: chat.is_group };
       }));
-      setChats(formatted);
+      const valid = formatted.filter(Boolean) as ChatItem[];
+      setChats(valid);
+      AsyncStorage.setItem(`user_${user.id}_chats`, JSON.stringify(valid)).catch(() => {});
     } catch (e) { console.error("Error fetching chats", e); }
     finally { setLoading(false); }
   }, [user]);

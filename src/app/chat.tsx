@@ -10,6 +10,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import EmojiPicker from "rn-emoji-keyboard";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import ChatSettingsModal, { FONT_OPTIONS } from "../components/ChatSettingsModal";
 import { HeartPing } from "../components/HeartPing";
 import { DoodleOverlay } from "../components/DoodleOverlay";
@@ -39,6 +40,7 @@ interface Message {
   reply_to_content?: string | null;
   reply_to_sender?: string | null;
   custom_font?: string | null;
+  status?: "sending" | "failed" | "sent";
 }
 
 
@@ -103,8 +105,16 @@ export default function ChatScreen() {
     profileCache.current.clear();
 
     const init = async () => {
+      try {
+        const cachedSettings = await AsyncStorage.getItem(`chat_${id}_settings`);
+        if (cachedSettings) setChatSettings(JSON.parse(cachedSettings));
+      } catch (e) {}
+
       const { data: mySettings } = await supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).single();
-      if (mySettings) setChatSettings(mySettings);
+      if (mySettings) {
+        setChatSettings(mySettings);
+        AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(mySettings)).catch(() => {});
+      }
       const { data: chatData } = await supabase.from("chats").select("is_group").eq("id", id).single();
       if (chatData?.is_group) setIsGroup(true);
       const { data: parts } = await supabase.from("chat_participants").select("user_id, last_read_at").eq("chat_id", id).neq("user_id", user.id).limit(1);
@@ -116,10 +126,23 @@ export default function ChatScreen() {
     init();
 
     const fetchMsgs = async () => {
+      try {
+        const cachedMsgs = await AsyncStorage.getItem(`chat_${id}_messages`);
+        if (cachedMsgs) {
+          const parsed = JSON.parse(cachedMsgs);
+          setMessages(prev => prev.length === 0 ? parsed : prev);
+        }
+      } catch (e) {}
+
       const { data, error } = await supabase.from("messages")
         .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
         .eq("chat_id", id).order("created_at", { ascending: false }).limit(PAGE_SIZE);
-      if (!error && data) { setMessages(data.map(formatMsg)); setHasMore(data.length === PAGE_SIZE); }
+      if (!error && data) { 
+        const formatted = data.map(formatMsg);
+        setMessages(formatted); 
+        setHasMore(data.length === PAGE_SIZE); 
+        AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(formatted)).catch(() => {});
+      }
     };
     fetchMsgs();
 
@@ -138,9 +161,13 @@ export default function ChatScreen() {
             created_at_ts: ts, time: new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             avatar: pd?.avatar_url || null, isMe: payload.new.sender_id === user?.id,
             reply_to_id: payload.new.reply_to_id, reply_to_content: payload.new.reply_to_content, reply_to_sender: payload.new.reply_to_sender,
+            custom_font: payload.new.custom_font,
           };
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setMessages(prev => [nm, ...prev]);
+          setMessages(prev => {
+            if (prev.some(m => m.id === nm.id)) return prev;
+            return [nm, ...prev];
+          });
         } else if (payload.eventType === "DELETE") {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setMessages(prev => prev.filter(m => m.id !== payload.old.id));
@@ -199,6 +226,12 @@ export default function ChatScreen() {
     setLoadingOlder(false);
   }, [loadingOlder, hasMore, messages, id, formatMsg]);
 
+  useEffect(() => {
+    if (messages.length > 0 && id) {
+      AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(messages.slice(0, PAGE_SIZE))).catch(() => {});
+    }
+  }, [messages, id]);
+
   const handleApplyWallpaper = useCallback(async () => {
     if (!targetUser || !user || !id) return;
     const { data: ts } = await supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", targetUser.id).single();
@@ -214,17 +247,45 @@ export default function ChatScreen() {
     const content = inputText.trim();
     const curEdit = editingMsgId; const curReply = replyingTo; const curFont = messageFont;
     setInputText(""); setEditingMsgId(null); setReplyingTo(null); setMessageFont(null); setFontPickerOpen(false);
+    
     if (curEdit) {
       setMessages(prev => prev.map(m => m.id === curEdit ? { ...m, text: content } : m));
       const { error } = await supabase.from("messages").update({ content }).eq("id", curEdit).eq("sender_id", user.id);
       if (error) console.error("Update failed", error);
     } else {
-      const { error } = await supabase.from("messages").insert({
+      const tempId = `temp-${Date.now()}`;
+      const tempMsg: Message = {
+        id: tempId,
+        sender: user.user_metadata?.username || "Me",
+        sender_id: user.id,
+        text: content,
+        type: "text",
+        created_at: new Date().toISOString(),
+        created_at_ts: Date.now(),
+        time: new Date().toLocaleTimeString(),
+        avatar: user.user_metadata?.avatar_url || "https://ui-avatars.com/api/?name=U",
+        isMe: true,
+        status: "sending",
+        custom_font: curFont || null,
+        reply_to_id: curReply?.id || null,
+        reply_to_content: curReply?.text || null,
+        reply_to_sender: curReply?.sender || null,
+      };
+      
+      setMessages(prev => [tempMsg, ...prev]);
+
+      const { data, error } = await supabase.from("messages").insert({
         chat_id: id, sender_id: user.id, content, type: "text",
         reply_to_id: curReply?.id || null, reply_to_content: curReply?.text || null, reply_to_sender: curReply?.sender || null,
         custom_font: curFont || null,
-      });
-      if (error) console.error("Send failed", error);
+      }).select("id").single();
+      
+      if (error) {
+        console.error("Send failed", error);
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "failed" } : m));
+      } else if (data) {
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.id, status: "sent" } : m));
+      }
     }
   }, [inputText, user, id, editingMsgId, replyingTo, messageFont]);
 
@@ -655,7 +716,11 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
 
           {item.isMe && showMeta && (
             <View style={styles.msgMeta}>
-              <Text style={styles.timeText}>{item.time}</Text>
+              <Text style={styles.timeText}>
+                {item.time} 
+                {item.status === "sending" && " (sending...)"}
+                {item.status === "failed" && " (failed)"}
+              </Text>
               {isRead ? <CheckCheck size={14} color="#5865F2" style={styles.checkIcon} /> : <Check size={14} color="#949ba4" style={styles.checkIcon} />}
             </View>
           )}
