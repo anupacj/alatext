@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
   Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
-  LayoutAnimation, UIManager, Modal, ActivityIndicator,
+  LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder
 } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
@@ -639,12 +639,23 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   const handlePress = () => {
     const now = Date.now();
     if (now - lastPressRef.current < 300) {
-      if (Platform.OS !== 'web') {
-        setHoveredMsg(hoveredMsg === item.id ? null : item.id);
-      }
+      setHoveredMsg(hoveredMsg === item.id ? null : item.id);
     }
     lastPressRef.current = now;
   };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return Math.abs(gestureState.dx) > 30 && Math.abs(gestureState.dy) < 30;
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (Math.abs(gestureState.dx) > 50) {
+          setReplyingTo({ id: item.id, text: item.text, sender: item.sender });
+        }
+      },
+    })
+  ).current;
 
   useEffect(() => {
     if (isNew) {
@@ -725,7 +736,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   };
 
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View style={animatedStyle} {...panResponder.panHandlers}>
       <Pressable
         style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
         onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
