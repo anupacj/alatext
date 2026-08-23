@@ -7,9 +7,12 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
+import EmojiPicker from "rn-emoji-keyboard";
 import ChatSettingsModal from "../components/ChatSettingsModal";
+import { HeartPing } from "../components/HeartPing";
+import { DoodleOverlay } from "../components/DoodleOverlay";
 import { supabase } from "../lib/supabase";
 import { uploadChatImageToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
@@ -57,6 +60,8 @@ export default function Chat() {
   const [isGroup, setIsGroup] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const isTargetOnline = targetUser ? onlineUsers.has(targetUser.id) : false;
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [pingVisible, setPingVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
@@ -146,6 +151,9 @@ export default function Chat() {
         setIsTyping(true);
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
+      })
+      .on("broadcast", { event: "ping" }, () => {
+        setPingVisible(true);
       }).subscribe();
     typingChannelRef.current = tChannel;
 
@@ -308,19 +316,36 @@ export default function Chat() {
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
             <ChevronLeft size={28} color="#b5bac1" />
           </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}><Text style={styles.hashIcon}># </Text>{name || "chat"}</Text>
-            {targetUser && !isGroup && (
-              <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
-                {isTargetOnline ? "● Online" : "○ Offline"}
-              </Text>
-            )}
-          </View>
+            <View style={styles.headerTitleContainer}>
+              <Text style={styles.headerTitle}><Text style={styles.hashIcon}># </Text>{name || "chat"}</Text>
+              
+              {chatSettings?.anniversary_date && !isGroup && (
+                <Text style={styles.streakText}>
+                  💕 {Math.floor((Date.now() - new Date(chatSettings.anniversary_date).getTime()) / (1000 * 60 * 60 * 24))} days together
+                </Text>
+              )}
+              
+              {targetUser && !isGroup && !chatSettings?.anniversary_date && (
+                <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
+                  {isTargetOnline ? "● Online" : "○ Offline"}
+                </Text>
+              )}
+            </View>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => {
+            if (typingChannelRef.current) {
+              typingChannelRef.current.send({ type: "broadcast", event: "ping" });
+              setPingVisible(true);
+            }
+          }}>
+            <Heart size={22} color="#f23f43" />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton}><Phone size={20} color="#b5bac1" /></TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton}><Video size={22} color="#b5bac1" /></TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color="#b5bac1" /></TouchableOpacity>
         </View>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: chatSettings?.wallpaper_url ? "transparent" : "#313338" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
+          <HeartPing visible={pingVisible} onComplete={() => setPingVisible(false)} />
           {messages.length === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={styles.hashCircle}><Hash size={40} color="#ffffff" /></View>
@@ -360,6 +385,9 @@ export default function Chat() {
               {Platform.OS === "web" && (
                 <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
               )}
+              <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setEmojiOpen(true)}>
+                <Smile size={24} color="#b5bac1" />
+              </TouchableOpacity>
               <TextInput style={styles.textInput} placeholder={`Message #${name || "chat"}`} placeholderTextColor="#949ba4"
                 value={inputText}
                 onChangeText={(text) => {
@@ -380,6 +408,11 @@ export default function Chat() {
             </View>
           </View>
         </KeyboardAvoidingView>
+        <EmojiPicker 
+          onEmojiSelected={(emoji) => setInputText(prev => prev + emoji.emoji)} 
+          open={emojiOpen} 
+          onClose={() => setEmojiOpen(false)} 
+        />
         {settingsVisible && (
           <ChatSettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)}
             chatId={id as string} userId={user.id} currentSettings={chatSettings} onSettingsSaved={setChatSettings} />
@@ -405,6 +438,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: "#f2f3f5", fontSize: 17, fontWeight: "700" },
   hashIcon: { color: "#80848e", fontSize: 20, fontWeight: "400" },
   lastSeenText: { color: "#23a559", fontSize: 12, fontWeight: "600", marginTop: 2 },
+  streakText: { color: "#f43f5e", fontSize: 12, fontWeight: "600", marginTop: 2 },
   offlineText: { color: "#949ba4" },
   headerIconButton: { marginLeft: 16 },
   emptyContainer: { flex: 1, justifyContent: "flex-end", padding: 16, paddingBottom: 40 },

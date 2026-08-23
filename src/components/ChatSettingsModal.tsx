@@ -64,6 +64,15 @@ interface ChatSettingsModalProps {
   onSettingsSaved: (newSettings: any) => void;
 }
 
+const DOODLE_OPTIONS = [
+  { label: "None", value: "none" },
+  { label: "✨ Sparkles", value: "sparkles" },
+  { label: "💕 Hearts", value: "hearts" },
+  { label: "⭐ Stars", value: "stars" },
+  { label: "❄️ Snow", value: "snow" },
+  { label: "🌸 Petals", value: "petals" },
+];
+
 export default function ChatSettingsModal({ visible, onClose, chatId, userId, currentSettings, onSettingsSaved }: ChatSettingsModalProps) {
   const [loading, setLoading] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState(currentSettings?.wallpaper_url || null);
@@ -76,6 +85,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
   const [bubbleShape, setBubbleShape] = useState(currentSettings?.bubble_shape || "round");
   const [gradientEnabled, setGradientEnabled] = useState(currentSettings?.bubble_gradient_enabled || false);
   const [gradientColor2, setGradientColor2] = useState(currentSettings?.bubble_gradient_color2 || "#a78bfa");
+  const [wallpaperDoodle, setWallpaperDoodle] = useState(currentSettings?.wallpaper_doodle || "none");
 
   useEffect(() => {
     if (visible && currentSettings) {
@@ -89,6 +99,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
       setBubbleShape(currentSettings.bubble_shape || "round");
       setGradientEnabled(currentSettings.bubble_gradient_enabled || false);
       setGradientColor2(currentSettings.bubble_gradient_color2 || "#a78bfa");
+      setWallpaperDoodle(currentSettings.wallpaper_doodle || "none");
     }
   }, [visible, currentSettings]);
 
@@ -130,6 +141,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
         bubble_shape: bubbleShape,
         bubble_gradient_enabled: gradientEnabled,
         bubble_gradient_color2: gradientColor2,
+        wallpaper_doodle: wallpaperDoodle,
       };
       const { error } = await supabase.from("chat_participants").update(updates).eq("chat_id", chatId).eq("user_id", userId);
       if (error) throw error;
@@ -218,6 +230,16 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
 
             {/* WALLPAPER */}
             <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🖼 Wallpaper</Text>
+            
+            <Text style={[styles.sliderLabel, { marginBottom: 12 }]}>Doodle Overlay</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              {DOODLE_OPTIONS.map(opt => (
+                <TouchableOpacity key={opt.value} style={[styles.shapeOption, { width: 80, marginRight: 8, paddingVertical: 10 }, wallpaperDoodle === opt.value && styles.shapeOptionSelected]} onPress={() => setWallpaperDoodle(opt.value)}>
+                  <Text style={[styles.shapeLabel, wallpaperDoodle === opt.value && { color: "#f2f3f5" }]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
             <View style={styles.wallpaperPreviewContainer}>
               {wallpaperUrl ? (
                 <View style={styles.previewBox}>
