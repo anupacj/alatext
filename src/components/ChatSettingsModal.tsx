@@ -91,15 +91,6 @@ interface ChatSettingsModalProps {
   onSettingsSaved: (newSettings: any) => void;
 }
 
-const DOODLE_OPTIONS = [
-  { label: "None", value: "none" },
-  { label: "✨ Sparkles", value: "sparkles" },
-  { label: "💕 Hearts", value: "hearts" },
-  { label: "⭐ Stars", value: "stars" },
-  { label: "❄️ Snow", value: "snow" },
-  { label: "🌸 Petals", value: "petals" },
-];
-
 export default function ChatSettingsModal({ visible, onClose, chatId, userId, currentSettings, onSettingsSaved }: ChatSettingsModalProps) {
   const [loading, setLoading] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState(currentSettings?.wallpaper_url || null);
