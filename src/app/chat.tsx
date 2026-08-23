@@ -43,6 +43,16 @@ interface Message {
   status?: "sending" | "failed" | "sent";
 }
 
+function SendingDots() {
+  const [dots, setDots] = useState(".");
+  useEffect(() => {
+    const int = setInterval(() => {
+      setDots(d => d.length >= 3 ? "." : d + ".");
+    }, 400);
+    return () => clearInterval(int);
+  }, []);
+  return <>{dots}</>;
+}
 
 export default function ChatScreen() {
   const { id, name, avatar } = useLocalSearchParams();
@@ -357,9 +367,11 @@ export default function ChatScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {chatSettings?.wallpaper_url && (
-          <Image source={{ uri: chatSettings.wallpaper_url }}
-            style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings.wallpaper_zoom || 1 }] }]}
-            blurRadius={(chatSettings.wallpaper_blur || 0) * 20} />
+          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
+            <Image source={{ uri: chatSettings.wallpaper_url }}
+              style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings.wallpaper_zoom || 1 }] }]}
+              blurRadius={(chatSettings.wallpaper_blur || 0) * 20} />
+          </View>
         )}
         {chatSettings?.wallpaper_url && (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings.wallpaper_dim || 0})` }]} />
@@ -527,7 +539,7 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#313338" },
-  container: { flex: 1, backgroundColor: "#313338", maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: "#1e1f22" },
+  container: { flex: 1, backgroundColor: "#313338", maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: "#1e1f22", overflow: "hidden" },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "#313338", borderBottomWidth: 1, borderBottomColor: "#2b2d31", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 3, zIndex: 10 },
   backButton: { marginRight: 8, padding: 4 },
   headerTitleContainer: { flex: 1, justifyContent: "center" },
@@ -718,8 +730,8 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             <View style={styles.msgMeta}>
               <Text style={styles.timeText}>
                 {item.time} 
-                {item.status === "sending" && " (sending...)"}
-                {item.status === "failed" && " (failed)"}
+                {item.status === "sending" && <Text> <SendingDots /></Text>}
+                {item.status === "failed" && <Text style={{ color: '#f43f5e' }}> (failed)</Text>}
               </Text>
               {isRead ? <CheckCheck size={14} color="#5865F2" style={styles.checkIcon} /> : <Check size={14} color="#949ba4" style={styles.checkIcon} />}
             </View>
