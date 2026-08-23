@@ -311,6 +311,38 @@ export default function ChatScreen() {
     }
   }, [messages, user?.id]);
 
+  const handleUploadFile = useCallback(async (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(",")[1];
+      setUploadingImage(true);
+      try {
+        const url = await uploadChatImageToR2(id as string, base64, file.type);
+        await supabase.from("messages").insert({ chat_id: id, sender_id: user?.id, content: url, type: "image" });
+      } catch (e) { console.error(e); }
+      setUploadingImage(false);
+    };
+    reader.readAsDataURL(file);
+  }, [id, user?.id]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const handlePaste = (e: any) => {
+        const items = e.clipboardData?.items;
+        if (items) {
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf("image") !== -1) {
+              const file = items[i].getAsFile();
+              if (file) handleUploadFile(file);
+            }
+          }
+        }
+      };
+      document.addEventListener("paste", handlePaste);
+      return () => document.removeEventListener("paste", handlePaste);
+    }
+  }, [handleUploadFile]);
+
   const handlePickImage = useCallback(async () => {
     if (Platform.OS === "web") { if (fileInputRef.current) fileInputRef.current.click(); return; }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -328,18 +360,9 @@ export default function ChatScreen() {
 
   const handleWebFileChange = useCallback((e: any) => {
     const file = e.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
-      setUploadingImage(true);
-      try {
-        const url = await uploadChatImageToR2(id as string, base64, file.type);
-        await supabase.from("messages").insert({ chat_id: id, sender_id: user?.id, content: url, type: "image" });
-      } catch (e) { console.error(e); }
-      setUploadingImage(false); e.target.value = "";
-    };
-    reader.readAsDataURL(file);
-  }, [id, user?.id]);
+    handleUploadFile(file);
+    e.target.value = "";
+  }, [handleUploadFile]);
 
   const getLastSeen = useCallback((d?: string) => {
     if (!d) return "Offline";
@@ -614,6 +637,17 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   const scale = useSharedValue(isNew ? 0.8 : 1);
   const opacity = useSharedValue(isNew ? 0 : 1);
 
+  const lastPressRef = useRef<number>(0);
+  const handlePress = () => {
+    const now = Date.now();
+    if (now - lastPressRef.current < 300) {
+      if (Platform.OS !== 'web') {
+        setHoveredMsg(hoveredMsg === item.id ? null : item.id);
+      }
+    }
+    lastPressRef.current = now;
+  };
+
   useEffect(() => {
     if (isNew) {
       scale.value = withSpring(1, { damping: 14, stiffness: 200 });
@@ -697,7 +731,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
         onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
         onHoverOut={() => Platform.OS === "web" && setHoveredMsg(null)}
-        onLongPress={() => setHoveredMsg(hoveredMsg === item.id ? null : item.id)}
+        onPress={handlePress}
       >
         {!item.isMe && (
           <View style={styles.avatarSlot}>
@@ -738,17 +772,21 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           )}
           {!item.isMe && showMeta && <Text style={[styles.timeText, { alignSelf: "flex-start", marginTop: 4 }]}>{item.time}</Text>}
         </View>
-        {hoveredMsg === item.id && item.isMe && (
-          <View style={styles.messageActions}>
+        {hoveredMsg === item.id && (
+          <View style={[styles.messageActions, !item.isMe && { left: -40, right: 'auto' }]}>
             <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
               <Reply size={16} color="#b5bac1" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
-              <Edit2 size={16} color="#b5bac1" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
-              <Trash2 size={16} color="#f23f43" />
-            </TouchableOpacity>
+            {item.isMe && (
+              <>
+                <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
+                  <Edit2 size={16} color="#b5bac1" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
+                  <Trash2 size={16} color="#f23f43" />
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
       </Pressable>
