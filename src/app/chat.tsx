@@ -58,8 +58,9 @@ export default function Chat() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
-  const isTargetOnline = targetUser ? onlineUsers.has(targetUser.id) : false;
+  const isTargetOnline = targetUser && targetUser.updated_at 
+    ? Date.now() - new Date(targetUser.updated_at).getTime() < 6 * 60 * 1000 
+    : false;
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pingVisible, setPingVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
@@ -146,6 +147,14 @@ export default function Chat() {
         if (payload.new.user_id !== user.id) setTargetUser((prev: any) => prev ? { ...prev, last_read_at: payload.new.last_read_at } : prev);
       }).subscribe();
 
+    const profChannel = supabase.channel(`profiles_${id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
+        setTargetUser((prev: any) => {
+          if (prev && payload.new.id === prev.id) return { ...prev, updated_at: payload.new.updated_at };
+          return prev;
+        });
+      }).subscribe();
+
     const tChannel = supabase.channel(`typing_${id}`, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, () => {
         setIsTyping(true);
@@ -157,37 +166,11 @@ export default function Chat() {
       }).subscribe();
     typingChannelRef.current = tChannel;
 
-    // Subscribe to global presence safely
-    let presenceChannel = supabase.getChannels().find(c => c.topic === "realtime:presence_global");
-    
-    // If not found, we create it (though AuthContext should have created it)
-    if (!presenceChannel) {
-      presenceChannel = supabase.channel("presence_global");
-    }
-
-    const onSync = () => {
-      const state = presenceChannel.presenceState();
-      const onlineSet = new Set<string>();
-      Object.keys(state).forEach(key => {
-        const presences = state[key] as any[];
-        if (presences.length > 0) onlineSet.add(key);
-      });
-      setOnlineUsers(onlineSet);
-    };
-
-    presenceChannel.on("presence", { event: "sync" }, onSync);
-    
-    if (presenceChannel.state !== "joined" && presenceChannel.state !== "joining") {
-      presenceChannel.subscribe(async (status) => {
-        if (status === "SUBSCRIBED") onSync();
-      });
-    } else {
-      onSync();
-    }
+    // We are reverting presence back to heartbeat for stability as requested.
+    // The targetUser's updated_at field will serve as the online indicator.
 
     return () => {
-      supabase.removeChannel(channel); supabase.removeChannel(pChannel); supabase.removeChannel(tChannel);
-      // We don't remove presenceChannel because AuthContext might still be using it
+      supabase.removeChannel(channel); supabase.removeChannel(pChannel); supabase.removeChannel(tChannel); supabase.removeChannel(profChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [id, user?.id]);
