@@ -770,26 +770,26 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             </View>
           )}
           {!item.isMe && showMeta && <Text style={[styles.timeText, { alignSelf: "flex-start", marginTop: 4 }]}>{item.time}</Text>}
+          
+          {hoveredMsg === item.id && (
+            <View style={[styles.messageActions, item.isMe ? { right: '100%', marginRight: 8, top: 0 } : { left: '100%', marginLeft: 8, top: 0, right: 'auto' }]}>
+              <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
+                <Reply size={16} color="#b5bac1" />
+              </TouchableOpacity>
+              {item.isMe && (
+                <>
+                  <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
+                    <Edit2 size={16} color="#b5bac1" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
+                    <Trash2 size={16} color="#f23f43" />
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )}
         </View>
-        {hoveredMsg === item.id && (
-          <View style={[styles.messageActions, !item.isMe && { left: -40, right: 'auto' }]}>
-            <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
-              <Reply size={16} color="#b5bac1" />
-            </TouchableOpacity>
-            {item.isMe && (
-              <>
-                <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
-                  <Edit2 size={16} color="#b5bac1" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
-                  <Trash2 size={16} color="#f23f43" />
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        )}
       </Pressable>
     </Animated.View>
   );
 });
-
