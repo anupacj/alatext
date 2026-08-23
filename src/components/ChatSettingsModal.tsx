@@ -64,7 +64,7 @@ const DOODLE_OPTIONS = [
   { label: "🌸 Petals", value: "petals" },
 ];
 
-const FONT_OPTIONS = [
+export const FONT_OPTIONS = [
   { label: "System", value: "system" },
   { label: "BenchNine", value: "BenchNine" },
   { label: "Playwrite BR", value: "Playwrite BR" },

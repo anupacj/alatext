@@ -7,10 +7,10 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import EmojiPicker from "rn-emoji-keyboard";
-import ChatSettingsModal from "../components/ChatSettingsModal";
+import ChatSettingsModal, { FONT_OPTIONS } from "../components/ChatSettingsModal";
 import { HeartPing } from "../components/HeartPing";
 import { DoodleOverlay } from "../components/DoodleOverlay";
 import { supabase } from "../lib/supabase";
@@ -62,6 +62,8 @@ export default function Chat() {
     ? Date.now() - new Date(targetUser.updated_at).getTime() < 45 * 1000 
     : false;
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [messageFont, setMessageFont] = useState<string | null>(null);
   const [pingVisible, setPingVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
@@ -86,6 +88,7 @@ export default function Chat() {
       reply_to_id: msg.reply_to_id || null,
       reply_to_content: msg.reply_to_content || null,
       reply_to_sender: msg.reply_to_sender || null,
+      custom_font: msg.custom_font,
     };
   }, [user?.id]);
 
@@ -110,7 +113,7 @@ export default function Chat() {
 
     const fetchMsgs = async () => {
       const { data, error } = await supabase.from("messages")
-        .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, profiles(username, avatar_url)")
+        .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
         .eq("chat_id", id).order("created_at", { ascending: false }).limit(PAGE_SIZE);
       if (!error && data) { setMessages(data.map(formatMsg)); setHasMore(data.length === PAGE_SIZE); }
     };
@@ -186,7 +189,7 @@ export default function Chat() {
     setLoadingOlder(true);
     const oldest = messages[messages.length - 1];
     const { data, error } = await supabase.from("messages")
-      .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, profiles(username, avatar_url)")
+      .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
       .eq("chat_id", id).lt("created_at", oldest.created_at).order("created_at", { ascending: false }).limit(PAGE_SIZE);
     if (!error && data) { setMessages(prev => [...prev, ...data.map(formatMsg)]); setHasMore(data.length === PAGE_SIZE); }
     setLoadingOlder(false);
@@ -205,8 +208,8 @@ export default function Chat() {
   const sendMessage = useCallback(async () => {
     if (!inputText.trim() || !user || !id) return;
     const content = inputText.trim();
-    const curEdit = editingMsgId; const curReply = replyingTo;
-    setInputText(""); setEditingMsgId(null); setReplyingTo(null);
+    const curEdit = editingMsgId; const curReply = replyingTo; const curFont = messageFont;
+    setInputText(""); setEditingMsgId(null); setReplyingTo(null); setMessageFont(null); setFontPickerOpen(false);
     if (curEdit) {
       setMessages(prev => prev.map(m => m.id === curEdit ? { ...m, text: content } : m));
       const { error } = await supabase.from("messages").update({ content }).eq("id", curEdit).eq("sender_id", user.id);
@@ -215,10 +218,11 @@ export default function Chat() {
       const { error } = await supabase.from("messages").insert({
         chat_id: id, sender_id: user.id, content, type: "text",
         reply_to_id: curReply?.id || null, reply_to_content: curReply?.text || null, reply_to_sender: curReply?.sender || null,
+        custom_font: curFont || null,
       });
       if (error) console.error("Send failed", error);
     }
-  }, [inputText, user, id, editingMsgId, replyingTo]);
+  }, [inputText, user, id, editingMsgId, replyingTo, messageFont]);
 
   const deleteMessage = useCallback(async (msgId: string) => {
     const saved = messages.find(m => m.id === msgId);
@@ -360,7 +364,38 @@ export default function Chat() {
               <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color="#b5bac1" /></TouchableOpacity>
             </View>
           )}
-          <View style={[styles.inputArea, chatSettings?.wallpaper_url && { backgroundColor: "transparent" }]}>
+          {fontPickerOpen && (
+            <View style={{ backgroundColor: "#2b2d31", padding: 12, marginHorizontal: 16, borderTopLeftRadius: 8, borderTopRightRadius: 8, elevation: 4 }}>
+              <Text style={{ color: "#dbdee1", fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Select Font for this Message</Text>
+              <FlatList
+                horizontal
+                data={FONT_OPTIONS}
+                keyExtractor={(item) => item.value}
+                showsHorizontalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 8,
+                      backgroundColor: messageFont === item.value ? "#5865F2" : "#383a40",
+                      borderRadius: 16,
+                      marginRight: 8,
+                    }}
+                    onPress={() => setMessageFont(item.value)}
+                  >
+                    <Text style={{ 
+                      color: messageFont === item.value ? "#fff" : "#dbdee1", 
+                      fontFamily: item.value === "system" ? undefined : item.value 
+                    }}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          )}
+
+          <View style={[styles.inputArea, chatSettings?.wallpaper_url && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
             <View style={[styles.inputWrapper, chatSettings?.wallpaper_url && { backgroundColor: "rgba(56,58,64,0.85)" }]}>
               <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                 {uploadingImage ? <ActivityIndicator size="small" color="#383a40" /> : <Plus size={20} color="#383a40" />}
@@ -368,10 +403,19 @@ export default function Chat() {
               {Platform.OS === "web" && (
                 <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
               )}
+              <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
+                <Type size={22} color={fontPickerOpen ? "#5865F2" : "#b5bac1"} />
+              </TouchableOpacity>
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setEmojiOpen(true)}>
                 <Smile size={24} color="#b5bac1" />
               </TouchableOpacity>
-              <TextInput style={styles.textInput} placeholder={`Message #${name || "chat"}`} placeholderTextColor="#949ba4"
+              <TextInput 
+                style={[
+                  styles.textInput, 
+                  messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
+                ]} 
+                placeholder={`Message #${name || "chat"}`} 
+                placeholderTextColor="#949ba4"
                 value={inputText}
                 onChangeText={(text) => {
                   setInputText(text);
@@ -557,9 +601,10 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         </TouchableOpacity>
       );
     }
+    const activeFont = item.custom_font || chatSettings?.font_family;
     return (
       <Text style={[styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft,
-        chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
+        activeFont && activeFont !== "system" ? { fontFamily: activeFont } : {}]}>
         {item.text}
       </Text>
     );
