@@ -148,46 +148,40 @@ export default function Chat() {
       }).subscribe();
     typingChannelRef.current = tChannel;
 
-    // Subscribe to global presence to track if target user is online
-    const presenceChannel = supabase.channel("presence_global");
-    presenceChannel
-      .on("presence", { event: "sync" }, () => {
-        const state = presenceChannel.presenceState();
-        // Check if any key in presence state matches targetUser's id
-        setIsTargetOnline(false); // reset first, will be set below
-        Object.keys(state).forEach(key => {
-          const presences = state[key] as any[];
-          if (presences.some((p: any) => p.user_id && p.user_id !== user?.id)) {
-            // We'll refine this once targetUser is loaded
-          }
-        });
-      })
-      .on("presence", { event: "join" }, ({ key }) => {
-        setTargetUser((prev: any) => {
-          if (prev && key === prev.id) setIsTargetOnline(true);
-          return prev;
-        });
-      })
-      .on("presence", { event: "leave" }, ({ key }) => {
-        setTargetUser((prev: any) => {
-          if (prev && key === prev.id) setIsTargetOnline(false);
-          return prev;
-        });
-      })
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          // After subscribing, sync the current state
-          const state = presenceChannel.presenceState();
-          setTargetUser((prev: any) => {
-            if (prev) setIsTargetOnline(!!state[prev.id]);
-            return prev;
-          });
+    // Subscribe to global presence safely
+    let presenceChannel = supabase.getChannels().find(c => c.topic === "realtime:presence_global");
+    
+    // If not found, we create it (though AuthContext should have created it)
+    if (!presenceChannel) {
+      presenceChannel = supabase.channel("presence_global");
+    }
+
+    const onSync = () => {
+      const state = presenceChannel.presenceState();
+      setTargetUser((prev: any) => {
+        if (prev && state[prev.id]) {
+          setIsTargetOnline(true);
+        } else {
+          setIsTargetOnline(false);
         }
+        return prev;
       });
+    };
+
+    presenceChannel.on("presence", { event: "sync" }, onSync);
+    
+    // If it's not subscribed yet, subscribe
+    if (presenceChannel.state !== "joined" && presenceChannel.state !== "joining") {
+      presenceChannel.subscribe(async (status) => {
+        if (status === "SUBSCRIBED") onSync();
+      });
+    } else {
+      onSync(); // Sync immediately if already joined
+    }
 
     return () => {
       supabase.removeChannel(channel); supabase.removeChannel(pChannel); supabase.removeChannel(tChannel);
-      supabase.removeChannel(presenceChannel);
+      // We don't remove presenceChannel because AuthContext might still be using it
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [id, user?.id]);
