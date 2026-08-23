@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
   Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
-  LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder, Animated,
+  LayoutAnimation, UIManager, Modal, ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply } from "lucide-react-native";
@@ -319,76 +319,65 @@ export default function Chat() {
 
     const isRead = item.isMe && targetUser?.last_read_at && item.created_at_ts <= new Date(targetUser.last_read_at).getTime();
 
-    const swipeX = new Animated.Value(0);
-    const pan = PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 10 && Math.abs(g.dy) < 30,
-      onPanResponderMove: (_, g) => { if (g.dx > 0) swipeX.setValue(Math.min(g.dx, 60)); },
-      onPanResponderRelease: (_, g) => {
-        if (g.dx > 40) setReplyingTo({ id: item.id, text: item.text, sender: item.sender });
-        Animated.spring(swipeX, { toValue: 0, useNativeDriver: true }).start();
-      },
-    });
-
     return (
-      <Animated.View style={{ transform: [{ translateX: swipeX }] }} {...pan.panHandlers}>
-        <Pressable
-          style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
-          onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
-          onHoverOut={() => Platform.OS === "web" && setHoveredMsg(null)}
-          onLongPress={() => setHoveredMsg(hoveredMsg === item.id ? null : item.id)}
-        >
-          {!item.isMe && (
-            <View style={styles.avatarSlot}>
-              {showMeta && (item.avatar
-                ? <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
-                : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color="#b5bac1" /></View>
-              )}
-            </View>
-          )}
-          <View style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}>
-            {(!item.isMe && showMeta && !groupWithPrev) && <Text style={styles.messageSender}>{item.sender}</Text>}
-            {item.reply_to_content && (
-              <View style={[styles.replyQuote, item.isMe ? styles.replyQuoteRight : styles.replyQuoteLeft]}>
-                <Text style={styles.replyQuoteSender}>{item.reply_to_sender}</Text>
-                <Text style={styles.replyQuoteText} numberOfLines={2}>{item.reply_to_content}</Text>
-              </View>
+      <Pressable
+        style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
+        onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
+        onHoverOut={() => Platform.OS === "web" && setHoveredMsg(null)}
+        onLongPress={() => setHoveredMsg(hoveredMsg === item.id ? null : item.id)}
+      >
+        {!item.isMe && (
+          <View style={styles.avatarSlot}>
+            {showMeta && (item.avatar
+              ? <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
+              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color="#b5bac1" /></View>
             )}
-            <View style={bubbleStyles}>
-              {item.type === "image" ? (
-                <TouchableOpacity onPress={() => setImageViewerUrl(item.text)}>
-                  <Image source={{ uri: item.text }} style={styles.inlineImage} resizeMode="cover" />
-                </TouchableOpacity>
-              ) : (
-                <Text style={[styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft,
-                  chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
-                  {item.text}
-                </Text>
-              )}
-            </View>
-            {item.isMe && showMeta && (
-              <View style={styles.msgMeta}>
-                <Text style={styles.timeText}>{item.time}</Text>
-                {isRead ? <CheckCheck size={14} color="#5865F2" style={styles.checkIcon} /> : <Check size={14} color="#949ba4" style={styles.checkIcon} />}
-              </View>
-            )}
-            {!item.isMe && showMeta && <Text style={[styles.timeText, { alignSelf: "flex-start", marginTop: 4 }]}>{item.time}</Text>}
           </View>
-          {hoveredMsg === item.id && item.isMe && (
-            <View style={styles.messageActions}>
-              <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
-                <Reply size={16} color="#b5bac1" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
-                <Edit2 size={16} color="#b5bac1" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
-                <Trash2 size={16} color="#f23f43" />
-              </TouchableOpacity>
+        )}
+        <View style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}>
+          {(!item.isMe && showMeta && !groupWithPrev) && <Text style={styles.messageSender}>{item.sender}</Text>}
+          {item.reply_to_content && (
+            <View style={[styles.replyQuote, item.isMe ? styles.replyQuoteRight : styles.replyQuoteLeft]}>
+              <Text style={styles.replyQuoteSender}>{item.reply_to_sender}</Text>
+              <Text style={styles.replyQuoteText} numberOfLines={2}>{item.reply_to_content}</Text>
             </View>
           )}
-        </Pressable>
-      </Animated.View>
+          <View style={bubbleStyles}>
+            {item.type === "image" ? (
+              <TouchableOpacity onPress={() => setImageViewerUrl(item.text)}>
+                <Image source={{ uri: item.text }} style={styles.inlineImage} resizeMode="cover" />
+              </TouchableOpacity>
+            ) : (
+              <Text style={[styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft,
+                chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
+                {item.text}
+              </Text>
+            )}
+          </View>
+          {item.isMe && showMeta && (
+            <View style={styles.msgMeta}>
+              <Text style={styles.timeText}>{item.time}</Text>
+              {isRead ? <CheckCheck size={14} color="#5865F2" style={styles.checkIcon} /> : <Check size={14} color="#949ba4" style={styles.checkIcon} />}
+            </View>
+          )}
+          {!item.isMe && showMeta && <Text style={[styles.timeText, { alignSelf: "flex-start", marginTop: 4 }]}>{item.time}</Text>}
+        </View>
+        {hoveredMsg === item.id && item.isMe && (
+          <View style={styles.messageActions}>
+            <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
+              <Reply size={16} color="#b5bac1" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
+              <Edit2 size={16} color="#b5bac1" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
+              <Trash2 size={16} color="#f23f43" />
+            </TouchableOpacity>
+          </View>
+        )}
+      </Pressable>
     );
+
   }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage]);
 
 
