@@ -49,10 +49,37 @@ const BUBBLE_SHAPES = [
 const THEMES = [
   { label: "🌸 Cherry Blossom", name: "cherry", sent: "#f4a5c0", received: "#3b1f30", bg: "#1a0a14" },
   { label: "🌙 Midnight", name: "midnight", sent: "#7c3aed", received: "#1e1b4b", bg: "#0f0a1e" },
-  { label: "🍬 Cotton Candy", name: "candy", sent: "#f472b6", received: "#312e81", bg: "#1e1027" },
+  { label: "🍭 Cotton Candy", name: "candy", sent: "#f472b6", received: "#312e81", bg: "#1e1027" },
   { label: "🌿 Garden", name: "garden", sent: "#34d399", received: "#14532d", bg: "#052e16" },
   { label: "🌊 Ocean", name: "ocean", sent: "#38bdf8", received: "#164e63", bg: "#0c1a2e" },
-  { label: "🖤 Noir", name: "noir", sent: "#d4af37", received: "#1c1c1c", bg: "#0a0a0a" },
+  { label: "🦇 Noir", name: "noir", sent: "#d4af37", received: "#1c1c1c", bg: "#0a0a0a" },
+];
+
+const DOODLE_OPTIONS = [
+  { label: "None", value: "none" },
+  { label: "✨ Sparkles", value: "sparkles" },
+  { label: "💕 Hearts", value: "hearts" },
+  { label: "⭐ Stars", value: "stars" },
+  { label: "❄️ Snow", value: "snow" },
+  { label: "🌸 Petals", value: "petals" },
+];
+
+const FONT_OPTIONS = [
+  { label: "System", value: "system" },
+  { label: "BenchNine", value: "'BenchNine', sans-serif" },
+  { label: "Playwrite BR", value: "'Playwrite BR', cursive" },
+  { label: "Playwrite DE LA", value: "'Playwrite DE LA', cursive" },
+  { label: "Handjet", value: "'Handjet', cursive" },
+  { label: "Rum Raisin", value: "'Rum Raisin', sans-serif" },
+  { label: "Montserrat", value: "'Montserrat', sans-serif" },
+  { label: "Raleway", value: "'Raleway', sans-serif" },
+  { label: "Outfit", value: "'Outfit', sans-serif" },
+  { label: "Elsie", value: "'Elsie', serif" },
+  { label: "Lobster Two", value: "'Lobster Two', cursive" },
+  { label: "Josefin Sans", value: "'Josefin Sans', sans-serif" },
+  { label: "Changa One", value: "'Changa One', sans-serif" },
+  { label: "Caveat", value: "'Caveat', cursive" },
+  { label: "Cinzel", value: "'Cinzel', serif" },
 ];
 
 interface ChatSettingsModalProps {
@@ -227,6 +254,16 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* FONTS */}
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Font Style</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              {FONT_OPTIONS.map(opt => (
+                <TouchableOpacity key={opt.value} style={[styles.shapeOption, { width: 100, marginRight: 8, paddingVertical: 10 }, fontFamily === opt.value && styles.shapeOptionSelected]} onPress={() => setFontFamily(opt.value)}>
+                  <Text style={[styles.shapeLabel, { fontFamily: opt.value === 'system' ? undefined : opt.value }, fontFamily === opt.value && { color: "#f2f3f5" }]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             {/* WALLPAPER */}
             <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🖼 Wallpaper</Text>
