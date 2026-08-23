@@ -81,7 +81,12 @@ export default function Home() {
     finally { setLoading(false); }
   }, [user]);
 
-  useEffect(() => { fetchChats(); }, [fetchChats]);
+  useEffect(() => { 
+    fetchChats(); 
+    if (user) {
+      import("../../lib/push").then(m => m.registerPushNotifications(user.id));
+    }
+  }, [fetchChats, user]);
 
   const resetModal = () => {
     setModalVisible(false); setMode("dm"); setSearchUsername(""); setSearchError("");
