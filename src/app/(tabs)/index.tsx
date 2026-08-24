@@ -35,7 +35,12 @@ export default function Home() {
 
   const saveNotificationPref = async (val: string) => {
     setNotificationPref(val);
-    await supabase.from("profiles").update({ notification_preference: val }).eq("id", user!.id);
+    const { error } = await supabase.from("profiles").update({ notification_preference: val }).eq("id", user!.id);
+    if (!error) {
+      alert("Notification preference updated successfully!");
+    } else {
+      alert("Failed to update preference.");
+    }
   };
 
   const fetchChats = useCallback(async () => {
