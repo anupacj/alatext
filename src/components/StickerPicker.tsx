@@ -101,10 +101,26 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
           const fData = await fRes.json();
           if (!fData.ok) continue;
 
-          const fileUrl = `https://api.telegram.org/file/bot${botToken}/${fData.result.file_path}`;
-          const imgRes = await fetch(fileUrl);
-          const blob = await imgRes.blob();
-          const uploadedUrl = await uploadBlobToR2(`stickers/${pack.id}/${s.file_id}`, blob);
+          const fileUrl = `api.telegram.org/file/bot${botToken}/${fData.result.file_path}`;
+          let imgRes, blob;
+          try {
+            imgRes = await fetch(`https://images.weserv.nl/?url=${encodeURIComponent(fileUrl)}`);
+            blob = await imgRes.blob();
+          } catch (e: any) {
+            throw new Error("Telegram Fetch: " + (e.message || String(e)));
+          }
+
+          if (!blob.type) {
+            blob = new Blob([await blob.arrayBuffer()], { type: "image/webp" });
+          }
+
+          let uploadedUrl;
+          try {
+            uploadedUrl = await uploadBlobToR2(`stickers/${pack.id}/${s.file_id}`, blob);
+          } catch (e: any) {
+            throw new Error("R2 Upload: " + (e.message || String(e)));
+          }
+
           if (i === 0) coverUrl = uploadedUrl;
           
           const { error: insertErr } = await supabase.from("stickers").insert({
@@ -112,12 +128,12 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
             file_url: uploadedUrl,
             emoji: s.emoji || ""
           });
-          if (insertErr) throw insertErr;
+          if (insertErr) throw new Error("Database Insert: " + insertErr.message);
 
           setImportProgress(`Importing ${i + 1} / ${validStickers.length} stickers...`);
         } catch (e: any) { 
           console.error("Error on sticker", i, e);
-          if (i === 0) alert("Sticker import failed: " + (e.message || String(e)));
+          if (i === 0) alert("Error: " + (e.message || String(e)));
         }
       }
 
