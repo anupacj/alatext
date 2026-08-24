@@ -152,7 +152,11 @@ export default function ChatScreen() {
         .eq("chat_id", id).order("created_at", { ascending: false }).limit(PAGE_SIZE);
       
       if (!error && data) { 
-        const alertMsg = data.find(m => m.type === "alert" && m.sender_id !== user?.id);
+        const now = Date.now();
+        const alertMsg = data.find(m => {
+          if (m.type !== "alert" || m.sender_id === user?.id) return false;
+          return (now - new Date(m.created_at).getTime()) < 10 * 60 * 1000;
+        });
         if (alertMsg) {
           try {
             setCustomAlert({ ...JSON.parse(alertMsg.content), messageId: alertMsg.id });

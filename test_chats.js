@@ -1,0 +1,1 @@
+const { createClient } = require('@supabase/supabase-js'); const supabase = createClient('https://ghjnmkjxadzahlfbiacv.supabase.co', 'sb_publishable_XT1WQ9GD8ECesZUOKPtlLw_cbd7ftuW'); async function check() { const { data, error } = await supabase.from('chats').select('user1_id, user2_id').limit(1); console.log(data, error); } check();

@@ -1,0 +1,1 @@
+const { createClient } = require('@supabase/supabase-js'); const supabase = createClient('https://ghjnmkjxadzahlfbiacv.supabase.co', 'sb_publishable_XT1WQ9GD8ECesZUOKPtlLw_cbd7ftuW'); async function check() { const { data, error } = await supabase.from('push_subscriptions').select('user_id'); console.log(data, error); } check();
