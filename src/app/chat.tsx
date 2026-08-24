@@ -148,8 +148,17 @@ export default function ChatScreen() {
       const { data, error } = await supabase.from("messages")
         .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
         .eq("chat_id", id).order("created_at", { ascending: false }).limit(PAGE_SIZE);
+      
       if (!error && data) { 
-        const formatted = data.map(formatMsg);
+        const alertMsg = data.find(m => m.type === "alert" && m.sender_id !== user?.id);
+        if (alertMsg) {
+          try {
+            setCustomAlert({ ...JSON.parse(alertMsg.content), messageId: alertMsg.id });
+          } catch (e) {}
+        }
+        
+        const filtered = data.filter(m => m.type !== "alert");
+        const formatted = filtered.map(formatMsg);
         setMessages(formatted); 
         setHasMore(data.length === PAGE_SIZE); 
         AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(formatted)).catch(() => {});
@@ -160,6 +169,12 @@ export default function ChatScreen() {
     const channel = supabase.channel(`chat_${id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `chat_id=eq.${id}` }, async (payload) => {
         if (payload.eventType === "INSERT") {
+          if (payload.new.type === "alert") {
+            if (payload.new.sender_id !== user?.id) {
+              try { setCustomAlert({ ...JSON.parse(payload.new.content), messageId: payload.new.id }); } catch (e) {}
+            }
+            return;
+          }
           let pd = profileCache.current.get(payload.new.sender_id);
           if (!pd) {
             const { data } = await supabase.from("profiles").select("username, avatar_url").eq("id", payload.new.sender_id).single();
@@ -378,9 +393,15 @@ export default function ChatScreen() {
   }, []);
 
 
-  const handleSendAlert = useCallback((alertData: any) => {
-    typingChannelRef.current?.send({ type: "broadcast", event: "custom_alert", payload: alertData });
-  }, []);
+  const handleSendAlert = useCallback(async (alertData: any) => {
+    if (!id || !user) return;
+    await supabase.from("messages").insert({
+      chat_id: id as string,
+      sender_id: user.id,
+      content: JSON.stringify(alertData),
+      type: "alert"
+    });
+  }, [id, user]);
 
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
@@ -561,25 +582,25 @@ export default function ChatScreen() {
           <TouchableOpacity style={styles.imageViewerClose} onPress={() => setImageViewerUrl(null)}><X size={28} color="#fff" /></TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-            <Modal visible={!!customAlert} transparent animationType="fade" onRequestClose={() => setCustomAlert(null)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
-            <View style={{ width: '90%', maxWidth: 440, backgroundColor: '#313338', borderRadius: 8, overflow: 'hidden' }}>
-              <View style={{ padding: 24, paddingBottom: 16 }}>
-                <Text style={{ color: '#f2f3f5', fontSize: 20, fontWeight: '800', textTransform: 'uppercase', marginBottom: 12 }}>{customAlert?.title}</Text>
-                <Text style={{ color: '#dbdee1', fontSize: 16, lineHeight: 22 }}>{customAlert?.message}</Text>
-              </View>
-              <View style={{ backgroundColor: '#2b2d31', padding: 16, flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
-                <TouchableOpacity onPress={() => setCustomAlert(null)} style={{ paddingVertical: 10, paddingHorizontal: 16 }}>
-                  <Text style={{ color: '#f2f3f5', fontSize: 15, fontWeight: '500' }}>{customAlert?.cancelText}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setCustomAlert(null)} style={{ backgroundColor: '#f23f43', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 4 }}>
-                  <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '600' }}>{customAlert?.actionText}</Text>
-                </TouchableOpacity>
-              </View>
+      <Modal visible={!!customAlert} transparent animationType="fade" onRequestClose={() => { if (customAlert?.messageId) supabase.from('messages').delete().eq('id', customAlert.messageId).then(); setCustomAlert(null); }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: '90%', maxWidth: 440, backgroundColor: '#313338', borderRadius: 8, overflow: 'hidden' }}>
+            <View style={{ padding: 24, paddingBottom: 16 }}>
+              <Text style={{ color: '#f2f3f5', fontSize: 20, fontWeight: '800', textTransform: 'uppercase', marginBottom: 12 }}>{customAlert?.title}</Text>
+              <Text style={{ color: '#dbdee1', fontSize: 16, lineHeight: 22 }}>{customAlert?.message}</Text>
+            </View>
+            <View style={{ backgroundColor: '#2b2d31', padding: 16, flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity onPress={() => { if (customAlert?.messageId) supabase.from('messages').delete().eq('id', customAlert.messageId).then(); setCustomAlert(null); }} style={{ paddingVertical: 10, paddingHorizontal: 16 }}>
+                <Text style={{ color: '#f2f3f5', fontSize: 15, fontWeight: '500' }}>{customAlert?.cancelText}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { if (customAlert?.messageId) supabase.from('messages').delete().eq('id', customAlert.messageId).then(); setCustomAlert(null); }} style={{ backgroundColor: '#f23f43', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 4 }}>
+                <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '600' }}>{customAlert?.actionText}</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </SafeAreaView>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
