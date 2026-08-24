@@ -104,10 +104,13 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
           const fileUrl = `https://api.telegram.org/file/bot${botToken}/${fData.result.file_path}`;
           const imgRes = await fetch(fileUrl);
           const blob = await imgRes.blob();
-          const ext = fData.result.file_path.split('.').pop() || 'webp';
-          const fileName = `stickers/${pack.id}/${s.file_id}.${ext}`;
-          
-          const uploadedUrl = await uploadImageToR2(new File([blob], fileName, { type: blob.type }));
+          const arrayBuffer = await blob.arrayBuffer();
+let binary = "";
+const bytes = new Uint8Array(arrayBuffer);
+const len = bytes.byteLength;
+for (let j = 0; j < len; j++) { binary += String.fromCharCode(bytes[j]); }
+const base64Data = btoa(binary);
+const uploadedUrl = await uploadImageToR2(`stickers/${pack.id}/${s.file_id}`, base64Data, blob.type);
           if (i === 0) coverUrl = uploadedUrl;
           
           await supabase.from("stickers").insert({

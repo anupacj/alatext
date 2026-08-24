@@ -328,6 +328,9 @@ export default function Home() {
                 <Text style={[styles.modeBtnText, notificationPref === "unconcealed_limitless" && styles.modeBtnTextActive]}>?? Unconcealed & Limitless</Text>
                 <Text style={{ color: notificationPref === "unconcealed_limitless" ? "#e0e1e5" : "#949ba4", fontSize: 12, marginTop: 4 }}>Shows the actual message. No cooldown limit.</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[styles.modeBtn, { justifyContent: "flex-start", padding: 12, marginTop: 8 }]} onPress={async () => { if (typeof window !== "undefined" && "Notification" in window) { if (Notification.permission === "denied") { alert("Your browser is blocking notifications! Click the padlock icon next to the URL, change Notifications to Allow, and refresh the page."); } else { const perm = await Notification.requestPermission(); if (perm === "granted") alert("Notifications enabled!"); } } }}>
+                <Text style={styles.modeBtnText}>?? Request / Check Notification Permission</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
