@@ -4,7 +4,7 @@ import {
   SafeAreaView, Platform, ActivityIndicator, Modal, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { User, Search, MessageSquare, Plus, Users, X, Check } from "lucide-react-native";
+import { User, Search, MessageSquare, Plus, Users, X, Check, Settings } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
@@ -22,6 +22,21 @@ export default function Home() {
   const [groupName, setGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState<{ id: string; username: string }[]>([]);
   const [memberInput, setMemberInput] = useState("");
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [notificationPref, setNotificationPref] = useState('concealed_limited');
+
+  useEffect(() => {
+    if (user) {
+      supabase.from("profiles").select("notification_preference").eq("id", user.id).single().then(({ data }) => {
+        if (data?.notification_preference) setNotificationPref(data.notification_preference);
+      });
+    }
+  }, [user]);
+
+  const saveNotificationPref = async (val: string) => {
+    setNotificationPref(val);
+    await supabase.from("profiles").update({ notification_preference: val }).eq("id", user!.id);
+  };
 
   const fetchChats = useCallback(async () => {
     if (!user) return;
@@ -197,7 +212,10 @@ export default function Home() {
             <View style={styles.userAvatarMini}><User size={16} color="#fff" /></View>
             <Text style={styles.headerTitle}>ala chat</Text>
           </View>
-          <TouchableOpacity style={styles.iconButton}><Search size={20} color="#b5bac1" /></TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity style={styles.iconButton} onPress={() => setSettingsModalVisible(true)}><Settings size={20} color="#b5bac1" /></TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton}><Search size={20} color="#b5bac1" /></TouchableOpacity>
+          </View>
         </View>
         {loading ? (
           <View style={styles.centerContainer}><ActivityIndicator size="large" color="#5865F2" /></View>
@@ -282,6 +300,34 @@ export default function Home() {
                   </View>
                 </>
               )}
+            </View>
+          </View>
+        </Modal>
+        <Modal animationType="fade" transparent visible={settingsModalVisible} onRequestClose={() => setSettingsModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalView}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <Text style={styles.modalTitle}>App Settings</Text>
+                <TouchableOpacity onPress={() => setSettingsModalVisible(false)}><X size={24} color="#b5bac1" /></TouchableOpacity>
+              </View>
+              
+              <Text style={{ color: "#dbdee1", fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>Notifications</Text>
+              
+              <TouchableOpacity 
+                style={[styles.modeBtn, { marginBottom: 8, justifyContent: "flex-start", padding: 12 }, notificationPref === "concealed_limited" && styles.modeBtnActive]} 
+                onPress={() => saveNotificationPref("concealed_limited")}
+              >
+                <Text style={[styles.modeBtnText, notificationPref === "concealed_limited" && styles.modeBtnTextActive]}>?? Concealed & Limited (1/hr)</Text>
+                <Text style={{ color: notificationPref === "concealed_limited" ? "#e0e1e5" : "#949ba4", fontSize: 12, marginTop: 4 }}>Shows "Potato delivery". Max 1 notification per hour.</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.modeBtn, { justifyContent: "flex-start", padding: 12 }, notificationPref === "unconcealed_limitless" && styles.modeBtnActive]} 
+                onPress={() => saveNotificationPref("unconcealed_limitless")}
+              >
+                <Text style={[styles.modeBtnText, notificationPref === "unconcealed_limitless" && styles.modeBtnTextActive]}>?? Unconcealed & Limitless</Text>
+                <Text style={{ color: notificationPref === "unconcealed_limitless" ? "#e0e1e5" : "#949ba4", fontSize: 12, marginTop: 4 }}>Shows the actual message. No cooldown limit.</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>

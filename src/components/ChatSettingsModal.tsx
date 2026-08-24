@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform } from "react-native";
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform, TextInput } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as ImagePicker from "expo-image-picker";
 import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle } from "lucide-react-native";
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   title: { color: "#f2f3f5", fontSize: 20, fontWeight: "bold" },
   closeBtn: { padding: 4 },
   content: { padding: 20 },
-  alertInput: { backgroundColor: "#1e1f22", color: "#dbdee1", padding: 12, borderRadius: 8, fontSize: 14, fontFamily: "system" },
+  alertInput: { backgroundColor: "#1e1f22", color: "#dbdee1", padding: 12, borderRadius: 8, fontSize: 14,  },
   sectionTitle: { color: "#b5bac1", fontSize: 13, fontWeight: "700", textTransform: "uppercase", marginBottom: 14, letterSpacing: 0.5 },
   themeCard: { alignItems: "center", marginRight: 16, width: 80 },
   themePreview: { width: 80, height: 56, backgroundColor: "#1e1f22", borderRadius: 12, justifyContent: "center", alignItems: "center", padding: 8, gap: 4, marginBottom: 6 },
