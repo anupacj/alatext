@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, FlatList, Image, Platform, Dimensions, TextInput } from "react-native";
 import { X, Plus, Download, AlertCircle } from "lucide-react-native";
 import { supabase } from "../lib/supabase";
@@ -34,7 +34,7 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
     const { data } = await supabase
       .from("sticker_packs")
       .select("*")
-      .or(chat_id.is.null,chat_id.eq. + chatId)
+      .or(`chat_id.is.null,chat_id.eq.${chatId}`)
       .order("created_at", { ascending: false });
     
     if (data) {
@@ -145,7 +145,7 @@ function ImportTelegramPackModal({ visible, onClose, userId, chatId, onSuccess }
     setLoading(true);
     try {
       setProgress("Fetching pack info from Telegram...");
-      const res = await fetch(https://api.telegram.org/bot + botToken + /getStickerSet?name= + packName);
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/getStickerSet?name=${packName}`);
       const data = await res.json();
       if (!data.ok) throw new Error(data.description || "Failed to find pack");
       
@@ -153,7 +153,7 @@ function ImportTelegramPackModal({ visible, onClose, userId, chatId, onSuccess }
       const validStickers = stickerSet.stickers.filter((s: any) => !s.is_animated && !s.is_video);
       if (validStickers.length === 0) throw new Error("Pack contains no static stickers.");
 
-      setProgress(Creating pack...);
+      setProgress("Creating pack...");
       const { data: pack, error: packErr } = await supabase.from("sticker_packs").insert({
         name: stickerSet.title || packName,
         chat_id: isPrivate ? chatId : null,
@@ -164,19 +164,19 @@ function ImportTelegramPackModal({ visible, onClose, userId, chatId, onSuccess }
 
       let coverUrl = null;
 
-      setProgress(Importing 0 /  + validStickers.length +  stickers...);
+      setProgress(`Importing 0 / ${validStickers.length} stickers...`);
       for (let i = 0; i < validStickers.length; i++) {
         const s = validStickers[i];
         try {
-          const fRes = await fetch(https://api.telegram.org/bot + botToken + /getFile?file_id= + s.file_id);
+          const fRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${s.file_id}`);
           const fData = await fRes.json();
           if (!fData.ok) continue;
 
-          const fileUrl = https://api.telegram.org/file/bot + botToken + / + fData.result.file_path;
+          const fileUrl = `https://api.telegram.org/file/bot${botToken}/${fData.result.file_path}`;
           const imgRes = await fetch(fileUrl);
           const blob = await imgRes.blob();
           const ext = fData.result.file_path.split('.').pop() || 'webp';
-          const fileName = stickers/ + pack.id + / + s.file_id + . + ext;
+          const fileName = `stickers/${pack.id}/${s.file_id}.${ext}`;
           
           const uploadedUrl = await uploadImageToR2(new File([blob], fileName, { type: blob.type }));
           if (i === 0) coverUrl = uploadedUrl;
@@ -187,7 +187,7 @@ function ImportTelegramPackModal({ visible, onClose, userId, chatId, onSuccess }
             emoji: s.emoji || ""
           });
 
-          setProgress(Importing  + (i + 1) +  /  + validStickers.length +  stickers...);
+          setProgress(`Importing ${i + 1} / ${validStickers.length} stickers...`);
         } catch (e) { console.error("Error on sticker", i, e); }
       }
 
