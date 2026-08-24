@@ -57,9 +57,10 @@ export const uploadBlobToR2 = async (pathPrefix: string, blob: Blob): Promise<st
   const fileName = `${pathPrefix}.${fileExt}`;
   const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || "alatext";
   const uploadUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
+  const arrayBuffer = await blob.arrayBuffer();
   const response = await aws.fetch(uploadUrl.toString(), {
     method: "PUT",
-    body: blob,
+    body: arrayBuffer,
     headers: { "Content-Type": blob.type },
   });
   if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
