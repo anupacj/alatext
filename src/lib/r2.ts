@@ -50,3 +50,18 @@ export const deleteFileFromR2ByUrl = async (publicUrl: string) => {
     console.error("Failed to delete from R2:", e);
   }
 };
+
+export const uploadBlobToR2 = async (pathPrefix: string, blob: Blob): Promise<string> => {
+  if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT) throw new Error("R2 credentials missing");
+  const fileExt = blob.type.split("/")[1] || "webp";
+  const fileName = `${pathPrefix}.${fileExt}`;
+  const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || "alatext";
+  const uploadUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
+  const response = await aws.fetch(uploadUrl.toString(), {
+    method: "PUT",
+    body: blob,
+    headers: { "Content-Type": blob.type },
+  });
+  if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
+  return `${R2_PUBLIC_URL}/${fileName}`;
+};

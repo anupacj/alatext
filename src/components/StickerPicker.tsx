@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, FlatList, Image, Dimensions, TextInput } from "react-native";
 import { X, Plus, Download, AlertCircle } from "lucide-react-native";
 import { supabase } from "../lib/supabase";
-import { uploadImageToR2 } from "../lib/r2";
+import { uploadBlobToR2 } from "../lib/r2";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -104,18 +104,21 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
           const fileUrl = `https://api.telegram.org/file/bot${botToken}/${fData.result.file_path}`;
           const imgRes = await fetch(fileUrl);
           const blob = await imgRes.blob();
-          const base64Data = await new Promise((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve(reader.result.split(",")[1]); reader.readAsDataURL(blob); });
-const uploadedUrl = await uploadImageToR2(`stickers/${pack.id}/${s.file_id}`, base64Data, blob.type);
+          const uploadedUrl = await uploadBlobToR2(`stickers/${pack.id}/${s.file_id}`, blob);
           if (i === 0) coverUrl = uploadedUrl;
           
-          await supabase.from("stickers").insert({
+          const { error: insertErr } = await supabase.from("stickers").insert({
             pack_id: pack.id,
             file_url: uploadedUrl,
             emoji: s.emoji || ""
           });
+          if (insertErr) throw insertErr;
 
           setImportProgress(`Importing ${i + 1} / ${validStickers.length} stickers...`);
-        } catch (e) { console.error("Error on sticker", i, e); }
+        } catch (e: any) { 
+          console.error("Error on sticker", i, e);
+          if (i === 0) alert("Sticker import failed: " + (e.message || String(e)));
+        }
       }
 
       if (coverUrl) await supabase.from("sticker_packs").update({ cover_url: coverUrl }).eq("id", pack.id);

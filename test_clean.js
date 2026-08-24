@@ -1,0 +1,1 @@
+const { createClient } = require('@supabase/supabase-js'); const supabase = createClient('https://ghjnmkjxadzahlfbiacv.supabase.co', 'sb_publishable_XT1WQ9GD8ECesZUOKPtlLw_cbd7ftuW'); async function clean() { await supabase.from('sticker_packs').delete().neq('id', '00000000-0000-0000-0000-000000000000'); console.log('Deleted broken packs'); } clean();
