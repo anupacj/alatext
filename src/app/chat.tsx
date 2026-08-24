@@ -80,6 +80,7 @@ export default function ChatScreen() {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [messageFont, setMessageFont] = useState<string | null>(null);
+  const [customAlert, setCustomAlert] = useState<any>(null);
   const [pingVisible, setPingVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
@@ -199,7 +200,7 @@ export default function ChatScreen() {
         });
       }).subscribe();
 
-    const tChannel = supabase.channel(`typing_${id}`, { config: { broadcast: { self: false } } })
+      const tChannel = supabase.channel(`typing_${id}`, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, () => {
         setIsTyping(true);
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -207,6 +208,9 @@ export default function ChatScreen() {
       })
       .on("broadcast", { event: "ping" }, () => {
         setPingVisible(true);
+      })
+      .on("broadcast", { event: "custom_alert" }, (payload) => {
+        setCustomAlert(payload.payload);
       }).subscribe();
     typingChannelRef.current = tChannel;
 
@@ -374,6 +378,10 @@ export default function ChatScreen() {
   }, []);
 
 
+  const handleSendAlert = useCallback((alertData: any) => {
+    typingChannelRef.current?.send({ type: "broadcast", event: "custom_alert", payload: alertData });
+  }, []);
+
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
       <MessageRow 
@@ -534,7 +542,7 @@ export default function ChatScreen() {
         />
         {settingsVisible && (
           <ChatSettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)}
-            chatId={id as string} userId={user.id} currentSettings={chatSettings} onSettingsSaved={setChatSettings} />
+            chatId={id as string} userId={user.id} currentSettings={chatSettings} onSettingsSaved={setChatSettings} onSendAlert={handleSendAlert} />
         )}
         {infoVisible && (
           <ChatInfoModal 
@@ -553,7 +561,25 @@ export default function ChatScreen() {
           <TouchableOpacity style={styles.imageViewerClose} onPress={() => setImageViewerUrl(null)}><X size={28} color="#fff" /></TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+            <Modal visible={!!customAlert} transparent animationType="fade" onRequestClose={() => setCustomAlert(null)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ width: '90%', maxWidth: 440, backgroundColor: '#313338', borderRadius: 8, overflow: 'hidden' }}>
+              <View style={{ padding: 24, paddingBottom: 16 }}>
+                <Text style={{ color: '#f2f3f5', fontSize: 20, fontWeight: '800', textTransform: 'uppercase', marginBottom: 12 }}>{customAlert?.title}</Text>
+                <Text style={{ color: '#dbdee1', fontSize: 16, lineHeight: 22 }}>{customAlert?.message}</Text>
+              </View>
+              <View style={{ backgroundColor: '#2b2d31', padding: 16, flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                <TouchableOpacity onPress={() => setCustomAlert(null)} style={{ paddingVertical: 10, paddingHorizontal: 16 }}>
+                  <Text style={{ color: '#f2f3f5', fontSize: 15, fontWeight: '500' }}>{customAlert?.cancelText}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setCustomAlert(null)} style={{ backgroundColor: '#f23f43', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 4 }}>
+                  <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '600' }}>{customAlert?.actionText}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
   );
 }
 

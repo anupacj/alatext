@@ -95,9 +95,10 @@ interface ChatSettingsModalProps {
   userId: string;
   currentSettings: any;
   onSettingsSaved: (newSettings: any) => void;
+  onSendAlert?: (alert: { title: string, message: string, actionText: string, cancelText: string }) => void;
 }
 
-export default function ChatSettingsModal({ visible, onClose, chatId, userId, currentSettings, onSettingsSaved }: ChatSettingsModalProps) {
+export default function ChatSettingsModal({ visible, onClose, chatId, userId, currentSettings, onSettingsSaved, onSendAlert }: ChatSettingsModalProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState(currentSettings?.wallpaper_url || null);
@@ -112,6 +113,12 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
   const [gradientColor2, setGradientColor2] = useState(currentSettings?.bubble_gradient_color2 || "#a78bfa");
   const [wallpaperDoodle, setWallpaperDoodle] = useState(currentSettings?.wallpaper_doodle || "none");
   const [anniversaryDate, setAnniversaryDate] = useState(currentSettings?.anniversary_date || null);
+
+  const [alertTitle, setAlertTitle] = useState("LEAVE 'STUDY TOGETHER!'");
+  const [alertMessage, setAlertMessage] = useState("Are you sure you want to leave Study Together!? You won't be able to rejoin this server unless you are re-invited.");
+  const [alertActionText, setAlertActionText] = useState("Leave Server");
+  const [alertCancelText, setAlertCancelText] = useState("Cancel");
+  const [lastSentTime, setLastSentTime] = useState(0);
 
   useEffect(() => {
     if (visible && currentSettings) {
@@ -366,6 +373,48 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
               ))}
             </View>
 
+            {/* CUSTOM ALERT */}
+            <Text style={[styles.sectionTitle, { marginTop: 30 }]}>🚨 Send Custom Alert</Text>
+            <Text style={{ color: "#949ba4", fontSize: 13, marginBottom: 12 }}>Instantly pops up on their screen if they are online. Limit 1 per minute.</Text>
+            
+            <View style={{ backgroundColor: "#2b2d31", padding: 16, borderRadius: 12, marginBottom: 24, gap: 12 }}>
+              <View>
+                <Text style={styles.sliderLabel}>Alert Title</Text>
+                <TextInput style={styles.alertInput} value={alertTitle} onChangeText={setAlertTitle} placeholderTextColor="#949ba4" />
+              </View>
+              <View>
+                <Text style={styles.sliderLabel}>Message</Text>
+                <TextInput style={[styles.alertInput, { height: 80, textAlignVertical: 'top' }]} multiline value={alertMessage} onChangeText={setAlertMessage} placeholderTextColor="#949ba4" />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sliderLabel}>Action Button</Text>
+                  <TextInput style={styles.alertInput} value={alertActionText} onChangeText={setAlertActionText} placeholderTextColor="#949ba4" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sliderLabel}>Cancel Button</Text>
+                  <TextInput style={styles.alertInput} value={alertCancelText} onChangeText={setAlertCancelText} placeholderTextColor="#949ba4" />
+                </View>
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.saveBtn, { backgroundColor: "#f23f43", marginTop: 8 }, Date.now() - lastSentTime < 60000 && { opacity: 0.5 }]} 
+                onPress={() => {
+                  if (Date.now() - lastSentTime < 60000) {
+                    alert(`Wait ${Math.ceil((60000 - (Date.now() - lastSentTime)) / 1000)}s before sending another.`);
+                    return;
+                  }
+                  if (onSendAlert) {
+                    onSendAlert({ title: alertTitle, message: alertMessage, actionText: alertActionText, cancelText: alertCancelText });
+                    setLastSentTime(Date.now());
+                    alert("Alert broadcasted!");
+                  }
+                }}
+              >
+                <Text style={styles.saveBtnText}>Broadcast Alert Now</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={{ height: 40 }} />
           </ScrollView>
 
@@ -392,6 +441,7 @@ const styles = StyleSheet.create({
   title: { color: "#f2f3f5", fontSize: 20, fontWeight: "bold" },
   closeBtn: { padding: 4 },
   content: { padding: 20 },
+  alertInput: { backgroundColor: "#1e1f22", color: "#dbdee1", padding: 12, borderRadius: 8, fontSize: 14, fontFamily: "system" },
   sectionTitle: { color: "#b5bac1", fontSize: 13, fontWeight: "700", textTransform: "uppercase", marginBottom: 14, letterSpacing: 0.5 },
   themeCard: { alignItems: "center", marginRight: 16, width: 80 },
   themePreview: { width: 80, height: 56, backgroundColor: "#1e1f22", borderRadius: 12, justifyContent: "center", alignItems: "center", padding: 8, gap: 4, marginBottom: 6 },
