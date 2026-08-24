@@ -136,8 +136,9 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.container} onStartShouldSetResponder={() => true}>
+      <View style={styles.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={styles.container}>
           
           <View style={styles.header}>
             <Text style={styles.title}>{isImporting ? "Import Sticker Pack" : "Stickers"}</Text>
@@ -235,7 +236,7 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
             </View>
           )}
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
