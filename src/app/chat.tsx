@@ -7,11 +7,12 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import EmojiPicker from "rn-emoji-keyboard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import ChatSettingsModal, { FONT_OPTIONS } from "../components/ChatSettingsModal";
+import ChatSettingsModal, { FONT_OPTIONS } from '../components/ChatSettingsModal';
+import StickerPicker from '../components/StickerPicker';
 import { HeartPing } from "../components/HeartPing";
 import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
@@ -78,6 +79,7 @@ export default function ChatScreen() {
     ? Date.now() - new Date(targetUser.updated_at).getTime() < 45 * 1000 
     : false;
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [messageFont, setMessageFont] = useState<string | null>(null);
   const [customAlert, setCustomAlert] = useState<any>(null);
@@ -527,6 +529,9 @@ export default function ChatScreen() {
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
                 <Type size={22} color={fontPickerOpen ? "#5865F2" : "#b5bac1"} />
               </TouchableOpacity>
+                            <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setStickerPickerOpen(true)}>
+                <Sticker size={24} color="#b5bac1" />
+              </TouchableOpacity>
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setEmojiOpen(true)}>
                 <Smile size={24} color="#b5bac1" />
               </TouchableOpacity>
@@ -556,6 +561,20 @@ export default function ChatScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
+                <StickerPicker 
+          visible={stickerPickerOpen} 
+          onClose={() => setStickerPickerOpen(false)} 
+          chatId={id as string} 
+          userId={user.id} 
+          onSelectSticker={(url) => {
+            supabase.from('messages').insert({
+              chat_id: id as string,
+              sender_id: user.id,
+              content: url,
+              type: 'sticker'
+            }).then();
+          }} 
+        />
         <EmojiPicker 
           onEmojiSelected={(emoji) => setInputText(prev => prev + emoji.emoji)} 
           open={emojiOpen} 
@@ -756,16 +775,16 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     styles.messageBubble, 
     { borderRadius: radius },
     item.isMe 
-      ? { backgroundColor: gradientEnabled ? "transparent" : sentColor, borderBottomRightRadius: 4 } 
-      : { backgroundColor: receivedColor, borderBottomLeftRadius: 4 },
-    item.type === "image" && { paddingHorizontal: 4, paddingVertical: 4 }
+      ? { backgroundColor: item.type === "sticker" ? "transparent" : (gradientEnabled ? "transparent" : sentColor), borderBottomRightRadius: 4 } 
+      : { backgroundColor: item.type === "sticker" ? "transparent" : receivedColor, borderBottomLeftRadius: 4 },
+    item.type === "image" && { paddingHorizontal: 4, paddingVertical: 4 }, item.type === "sticker" && { paddingHorizontal: 0, paddingVertical: 0 }
   ];
   if (item.isMe) { if (groupWithPrev) bubbleStyles.push({ borderTopRightRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomRightRadius: 4 }); }
   else { if (groupWithPrev) bubbleStyles.push({ borderTopLeftRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomLeftRadius: 4 }); }
 
   const isRead = item.isMe && targetUser?.last_read_at && item.created_at_ts <= new Date(targetUser.last_read_at).getTime();
 
-  const renderBubbleContent = () => {
+  const renderBubbleContent = () => { if (item.type === "sticker") return <Image source={{ uri: item.text }} style={{ width: 140, height: 140 }} resizeMode="contain" />;
     if (item.type === "image") {
       return (
         <TouchableOpacity onPress={() => setImageViewerUrl(item.text)}>
