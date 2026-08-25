@@ -446,10 +446,21 @@ export default function ChatScreen() {
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
             <ChevronLeft size={28} color="#b5bac1" />
           </TouchableOpacity>
-            <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setInfoVisible(true)}>
-            <Text style={styles.headerTitle}><Text style={styles.hashIcon}># </Text>{name || "chat"}</Text>
-              
-              {targetUser && !isGroup && (
+              <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setInfoVisible(true)}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {!isGroup && targetUser?.avatar_url ? (
+                    <Image source={{ uri: targetUser.avatar_url }} style={{ width: 24, height: 24, borderRadius: 12, marginRight: 8 }} />
+                  ) : !isGroup ? (
+                    <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#2b2d31', justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
+                      <User size={14} color="#b5bac1" />
+                    </View>
+                  ) : (
+                    <Text style={styles.hashIcon}># </Text>
+                  )}
+                  <Text style={styles.headerTitle}>{name || "chat"}</Text>
+                </View>
+                
+                {targetUser && !isGroup && (
                 <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
                   {isTargetOnline ? "● Online" : "○ Offline"}
                 </Text>
