@@ -468,6 +468,7 @@ export default function ChatScreen() {
             </View>
           ) : (
             <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} renderItem={renderMessage}
+              extraData={targetUser?.last_read_at}
               inverted contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={false}
               onEndReached={loadOlderMessages} onEndReachedThreshold={0.3}
               ListFooterComponent={loadingOlder ? <ActivityIndicator color="#5865F2" style={{ paddingVertical: 12 }} /> : null} />
@@ -830,7 +831,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             </View>
           )}
           
-          {item.isMe && gradientEnabled ? (
+          {item.isMe && gradientEnabled && item.type !== "sticker" ? (
             <LinearGradient colors={[sentColor, gradientColor2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={bubbleStyles}>
               {renderBubbleContent()}
             </LinearGradient>
@@ -847,7 +848,9 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
                 {item.status === "sending" && <Text> <SendingDots /></Text>}
                 {item.status === "failed" && <Text style={{ color: '#f43f5e' }}> (failed)</Text>}
               </Text>
-              {isRead ? <CheckCheck size={14} color="#5865F2" style={styles.checkIcon} /> : <Check size={14} color="#949ba4" style={styles.checkIcon} />}
+              {item.status !== "sending" && item.status !== "failed" && (
+                isRead ? <CheckCheck size={14} color="#5865F2" style={styles.checkIcon} /> : <Check size={14} color="#949ba4" style={styles.checkIcon} />
+              )}
             </View>
           )}
           {!item.isMe && showMeta && <Text style={[styles.timeText, { alignSelf: "flex-start", marginTop: 4 }]}>{item.time}</Text>}
