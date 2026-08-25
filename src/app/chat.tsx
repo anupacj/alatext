@@ -343,12 +343,16 @@ export default function ChatScreen() {
       setUploadingImage(true);
       try {
         const url = await uploadChatImageToR2(id as string, base64, file.type);
-        await supabase.from("messages").insert({ chat_id: id, sender_id: user?.id, content: url, type: "image" });
+        await supabase.from("messages").insert({ 
+          chat_id: id, sender_id: user?.id, content: url, type: "image",
+          reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
+        });
+        setReplyingTo(null);
       } catch (e) { console.error(e); }
       setUploadingImage(false);
     };
     reader.readAsDataURL(file);
-  }, [id, user?.id]);
+  }, [id, user?.id, replyingTo]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -377,11 +381,15 @@ export default function ChatScreen() {
       setUploadingImage(true);
       try {
         const url = await uploadChatImageToR2(id as string, result.assets[0].base64, result.assets[0].mimeType || "image/jpeg");
-        await supabase.from("messages").insert({ chat_id: id, sender_id: user?.id, content: url, type: "image" });
+        await supabase.from("messages").insert({ 
+          chat_id: id, sender_id: user?.id, content: url, type: "image",
+          reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
+        });
+        setReplyingTo(null);
       } catch (e) { console.error(e); }
       setUploadingImage(false);
     }
-  }, [id, user?.id]);
+  }, [id, user?.id, replyingTo]);
 
   const handleWebFileChange = useCallback((e: any) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -481,9 +489,13 @@ export default function ChatScreen() {
               <Reply size={16} color="#5865F2" style={{ marginRight: 8 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.replyBannerSender}>{replyingTo.sender}</Text>
-                <Text style={styles.replyBannerText} numberOfLines={1}>{replyingTo.text}</Text>
+                {replyingTo.text?.startsWith("http") ? (
+                  <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
+                ) : (
+                  <Text style={styles.replyBannerText} numberOfLines={1}>{replyingTo.text}</Text>
+                )}
               </View>
-              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={18} color="#b5bac1" /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color="#b5bac1" /></TouchableOpacity>
             </View>
           )}
           {editingMsgId && (
@@ -566,20 +578,26 @@ export default function ChatScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
-                <StickerPicker 
-          visible={stickerPickerOpen} 
-          onClose={() => setStickerPickerOpen(false)} 
-          chatId={id as string} 
-          userId={user.id} 
-          onSelectSticker={(url) => {
-            supabase.from('messages').insert({
-              chat_id: id as string,
-              sender_id: user.id,
-              content: url,
-              type: 'sticker'
-            }).then();
-          }} 
-        />
+                {stickerPickerOpen && (
+          <StickerPicker 
+            visible={true}
+            onClose={() => setStickerPickerOpen(false)} 
+            chatId={id as string} 
+            userId={user.id} 
+            onSelectSticker={(url) => {
+              supabase.from('messages').insert({
+                chat_id: id as string,
+                sender_id: user.id,
+                content: url,
+                type: 'sticker',
+                reply_to_id: replyingTo?.id || null,
+                reply_to_content: replyingTo?.text || null,
+                reply_to_sender: replyingTo?.sender || null
+              }).then();
+              setReplyingTo(null);
+            }} 
+          />
+        )}
         <EmojiPicker 
           onEmojiSelected={(emoji) => setInputText(prev => prev + emoji.emoji)} 
           open={emojiOpen} 
@@ -824,10 +842,14 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         )}
         <View style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}>
           {(!item.isMe && showMeta && !groupWithPrev) && <Text style={styles.messageSender}>{item.sender}</Text>}
-          {item.reply_to_content && (
+          {item.reply_to_id && (
             <View style={[styles.replyQuote, item.isMe ? styles.replyQuoteRight : styles.replyQuoteLeft]}>
               <Text style={styles.replyQuoteSender}>{item.reply_to_sender}</Text>
-              <Text style={styles.replyQuoteText} numberOfLines={2}>{item.reply_to_content}</Text>
+              {item.reply_to_content?.startsWith("http") ? (
+                <Image source={{ uri: item.reply_to_content }} style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2 }} resizeMode="cover" />
+              ) : (
+                <Text style={styles.replyQuoteText} numberOfLines={1}>{item.reply_to_content}</Text>
+              )}
             </View>
           )}
           
