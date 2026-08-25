@@ -59,9 +59,7 @@ function SendingDots() {
 export default function ChatScreen() {
   const { theme } = useTheme();
   const isAmoled = theme.id === "black";
-  // showWallpaper drives all wallpaper-dependent transparency - never show in AMOLED
-  const showWallpaper = !isAmoled && !!chatSettings?.wallpaper_url;
-  const styles = React.useMemo(() => createStyles(isAmoled, theme, showWallpaper), [isAmoled, theme, showWallpaper]);
+  const styles = React.useMemo(() => createStyles(isAmoled, theme), [isAmoled, theme]);
   const { id, name, avatar } = useLocalSearchParams();
   const { user } = useAuth();
   const router = useRouter();
@@ -72,6 +70,8 @@ export default function ChatScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [infoVisible, setInfoVisible] = useState(false);
   const [chatSettings, setChatSettings] = useState<any>(null);
+  // showWallpaper must come AFTER chatSettings useState - never show wallpaper in AMOLED
+  const showWallpaper = !isAmoled && !!chatSettings?.wallpaper_url;
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -437,7 +437,7 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+      <View style={[styles.container, showWallpaper && { backgroundColor: 'transparent' }]}>
         {showWallpaper && (
           <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
             <Image source={{ uri: chatSettings!.wallpaper_url }}
@@ -448,7 +448,7 @@ export default function ChatScreen() {
         {showWallpaper && (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings?.wallpaper_dim || 0})` }]} />
         )}
-        <View style={styles.header}>
+        <View style={[styles.header, showWallpaper && { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
             <ChevronLeft size={28} color={isAmoled ? "#888888" : theme.textMuted} />
           </TouchableOpacity>
@@ -664,7 +664,7 @@ export default function ChatScreen() {
 }
 
 
-const createStyles = (isAmoled: boolean, theme: any, showWallpaper = false) => {
+const createStyles = (isAmoled: boolean, theme: any) => {
   const bg = isAmoled ? '#000000' : theme.background;
   const surface = isAmoled ? '#000000' : '#2b2d31';
   const border = isAmoled ? '#222222' : '#1e1f22';
@@ -675,8 +675,8 @@ const createStyles = (isAmoled: boolean, theme: any, showWallpaper = false) => {
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
-  container: { flex: 1, backgroundColor: showWallpaper ? "transparent" : bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: border, overflow: "hidden" },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: showWallpaper ? "rgba(0,0,0,0.35)" : bg, borderBottomWidth: 1, borderBottomColor: surface, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 3, zIndex: 10 },
+  container: { flex: 1, backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: border, overflow: "hidden" },
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: bg, borderBottomWidth: 1, borderBottomColor: surface, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 3, zIndex: 10 },
   backButton: { marginRight: 8, padding: 4 },
   headerTitleContainer: { flex: 1, justifyContent: "center" },
   headerTitle: { color: text, fontSize: 17, fontWeight: "700" },
