@@ -210,7 +210,7 @@ export default function Home() {
         </View>
       </View>
     </TouchableOpacity>
-  ), []);
+  ), [styles, theme]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
