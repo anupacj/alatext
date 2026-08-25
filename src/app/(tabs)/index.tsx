@@ -263,7 +263,7 @@ export default function Home() {
               {mode === "dm" ? (
                 <>
                   <Text style={styles.modalSubtitle}>Enter your friend&apos;s exact username.</Text>
-                  <TextInput style={styles.modalInput} placeholder="Username (e.g. jdoe123)" ={theme.}
+                  <TextInput style={styles.modalInput} placeholder="Username (e.g. jdoe123)" placeholderTextColor={theme.textMuted}
                     value={searchUsername} onChangeText={setSearchUsername} autoCapitalize="none" />
                   <View style={styles.modalActions}>
                     <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={resetModal}>
@@ -276,11 +276,11 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <TextInput style={styles.modalInput} placeholder="Group name" ={theme.}
+                  <TextInput style={styles.modalInput} placeholder="Group name" placeholderTextColor={theme.textMuted}
                     value={groupName} onChangeText={setGroupName} />
                   <View style={styles.addMemberRow}>
                     <TextInput style={[styles.modalInput, { flex: 1, marginBottom: 0 }]} placeholder="Add member username"
-                      ={theme.} value={memberInput} onChangeText={setMemberInput} autoCapitalize="none" />
+                      placeholderTextColor={theme.textMuted} value={memberInput} onChangeText={setMemberInput} autoCapitalize="none" />
                     <TouchableOpacity style={styles.addMemberBtn} onPress={handleAddMember}>
                       <Plus size={20} color="#fff" />
                     </TouchableOpacity>
@@ -396,6 +396,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   startButton: { backgroundColor: theme.accent },
   startButtonText: { color: theme.text, fontSize: 14, fontWeight: "600" },
 });
+
 
 
 

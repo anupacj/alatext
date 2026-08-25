@@ -572,7 +572,7 @@ export default function ChatScreen() {
                   messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
                 ]} 
                 placeholder={`Message #${name || "chat"}`} 
-                ={theme.}
+                placeholderTextColor={theme.textMuted}
                 value={inputText}
                 onChangeText={(text) => {
                   setInputText(text);
@@ -913,6 +913,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     </Animated.View>
   );
 });
+
 
 
 
