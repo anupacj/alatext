@@ -423,7 +423,7 @@ export default function ChatScreen() {
 
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
-      <MessageRow isAmoled={isAmoled} styles={styles} 
+      <MessageRow isAmoled={isAmoled} styles={styles} theme={theme}
           item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
         hoveredMsg={hoveredMsg} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
         setEditingMsgId={setEditingMsgId} setInputText={setInputText} deleteMessage={deleteMessage}
@@ -436,14 +436,14 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {chatSettings?.wallpaper_url && (
+        {!isAmoled && chatSettings?.wallpaper_url && (
           <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
             <Image source={{ uri: chatSettings.wallpaper_url }}
               style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings.wallpaper_zoom || 1 }] }]}
               blurRadius={(chatSettings.wallpaper_blur || 0) * 20} />
           </View>
         )}
-        {chatSettings?.wallpaper_url && (
+        {!isAmoled && chatSettings?.wallpaper_url && (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings.wallpaper_dim || 0})` }]} />
         )}
         <View style={styles.header}>
@@ -480,7 +480,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
         </View>
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: chatSettings?.wallpaper_url ? "transparent" : "#313338" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: (!isAmoled && chatSettings?.wallpaper_url) ? "transparent" : (isAmoled ? "#000000" : theme.background) }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
           <HeartPing visible={pingVisible} onComplete={() => setPingVisible(false)} />
           {messages.length === 0 ? (
@@ -550,8 +550,8 @@ export default function ChatScreen() {
             </View>
           )}
 
-          <View style={[styles.inputArea, chatSettings?.wallpaper_url && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
-            <View style={[styles.inputWrapper, chatSettings?.wallpaper_url && { backgroundColor: "rgba(56,58,64,0.85)" }]}>
+          <View style={[styles.inputArea, (!isAmoled && chatSettings?.wallpaper_url) && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
+            <View style={[styles.inputWrapper, (!isAmoled && chatSettings?.wallpaper_url) && { backgroundColor: "rgba(56,58,64,0.85)" }]}>
               <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                 {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#111111" : "#383a40"} /> : <Plus size={20} color={isAmoled ? "#111111" : "#383a40"} />}
               </TouchableOpacity>
@@ -744,7 +744,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
 
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, isAmoled, styles }: any) => {
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, isAmoled, styles, theme }: any) => {
   const isNew = index === 0;
   const scale = useSharedValue(isNew ? 0.8 : 1);
   const opacity = useSharedValue(isNew ? 0 : 1);
@@ -809,8 +809,10 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   const showMeta = !groupWithNext;
 
   // Cosmetic overrides
-  const sentColor = chatSettings?.bubble_color_sent || (isAmoled ? "#000000" : "#5865F2");
-  const receivedColor = chatSettings?.bubble_color_received || (isAmoled ? "#000000" : "#2b2d31");
+  const sentColor = isAmoled ? "#000000" : (chatSettings?.bubble_color_sent || "#5865F2");
+  const receivedColor = isAmoled ? "#000000" : (chatSettings?.bubble_color_received || "#2b2d31");
+  // In AMOLED mode, bubble text is always white regardless of bubble color
+  const bubbleTextColor = isAmoled ? "#ffffff" : undefined;
   const gradientEnabled = chatSettings?.bubble_gradient_enabled || false;
   const gradientColor2 = chatSettings?.bubble_gradient_color2 || "#a78bfa";
   const shape = chatSettings?.bubble_shape || "round";
@@ -843,7 +845,8 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     const activeFont = item.custom_font || chatSettings?.font_family;
     return (
       <Text style={[styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft,
-        activeFont && activeFont !== "system" ? { fontFamily: activeFont } : {}]}>
+        activeFont && activeFont !== "system" ? { fontFamily: activeFont } : {},
+        bubbleTextColor ? { color: bubbleTextColor } : {}]}>
         {item.text}
       </Text>
     );
@@ -861,7 +864,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           <View style={styles.avatarSlot}>
             {showMeta && (item.avatar
               ? <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
-              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={isAmoled ? "#888888" : theme.textMuted} /></View>
+              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} /></View>
             )}
           </View>
         )}
@@ -896,7 +899,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
                 {item.status === "failed" && <Text style={{ color: '#f43f5e' }}> (failed)</Text>}
               </Text>
               {item.status !== "sending" && item.status !== "failed" && (
-                isRead ? <CheckCheck size={14} color={isAmoled ? "#ffffff" : "#5865F2"} style={styles.checkIcon} /> : <Check size={14} color={isAmoled ? "#888888" : theme.textMuted} style={styles.checkIcon} />
+                isRead ? <CheckCheck size={14} color={isAmoled ? "#ffffff" : "#5865F2"} style={styles.checkIcon} /> : <Check size={14} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} style={styles.checkIcon} />
               )}
             </View>
           )}
@@ -905,12 +908,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           {hoveredMsg === item.id && (
             <View style={[styles.messageActions, item.isMe ? { right: '100%', marginRight: 8, top: 0 } : { left: '100%', marginLeft: 8, top: 0, right: 'auto' }]}>
               <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
-                <Reply size={16} color={isAmoled ? "#888888" : theme.textMuted} />
+                <Reply size={16} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} />
               </TouchableOpacity>
               {item.isMe && (
                 <>
                   <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
-                    <Edit2 size={16} color={isAmoled ? "#888888" : theme.textMuted} />
+                    <Edit2 size={16} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
                     <Trash2 size={16} color="#f23f43" />
