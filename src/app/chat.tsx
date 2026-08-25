@@ -9,7 +9,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
-import EmojiPicker from "rn-emoji-keyboard";
+import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ChatSettingsModal, { FONT_OPTIONS } from '../components/ChatSettingsModal';
 import StickerPicker from '../components/StickerPicker';
@@ -649,7 +649,7 @@ export default function ChatScreen() {
             }} 
           />
         )}
-        <EmojiPicker 
+        <CustomEmojiPicker 
           onEmojiSelected={(emoji) => setInputText(prev => prev + emoji.emoji)} 
           open={emojiOpen} 
           onClose={() => setEmojiOpen(false)} 
