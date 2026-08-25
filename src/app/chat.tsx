@@ -59,7 +59,7 @@ function SendingDots() {
 export default function ChatScreen() {
   const { theme } = useTheme();
   const isAmoled = theme.id === "black";
-  const styles = React.useMemo(() => createStyles(isAmoled), [isAmoled]);
+  const styles = React.useMemo(() => createStyles(isAmoled, theme), [isAmoled, theme]);
   const { id, name, avatar } = useLocalSearchParams();
   const { user } = useAuth();
   const router = useRouter();
@@ -448,7 +448,7 @@ export default function ChatScreen() {
         )}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
-            <ChevronLeft size={28} color={isAmoled ? "#888888" : "#b5bac1"} />
+            <ChevronLeft size={28} color={isAmoled ? "#888888" : theme.textMuted} />
           </TouchableOpacity>
               <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setInfoVisible(true)}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -456,7 +456,7 @@ export default function ChatScreen() {
                     <Image source={{ uri: targetUser.avatar_url }} style={{ width: 24, height: 24, borderRadius: 12, marginRight: 8 }} />
                   ) : !isGroup ? (
                     <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#2b2d31', justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
-                      <User size={14} color={isAmoled ? "#888888" : "#b5bac1"} />
+                      <User size={14} color={isAmoled ? "#888888" : theme.textMuted} />
                     </View>
                   ) : (
                     <Text style={styles.hashIcon}># </Text>
@@ -478,7 +478,7 @@ export default function ChatScreen() {
           }}>
             <Heart size={22} color="#f23f43" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={isAmoled ? "#888888" : "#b5bac1"} /></TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
         </View>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: chatSettings?.wallpaper_url ? "transparent" : "#313338" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
@@ -510,13 +510,13 @@ export default function ChatScreen() {
                   <Text style={styles.replyBannerText} numberOfLines={1}>{replyingTo.text}</Text>
                 )}
               </View>
-              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={isAmoled ? "#888888" : "#b5bac1"} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
             </View>
           )}
           {editingMsgId && (
             <View style={styles.editingBanner}>
               <Text style={styles.editingBannerText}>Editing Message</Text>
-              <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={isAmoled ? "#888888" : "#b5bac1"} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
             </View>
           )}
           {fontPickerOpen && (
@@ -559,13 +559,13 @@ export default function ChatScreen() {
                 <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
               )}
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
-                <Type size={22} color={fontPickerOpen ? "#5865F2" : "#b5bac1"} />
+                <Type size={22} color={fontPickerOpen ? (isAmoled ? "#ffffff" : "#5865F2") : (isAmoled ? "#888888" : theme.textMuted)} />
               </TouchableOpacity>
                             <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setStickerPickerOpen(true)}>
-                <Sticker size={24} color={isAmoled ? "#888888" : "#b5bac1"} />
+                <Sticker size={24} color={isAmoled ? "#888888" : theme.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setEmojiOpen(true)}>
-                <Smile size={24} color={isAmoled ? "#888888" : "#b5bac1"} />
+                <Smile size={24} color={isAmoled ? "#888888" : theme.textMuted} />
               </TouchableOpacity>
               <TextInput 
                 style={[
@@ -573,7 +573,7 @@ export default function ChatScreen() {
                   messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
                 ]} 
                 placeholder={`Message #${name || "chat"}`} 
-                placeholderTextColor={isAmoled ? "#888888" : "#949ba4"}
+                placeholderTextColor={isAmoled ? "#888888" : theme.textMuted}
                 value={inputText}
                 onChangeText={(text) => {
                   setInputText(text);
@@ -662,14 +662,14 @@ export default function ChatScreen() {
 }
 
 
-const createStyles = (isAmoled: boolean) => {
-  const bg = isAmoled ? '#000000' : '#313338';
+const createStyles = (isAmoled: boolean, theme: any) => {
+  const bg = isAmoled ? '#000000' : theme.background;
   const surface = isAmoled ? '#000000' : '#2b2d31';
   const border = isAmoled ? '#222222' : '#1e1f22';
   const text = isAmoled ? '#ffffff' : '#dbdee1';
   const textMuted = isAmoled ? '#888888' : '#949ba4';
   const accent = isAmoled ? '#ffffff' : '#5865F2';
-  const inputBg = isAmoled ? '#111111' : '#383a40';
+  const inputBg = isAmoled ? '#000000' : theme.surface;
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
@@ -732,7 +732,7 @@ const createStyles = (isAmoled: boolean) => {
   inputArea: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: Platform.OS === "ios" ? 24 : 12, backgroundColor: bg },
   inputWrapper: { flexDirection: "row", alignItems: "flex-end", backgroundColor: inputBg, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
   attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: textMuted, justifyContent: "center", alignItems: "center", marginRight: 12 },
-  textInput: { flex: 1, color: text, fontSize: 16, maxHeight: 120, paddingTop: 8, paddingBottom: 0, marginTop: 4, outlineStyle: "none" as any },
+  textInput: { flex: 1, color: isAmoled ? "#ffffff" : theme.text, fontSize: 16, maxHeight: 120, paddingTop: 8, paddingBottom: 0, marginTop: 4, outlineStyle: "none" as any },
   emojiButton: { marginLeft: 12, padding: 2, marginBottom: 2 },
   systemMessageContainer: { paddingVertical: 12, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", marginVertical: 8 },
   systemMessageText: { color: textMuted, fontSize: 14, fontStyle: "italic", textAlign: "center" },
@@ -861,7 +861,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           <View style={styles.avatarSlot}>
             {showMeta && (item.avatar
               ? <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
-              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={isAmoled ? "#888888" : "#b5bac1"} /></View>
+              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={isAmoled ? "#888888" : theme.textMuted} /></View>
             )}
           </View>
         )}
@@ -896,7 +896,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
                 {item.status === "failed" && <Text style={{ color: '#f43f5e' }}> (failed)</Text>}
               </Text>
               {item.status !== "sending" && item.status !== "failed" && (
-                isRead ? <CheckCheck size={14} color={isAmoled ? "#ffffff" : "#5865F2"} style={styles.checkIcon} /> : <Check size={14} color={isAmoled ? "#888888" : "#949ba4"} style={styles.checkIcon} />
+                isRead ? <CheckCheck size={14} color={isAmoled ? "#ffffff" : "#5865F2"} style={styles.checkIcon} /> : <Check size={14} color={isAmoled ? "#888888" : theme.textMuted} style={styles.checkIcon} />
               )}
             </View>
           )}
@@ -905,12 +905,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           {hoveredMsg === item.id && (
             <View style={[styles.messageActions, item.isMe ? { right: '100%', marginRight: 8, top: 0 } : { left: '100%', marginLeft: 8, top: 0, right: 'auto' }]}>
               <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
-                <Reply size={16} color={isAmoled ? "#888888" : "#b5bac1"} />
+                <Reply size={16} color={isAmoled ? "#888888" : theme.textMuted} />
               </TouchableOpacity>
               {item.isMe && (
                 <>
                   <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
-                    <Edit2 size={16} color={isAmoled ? "#888888" : "#b5bac1"} />
+                    <Edit2 size={16} color={isAmoled ? "#888888" : theme.textMuted} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
                     <Trash2 size={16} color="#f23f43" />
@@ -924,6 +924,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     </Animated.View>
   );
 });
+
+
+
+
+
+
 
 
 

@@ -364,8 +364,8 @@ const createStyles = (theme: any) => StyleSheet.create({
   avatarFallback: { justifyContent: "center", alignItems: "center" },
   chatContent: { flex: 1, justifyContent: "center" },
   chatHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
-  chatName: { color: theme.text, fontSize: 17, fontWeight: "600" },
-  chatNameUnread: { color: theme.text, fontWeight: "900" },
+  chatName: { color: (theme.id === "light" || theme.id === "pink") ? "#000000" : theme.text, fontSize: 17, fontWeight: "600" },
+  chatNameUnread: { color: (theme.id === "light" || theme.id === "pink") ? "#000000" : theme.text, fontWeight: "900" },
   chatTime: { color: theme.textMuted, fontSize: 12, fontWeight: "500" },
   messageRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   lastMessage: { color: theme.textMuted, fontSize: 15, flex: 1, paddingRight: 16 },
@@ -396,6 +396,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   startButton: { backgroundColor: theme.accent },
   startButtonText: { color: theme.text, fontSize: 14, fontWeight: "600" },
 });
+
 
 
 
