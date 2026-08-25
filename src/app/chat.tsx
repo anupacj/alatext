@@ -447,7 +447,7 @@ export default function ChatScreen() {
         )}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
-            <ChevronLeft size={28} color={theme.text}Muted />
+            <ChevronLeft size={28} color={theme.textMuted} />
           </TouchableOpacity>
               <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setInfoVisible(true)}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -455,7 +455,7 @@ export default function ChatScreen() {
                     <Image source={{ uri: targetUser.avatar_url }} style={{ width: 24, height: 24, borderRadius: 12, marginRight: 8 }} />
                   ) : !isGroup ? (
                     <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#2b2d31', justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
-                      <User size={14} color={theme.text}Muted />
+                      <User size={14} color={theme.textMuted} />
                     </View>
                   ) : (
                     <Text style={styles.hashIcon}># </Text>
@@ -477,7 +477,7 @@ export default function ChatScreen() {
           }}>
             <Heart size={22} color="#f23f43" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={theme.text}Muted /></TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={theme.textMuted} /></TouchableOpacity>
         </View>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: chatSettings?.wallpaper_url ? "transparent" : theme.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
@@ -509,13 +509,13 @@ export default function ChatScreen() {
                   <Text style={styles.replyBannerText} numberOfLines={1}>{replyingTo.text}</Text>
                 )}
               </View>
-              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={theme.text}Muted /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={theme.textMuted} /></TouchableOpacity>
             </View>
           )}
           {editingMsgId && (
             <View style={styles.editingBanner}>
               <Text style={styles.editingBannerText}>Editing Message</Text>
-              <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={theme.text}Muted /></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={theme.textMuted} /></TouchableOpacity>
             </View>
           )}
           {fontPickerOpen && (
@@ -561,10 +561,10 @@ export default function ChatScreen() {
                 <Type size={22} color={fontPickerOpen ? theme.accent : theme.textMuted} />
               </TouchableOpacity>
                             <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setStickerPickerOpen(true)}>
-                <Sticker size={24} color={theme.text}Muted />
+                <Sticker size={24} color={theme.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setEmojiOpen(true)}>
-                <Smile size={24} color={theme.text}Muted />
+                <Smile size={24} color={theme.textMuted} />
               </TouchableOpacity>
               <TextInput 
                 style={[
@@ -850,7 +850,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           <View style={styles.avatarSlot}>
             {showMeta && (item.avatar
               ? <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
-              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={theme.text}Muted /></View>
+              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={theme.textMuted} /></View>
             )}
           </View>
         )}
@@ -885,7 +885,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
                 {item.status === "failed" && <Text style={{ color: '#f43f5e' }}> (failed)</Text>}
               </Text>
               {item.status !== "sending" && item.status !== "failed" && (
-                isRead ? <CheckCheck size={14} color={theme.accent} style={styles.checkIcon} /> : <Check size={14} color={theme.text}Muted style={styles.checkIcon} />
+                isRead ? <CheckCheck size={14} color={theme.accent} style={styles.checkIcon} /> : <Check size={14} color={theme.textMuted} style={styles.checkIcon} />
               )}
             </View>
           )}
@@ -894,12 +894,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           {hoveredMsg === item.id && (
             <View style={[styles.messageActions, item.isMe ? { right: '100%', marginRight: 8, top: 0 } : { left: '100%', marginLeft: 8, top: 0, right: 'auto' }]}>
               <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
-                <Reply size={16} color={theme.text}Muted />
+                <Reply size={16} color={theme.textMuted} />
               </TouchableOpacity>
               {item.isMe && (
                 <>
                   <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
-                    <Edit2 size={16} color={theme.text}Muted />
+                    <Edit2 size={16} color={theme.textMuted} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
                     <Trash2 size={16} color="#f23f43" />
@@ -913,6 +913,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     </Animated.View>
   );
 });
+
 
 
 

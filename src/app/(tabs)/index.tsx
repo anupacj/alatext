@@ -196,7 +196,7 @@ export default function Home() {
         <Image source={{ uri: item.avatar }} style={styles.avatar} />
       ) : (
         <View style={[styles.avatar, styles.avatarFallback]}>
-          {item.isGroup ? <Users size={24} color={theme.text}Muted /> : <User size={24} color={theme.text}Muted />}
+          {item.isGroup ? <Users size={24} color={theme.textMuted} /> : <User size={24} color={theme.textMuted} />}
         </View>
       )}
       <View style={styles.chatContent}>
@@ -221,15 +221,15 @@ export default function Home() {
             <Text style={styles.headerTitle}>ala chat</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <TouchableOpacity style={styles.iconButton} onPress={() => setSettingsModalVisible(true)}><Settings size={20} color={theme.text}Muted /></TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}><Search size={20} color={theme.text}Muted /></TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton} onPress={() => setSettingsModalVisible(true)}><Settings size={20} color={theme.textMuted} /></TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton}><Search size={20} color={theme.textMuted} /></TouchableOpacity>
           </View>
         </View>
         {loading ? (
           <View style={styles.centerContainer}><ActivityIndicator size="large" color={theme.accent} /></View>
         ) : chats.length === 0 ? (
           <View style={styles.centerContainer}>
-            <MessageSquare size={64} color={theme.text}Muted />
+            <MessageSquare size={64} color={theme.textMuted} />
             <Text style={styles.emptyText}>No chats yet</Text>
             <Text style={styles.emptySubtext}>Tap the + button to start texting!</Text>
           </View>
@@ -291,7 +291,7 @@ export default function Home() {
                         <View key={m.id} style={styles.chip}>
                           <Text style={styles.chipText}>{m.username}</Text>
                           <TouchableOpacity onPress={() => setGroupMembers(prev => prev.filter(gm => gm.id !== m.id))}>
-                            <X size={14} color={theme.text}Muted style={{ marginLeft: 4 }} />
+                            <X size={14} color={theme.textMuted} style={{ marginLeft: 4 }} />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -316,7 +316,7 @@ export default function Home() {
             <View style={styles.modalView}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <Text style={styles.modalTitle}>App Settings</Text>
-                <TouchableOpacity onPress={() => setSettingsModalVisible(false)}><X size={24} color={theme.text}Muted /></TouchableOpacity>
+                <TouchableOpacity onPress={() => setSettingsModalVisible(false)}><X size={24} color={theme.textMuted} /></TouchableOpacity>
               </View>
               
               <Text style={{ color: theme.text, fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>Notifications</Text>
@@ -396,6 +396,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   startButton: { backgroundColor: theme.accent },
   startButtonText: { color: theme.text, fontSize: 14, fontWeight: "600" },
 });
+
 
 
 
