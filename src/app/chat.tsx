@@ -18,7 +18,8 @@ import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
 import { supabase } from "../lib/supabase";
 import { uploadChatImageToR2 } from "../lib/r2";
-import { useAuth } from "../../context/AuthContext";\nimport { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -912,5 +913,6 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     </Animated.View>
   );
 });
+
 
 

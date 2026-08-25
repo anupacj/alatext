@@ -7,12 +7,12 @@ import { useRouter } from "expo-router";
 import { User, Search, MessageSquare, Plus, Users, X, Check, Settings } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
-import { useTheme } from '../../context/ThemeContext';
-import { useAuth } from "../../context/AuthContext";\nimport { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Home() {
   const { theme } = useTheme();
-  const styles = React.useMemo(() => createStyles(theme), [theme]);\n  const { theme } = useTheme();\n  const styles = React.useMemo(() => createStyles(theme), [theme]);
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const { user } = useAuth();
   const [chats, setChats] = useState<any[]>([]);
@@ -396,5 +396,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   startButton: { backgroundColor: theme.accent },
   startButtonText: { color: theme.text, fontSize: 14, fontWeight: "600" },
 });
+
+
 
 
