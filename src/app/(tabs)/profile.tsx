@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image } from 'react-native';
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import { useAuth } from '../../context/AuthContext';
 import { Settings, User, Camera, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
@@ -213,6 +212,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   logoutText: { color: '#da373c', fontSize: 16, fontWeight: '600' }
 });
+
 
 
 
