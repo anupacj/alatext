@@ -58,7 +58,8 @@ function SendingDots() {
 
 export default function ChatScreen() {
   const { theme } = useTheme();
-  const styles = React.useMemo(() => createStyles(theme), [theme]);
+  const isAmoled = theme.id === "black";
+  const styles = React.useMemo(() => createStyles(isAmoled), [isAmoled]);
   const { id, name, avatar } = useLocalSearchParams();
   const { user } = useAuth();
   const router = useRouter();
@@ -422,8 +423,8 @@ export default function ChatScreen() {
 
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
-      <MessageRow theme={theme} styles={styles} 
-        item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
+      <MessageRow isAmoled={isAmoled} styles={styles} 
+          item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
         hoveredMsg={hoveredMsg} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
         setEditingMsgId={setEditingMsgId} setInputText={setInputText} deleteMessage={deleteMessage}
         handleApplyWallpaper={handleApplyWallpaper} setSettingsVisible={setSettingsVisible} setImageViewerUrl={setImageViewerUrl}
@@ -447,7 +448,7 @@ export default function ChatScreen() {
         )}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
-            <ChevronLeft size={28} color={theme.textMuted} />
+            <ChevronLeft size={28} color={isAmoled ? "#888888" : "#b5bac1"} />
           </TouchableOpacity>
               <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setInfoVisible(true)}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -455,7 +456,7 @@ export default function ChatScreen() {
                     <Image source={{ uri: targetUser.avatar_url }} style={{ width: 24, height: 24, borderRadius: 12, marginRight: 8 }} />
                   ) : !isGroup ? (
                     <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#2b2d31', justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
-                      <User size={14} color={theme.textMuted} />
+                      <User size={14} color={isAmoled ? "#888888" : "#b5bac1"} />
                     </View>
                   ) : (
                     <Text style={styles.hashIcon}># </Text>
@@ -477,9 +478,9 @@ export default function ChatScreen() {
           }}>
             <Heart size={22} color="#f23f43" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={theme.textMuted} /></TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={isAmoled ? "#888888" : "#b5bac1"} /></TouchableOpacity>
         </View>
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: chatSettings?.wallpaper_url ? "transparent" : theme.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: chatSettings?.wallpaper_url ? "transparent" : "#313338" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
           <HeartPing visible={pingVisible} onComplete={() => setPingVisible(false)} />
           {messages.length === 0 ? (
@@ -493,14 +494,14 @@ export default function ChatScreen() {
               extraData={targetUser?.last_read_at}
               inverted contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={false}
               onEndReached={loadOlderMessages} onEndReachedThreshold={0.3}
-              ListFooterComponent={loadingOlder ? <ActivityIndicator color={theme.accent} style={{ paddingVertical: 12 }} /> : null} />
+              ListFooterComponent={loadingOlder ? <ActivityIndicator color={isAmoled ? "#ffffff" : "#5865F2"} style={{ paddingVertical: 12 }} /> : null} />
           )}
           {isTyping && targetUser && (
             <View style={styles.typingBanner}><Text style={styles.typingText}>{targetUser.username} is typing<SendingDots /></Text></View>
           )}
           {replyingTo && (
             <View style={styles.replyBanner}>
-              <Reply size={16} color={theme.accent} style={{ marginRight: 8 }} />
+              <Reply size={16} color={isAmoled ? "#ffffff" : "#5865F2"} style={{ marginRight: 8 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.replyBannerSender}>{replyingTo.sender}</Text>
                 {replyingTo.text?.startsWith("http") ? (
@@ -509,18 +510,18 @@ export default function ChatScreen() {
                   <Text style={styles.replyBannerText} numberOfLines={1}>{replyingTo.text}</Text>
                 )}
               </View>
-              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={theme.textMuted} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={isAmoled ? "#888888" : "#b5bac1"} /></TouchableOpacity>
             </View>
           )}
           {editingMsgId && (
             <View style={styles.editingBanner}>
               <Text style={styles.editingBannerText}>Editing Message</Text>
-              <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={theme.textMuted} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={isAmoled ? "#888888" : "#b5bac1"} /></TouchableOpacity>
             </View>
           )}
           {fontPickerOpen && (
-            <View style={{ backgroundColor: theme.surface, padding: 12, marginHorizontal: 16, borderTopLeftRadius: 8, borderTopRightRadius: 8, elevation: 4 }}>
-              <Text style={{ color: theme.text, fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Select Font for this Message</Text>
+            <View style={{ backgroundColor: "#2b2d31", padding: 12, marginHorizontal: 16, borderTopLeftRadius: 8, borderTopRightRadius: 8, elevation: 4 }}>
+              <Text style={{ color: "#dbdee1", fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Select Font for this Message</Text>
               <FlatList
                 horizontal
                 data={FONT_OPTIONS}
@@ -531,14 +532,14 @@ export default function ChatScreen() {
                     style={{
                       paddingHorizontal: 16,
                       paddingVertical: 8,
-                      backgroundColor: messageFont === item.value ? theme.accent : "#383a40",
+                      backgroundColor: messageFont === item.value ? "#5865F2" : "#383a40",
                       borderRadius: 16,
                       marginRight: 8,
                     }}
                     onPress={() => setMessageFont(item.value)}
                   >
                     <Text style={{ 
-                      color: messageFont === item.value ? "#fff" : theme.text, 
+                      color: messageFont === item.value ? "#fff" : "#dbdee1", 
                       fontFamily: item.value === "system" ? undefined : item.value 
                     }}>
                       {item.label}
@@ -552,19 +553,19 @@ export default function ChatScreen() {
           <View style={[styles.inputArea, chatSettings?.wallpaper_url && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
             <View style={[styles.inputWrapper, chatSettings?.wallpaper_url && { backgroundColor: "rgba(56,58,64,0.85)" }]}>
               <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
-                {uploadingImage ? <ActivityIndicator size="small" color="#383a40" /> : <Plus size={20} color="#383a40" />}
+                {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#111111" : "#383a40"} /> : <Plus size={20} color={isAmoled ? "#111111" : "#383a40"} />}
               </TouchableOpacity>
               {Platform.OS === "web" && (
                 <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
               )}
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
-                <Type size={22} color={fontPickerOpen ? theme.accent : theme.textMuted} />
+                <Type size={22} color={fontPickerOpen ? "#5865F2" : "#b5bac1"} />
               </TouchableOpacity>
                             <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setStickerPickerOpen(true)}>
-                <Sticker size={24} color={theme.textMuted} />
+                <Sticker size={24} color={isAmoled ? "#888888" : "#b5bac1"} />
               </TouchableOpacity>
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setEmojiOpen(true)}>
-                <Smile size={24} color={theme.textMuted} />
+                <Smile size={24} color={isAmoled ? "#888888" : "#b5bac1"} />
               </TouchableOpacity>
               <TextInput 
                 style={[
@@ -572,7 +573,7 @@ export default function ChatScreen() {
                   messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
                 ]} 
                 placeholder={`Message #${name || "chat"}`} 
-                placeholderTextColor={theme.textMuted}
+                placeholderTextColor={isAmoled ? "#888888" : "#949ba4"}
                 value={inputText}
                 onChangeText={(text) => {
                   setInputText(text);
@@ -587,7 +588,7 @@ export default function ChatScreen() {
                 }}
                 multiline />
               <TouchableOpacity style={styles.emojiButton} onPress={sendMessage} disabled={!inputText.trim()}>
-                <Send size={22} color={inputText.trim() ? theme.accent : "#4e5058"} />
+                <Send size={22} color={inputText.trim() ? (isAmoled ? "#ffffff" : "#5865F2") : (isAmoled ? "#222222" : "#4e5058")} />
               </TouchableOpacity>
             </View>
           </View>
@@ -661,22 +662,31 @@ export default function ChatScreen() {
 }
 
 
-const createStyles = (theme: any) => StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: theme.background },
-  container: { flex: 1, backgroundColor: theme.background, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: theme.border, overflow: "hidden" },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: theme.background, borderBottomWidth: 1, borderBottomColor: theme.surface, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 3, zIndex: 10 },
+const createStyles = (isAmoled: boolean) => {
+  const bg = isAmoled ? '#000000' : '#313338';
+  const surface = isAmoled ? '#000000' : '#2b2d31';
+  const border = isAmoled ? '#222222' : '#1e1f22';
+  const text = isAmoled ? '#ffffff' : '#dbdee1';
+  const textMuted = isAmoled ? '#888888' : '#949ba4';
+  const accent = isAmoled ? '#ffffff' : '#5865F2';
+  const inputBg = isAmoled ? '#111111' : '#383a40';
+
+  return StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: bg },
+  container: { flex: 1, backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: border, overflow: "hidden" },
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: bg, borderBottomWidth: 1, borderBottomColor: surface, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 3, zIndex: 10 },
   backButton: { marginRight: 8, padding: 4 },
   headerTitleContainer: { flex: 1, justifyContent: "center" },
-  headerTitle: { color: theme.text, fontSize: 17, fontWeight: "700" },
-  hashIcon: { color: theme.textMuted, fontSize: 20, fontWeight: "400" },
+  headerTitle: { color: text, fontSize: 17, fontWeight: "700" },
+  hashIcon: { color: textMuted, fontSize: 20, fontWeight: "400" },
   lastSeenText: { color: "#23a559", fontSize: 12, fontWeight: "600", marginTop: 2 },
   streakText: { color: "#f43f5e", fontSize: 12, fontWeight: "600", marginTop: 2 },
-  offlineText: { color: theme.textMuted },
+  offlineText: { color: textMuted },
   headerIconButton: { marginLeft: 16 },
   emptyContainer: { flex: 1, justifyContent: "flex-end", padding: 16, paddingBottom: 40 },
-  hashCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#4e5058", justifyContent: "center", alignItems: "center", marginBottom: 16 },
-  welcomeTitle: { color: theme.text, fontSize: 24, fontWeight: "bold", marginBottom: 8 },
-  welcomeSubtitle: { color: theme.textMuted, fontSize: 16 },
+  hashCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: inputBg, justifyContent: "center", alignItems: "center", marginBottom: 16 },
+  welcomeTitle: { color: text, fontSize: 24, fontWeight: "bold", marginBottom: 8 },
+  welcomeSubtitle: { color: textMuted, fontSize: 16 },
   listContainer: { paddingHorizontal: 16, paddingVertical: 12 },
   messageContainer: { flexDirection: "row", marginBottom: 18 },
   messageContainerLeft: { justifyContent: "flex-start" },
@@ -685,55 +695,56 @@ const createStyles = (theme: any) => StyleSheet.create({
   previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
   dimOverlay: { ...StyleSheet.absoluteFill },
   emptyPreviewBox: { flex: 1, justifyContent: "center", alignItems: "center" },
-  messageAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.surface },
+  messageAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: surface },
   avatarFallback: { justifyContent: "center", alignItems: "center" },
   messageContent: { maxWidth: "80%" },
   messageContentLeft: { alignItems: "flex-start" },
   messageContentRight: { alignItems: "flex-end" },
-  messageSender: { color: theme.text, fontSize: 14, fontWeight: "600", marginBottom: 4 },
+  messageSender: { color: text, fontSize: 14, fontWeight: "600", marginBottom: 4 },
   messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
-  messageBubbleLeft: { backgroundColor: theme.surface, borderBottomLeftRadius: 4 },
-  messageBubbleRight: { backgroundColor: theme.accent, borderBottomRightRadius: 4 },
+  messageBubbleLeft: { backgroundColor: surface, borderBottomLeftRadius: 4 },
+  messageBubbleRight: { backgroundColor: accent, borderBottomRightRadius: 4 },
   bubbleFlatTop: { borderTopRightRadius: 4 },
   bubbleFlatTopLeft: { borderTopLeftRadius: 4 },
   bubbleFlatBottom: { borderBottomLeftRadius: 4 },
   bubbleFlatBottomRight: { borderBottomRightRadius: 4 },
   messageText: { fontSize: 16, lineHeight: 22 },
-  messageTextLeft: { color: theme.text },
-  messageTextRight: { color: theme.text },
+  messageTextLeft: { color: text },
+  messageTextRight: { color: text },
   msgMeta: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  timeText: { color: theme.textMuted, fontSize: 12, fontWeight: "500" },
+  timeText: { color: textMuted, fontSize: 12, fontWeight: "500" },
   checkIcon: { marginLeft: 4 },
   inlineImage: { width: 200, height: 200, borderRadius: 12 },
-  replyQuote: { borderRadius: 8, padding: 8, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: theme.accent, backgroundColor: "rgba(88,101,242,0.15)", maxWidth: 240 },
+  replyQuote: { borderRadius: 8, padding: 8, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: accent, backgroundColor: "rgba(88,101,242,0.15)", maxWidth: 240 },
   replyQuoteLeft: { alignSelf: "flex-start" },
   replyQuoteRight: { alignSelf: "flex-end" },
-  replyQuoteSender: { color: theme.accent, fontSize: 12, fontWeight: "700", marginBottom: 2 },
-  replyQuoteText: { color: theme.textMuted, fontSize: 13 },
-  messageActions: { position: "absolute", top: -12, right: 10, backgroundColor: theme.surface, borderRadius: 8, padding: 4, flexDirection: "row", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
+  replyQuoteSender: { color: text, fontSize: 12, fontWeight: "700", marginBottom: 2 },
+  replyQuoteText: { color: textMuted, fontSize: 13 },
+  messageActions: { position: "absolute", top: -12, right: 10, backgroundColor: surface, borderRadius: 8, padding: 4, flexDirection: "row", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
   actionIcon: { padding: 6 },
   typingBanner: { paddingHorizontal: 24, paddingBottom: 4 },
-  typingText: { color: theme.textMuted, fontSize: 13, fontStyle: "italic" },
-  replyBanner: { flexDirection: "row", alignItems: "center", backgroundColor: theme.surface, paddingHorizontal: 16, paddingVertical: 10, marginHorizontal: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, borderLeftWidth: 3, borderLeftColor: theme.accent },
-  replyBannerSender: { color: theme.accent, fontSize: 12, fontWeight: "700" },
-  replyBannerText: { color: theme.textMuted, fontSize: 13 },
-  editingBanner: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: theme.surface, paddingHorizontal: 16, paddingVertical: 8, marginHorizontal: 16, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
-  editingBannerText: { color: theme.textMuted, fontSize: 14, fontWeight: "bold" },
-  inputArea: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: Platform.OS === "ios" ? 24 : 12, backgroundColor: theme.background },
-  inputWrapper: { flexDirection: "row", alignItems: "flex-end", backgroundColor: "#383a40", borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
-  attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: theme.textMuted, justifyContent: "center", alignItems: "center", marginRight: 12 },
-  textInput: { flex: 1, color: theme.text, fontSize: 16, maxHeight: 120, paddingTop: 8, paddingBottom: 0, marginTop: 4, outlineStyle: "none" as any },
+  typingText: { color: textMuted, fontSize: 13, fontStyle: "italic" },
+  replyBanner: { flexDirection: "row", alignItems: "center", backgroundColor: surface, paddingHorizontal: 16, paddingVertical: 10, marginHorizontal: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, borderLeftWidth: 3, borderLeftColor: accent },
+  replyBannerSender: { color: accent, fontSize: 12, fontWeight: "700" },
+  replyBannerText: { color: textMuted, fontSize: 13 },
+  editingBanner: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: surface, paddingHorizontal: 16, paddingVertical: 8, marginHorizontal: 16, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
+  editingBannerText: { color: textMuted, fontSize: 14, fontWeight: "bold" },
+  inputArea: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: Platform.OS === "ios" ? 24 : 12, backgroundColor: bg },
+  inputWrapper: { flexDirection: "row", alignItems: "flex-end", backgroundColor: inputBg, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
+  attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: textMuted, justifyContent: "center", alignItems: "center", marginRight: 12 },
+  textInput: { flex: 1, color: text, fontSize: 16, maxHeight: 120, paddingTop: 8, paddingBottom: 0, marginTop: 4, outlineStyle: "none" as any },
   emojiButton: { marginLeft: 12, padding: 2, marginBottom: 2 },
   systemMessageContainer: { paddingVertical: 12, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", marginVertical: 8 },
-  systemMessageText: { color: theme.textMuted, fontSize: 14, fontStyle: "italic", textAlign: "center" },
+  systemMessageText: { color: textMuted, fontSize: 14, fontStyle: "italic", textAlign: "center" },
   imageViewerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" },
   imageViewerImg: { width: "100%", height: "85%" } as any,
   imageViewerClose: { position: "absolute", top: 48, right: 24, padding: 8, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 24 },
 });
+};
 
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, theme, styles }: any) => {
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, isAmoled, styles }: any) => {
   const isNew = index === 0;
   const scale = useSharedValue(isNew ? 0.8 : 1);
   const opacity = useSharedValue(isNew ? 0 : 1);
@@ -778,8 +789,8 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       <View style={styles.systemMessageContainer}>
         {isWallpaperMsg ? (
           <TouchableOpacity onPress={() => item.isMe ? setSettingsVisible(true) : handleApplyWallpaper()}>
-            <Text style={[styles.systemMessageText, { color: theme.accent }]}>
-              <Text style={{ fontWeight: "bold", color: theme.textMuted }}>{item.sender}</Text> {item.text}
+            <Text style={[styles.systemMessageText, { color: "#5865F2" }]}>
+              <Text style={{ fontWeight: "bold", color: "#949ba4" }}>{item.sender}</Text> {item.text}
             </Text>
           </TouchableOpacity>
         ) : (
@@ -798,8 +809,8 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   const showMeta = !groupWithNext;
 
   // Cosmetic overrides
-  const sentColor = chatSettings?.bubble_color_sent || theme.accent;
-  const receivedColor = chatSettings?.bubble_color_received || theme.surface;
+  const sentColor = chatSettings?.bubble_color_sent || (isAmoled ? "#000000" : "#5865F2");
+  const receivedColor = chatSettings?.bubble_color_received || (isAmoled ? "#000000" : "#2b2d31");
   const gradientEnabled = chatSettings?.bubble_gradient_enabled || false;
   const gradientColor2 = chatSettings?.bubble_gradient_color2 || "#a78bfa";
   const shape = chatSettings?.bubble_shape || "round";
@@ -850,7 +861,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           <View style={styles.avatarSlot}>
             {showMeta && (item.avatar
               ? <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
-              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={theme.textMuted} /></View>
+              : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={isAmoled ? "#888888" : "#b5bac1"} /></View>
             )}
           </View>
         )}
@@ -885,7 +896,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
                 {item.status === "failed" && <Text style={{ color: '#f43f5e' }}> (failed)</Text>}
               </Text>
               {item.status !== "sending" && item.status !== "failed" && (
-                isRead ? <CheckCheck size={14} color={theme.accent} style={styles.checkIcon} /> : <Check size={14} color={theme.textMuted} style={styles.checkIcon} />
+                isRead ? <CheckCheck size={14} color={isAmoled ? "#ffffff" : "#5865F2"} style={styles.checkIcon} /> : <Check size={14} color={isAmoled ? "#888888" : "#949ba4"} style={styles.checkIcon} />
               )}
             </View>
           )}
@@ -894,12 +905,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           {hoveredMsg === item.id && (
             <View style={[styles.messageActions, item.isMe ? { right: '100%', marginRight: 8, top: 0 } : { left: '100%', marginLeft: 8, top: 0, right: 'auto' }]}>
               <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
-                <Reply size={16} color={theme.textMuted} />
+                <Reply size={16} color={isAmoled ? "#888888" : "#b5bac1"} />
               </TouchableOpacity>
               {item.isMe && (
                 <>
                   <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
-                    <Edit2 size={16} color={theme.textMuted} />
+                    <Edit2 size={16} color={isAmoled ? "#888888" : "#b5bac1"} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
                     <Trash2 size={16} color="#f23f43" />
