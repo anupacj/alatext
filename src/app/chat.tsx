@@ -448,39 +448,50 @@ export default function ChatScreen() {
         {showWallpaper && (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings?.wallpaper_dim || 0})` }]} />
         )}
-        <View style={[styles.header, showWallpaper && { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
-          <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
-            <ChevronLeft size={28} color={isAmoled ? "#888888" : theme.textMuted} />
-          </TouchableOpacity>
-              <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setInfoVisible(true)}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {!isGroup && targetUser?.avatar_url ? (
-                    <Image source={{ uri: targetUser.avatar_url }} style={{ width: 24, height: 24, borderRadius: 12, marginRight: 8 }} />
-                  ) : !isGroup ? (
-                    <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#2b2d31', justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
-                      <User size={14} color={isAmoled ? "#888888" : theme.textMuted} />
-                    </View>
-                  ) : (
-                    <Text style={styles.hashIcon}># </Text>
-                  )}
-                  <Text style={styles.headerTitle}>{name || "chat"}</Text>
-                </View>
-                
-                {targetUser && !isGroup && (
-                <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
-                  {isTargetOnline ? "● Online" : "○ Offline"}
-                </Text>
-              )}
+        {/* Floating glassmorphism header */}
+        <View style={styles.floatingHeaderWrapper}>
+          <View style={[
+            styles.floatingHeader,
+            isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+            showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+            theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+            theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+            { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+          ]}>
+            <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.floatingBackBtn}>
+              <ChevronLeft size={24} color={isAmoled ? "#ffffff" : ((theme.id === "light" || theme.id === "pink") ? "#111111" : "#ffffff")} />
             </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton} onPress={() => {
-            if (typingChannelRef.current) {
-              typingChannelRef.current.send({ type: "broadcast", event: "ping", payload: {} });
-              setPingVisible(true);
-            }
-          }}>
-            <Heart size={22} color="#f23f43" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
+            <TouchableOpacity style={styles.floatingAvatarArea} onPress={() => setInfoVisible(true)} activeOpacity={0.7}>
+              {!isGroup && targetUser?.avatar_url ? (
+                <Image source={{ uri: targetUser.avatar_url }} style={styles.floatingAvatar} />
+              ) : (
+                <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: 'center', alignItems: 'center' }]}>
+                  <User size={18} color="#fff" />
+                </View>
+              )}
+              <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
+                <Text style={[styles.headerTitle, { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") }]} numberOfLines={1}>
+                  {name || "chat"}
+                </Text>
+                {targetUser && !isGroup && (
+                  <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
+                    {isTargetOnline ? "● Online" : "○ Offline"}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.floatingIconBtn} onPress={() => {
+              if (typingChannelRef.current) {
+                typingChannelRef.current.send({ type: "broadcast", event: "ping", payload: {} });
+                setPingVisible(true);
+              }
+            }}>
+              <Heart size={20} color="#f23f43" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.floatingIconBtn} onPress={() => setSettingsVisible(true)}>
+              <MoreVertical size={20} color={isAmoled ? "#ffffff" : ((theme.id === "light" || theme.id === "pink") ? "#111111" : "#ffffff")} />
+            </TouchableOpacity>
+          </View>
         </View>
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
@@ -553,7 +564,11 @@ export default function ChatScreen() {
           )}
 
           <View style={[styles.inputArea, showWallpaper && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
-            <View style={[styles.inputWrapper, showWallpaper && { backgroundColor: "rgba(56,58,64,0.85)" }]}>
+            <View style={[
+              styles.inputWrapper, 
+              showWallpaper && { backgroundColor: "rgba(56,58,64,0.85)" },
+              (theme.id === 'light' || theme.id === 'pink') && !showWallpaper && !isAmoled && { backgroundColor: theme.surface }
+            ]}>
               <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                 {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#111111" : "#383a40"} /> : <Plus size={20} color={isAmoled ? "#111111" : "#383a40"} />}
               </TouchableOpacity>
@@ -563,7 +578,7 @@ export default function ChatScreen() {
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
                 <Type size={22} color={fontPickerOpen ? (isAmoled ? "#ffffff" : "#5865F2") : (isAmoled ? "#888888" : theme.textMuted)} />
               </TouchableOpacity>
-                            <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setStickerPickerOpen(true)}>
+              <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setStickerPickerOpen(true)}>
                 <Sticker size={24} color={isAmoled ? "#888888" : theme.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity style={[styles.attachButton, { backgroundColor: "transparent", marginRight: 8 }]} onPress={() => setEmojiOpen(true)}>
@@ -589,10 +604,29 @@ export default function ChatScreen() {
                   if (Platform.OS === "web" && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey) { e.preventDefault(); sendMessage(); }
                 }}
                 multiline />
-              <TouchableOpacity style={styles.emojiButton} onPress={sendMessage} disabled={!inputText.trim()}>
-                <Send size={22} color={inputText.trim() ? (isAmoled ? "#ffffff" : "#5865F2") : (isAmoled ? "#222222" : "#4e5058")} />
-              </TouchableOpacity>
             </View>
+            <TouchableOpacity
+              style={[
+                styles.circularSendBtn,
+                {
+                  backgroundColor: inputText.trim()
+                    ? (isAmoled ? "#ffffff" : (theme.accent || "#5865F2"))
+                    : (isAmoled ? "#1a1a1a" : (theme.id === "light" ? "#e0e0e0" : "#2b2d31"))
+                }
+              ]}
+              onPress={sendMessage}
+              disabled={!inputText.trim()}
+            >
+              <Send
+                size={19}
+                color={
+                  inputText.trim()
+                    ? (isAmoled ? "#000000" : "#ffffff")
+                    : (isAmoled ? "#444444" : theme.textMuted)
+                }
+                style={{ marginLeft: 2 }}
+              />
+            </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
                 {stickerPickerOpen && (
@@ -676,15 +710,52 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
   container: { flex: 1, backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: border, overflow: "hidden" },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: bg, borderBottomWidth: 1, borderBottomColor: surface, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 3, zIndex: 10 },
-  backButton: { marginRight: 8, padding: 4 },
-  headerTitleContainer: { flex: 1, justifyContent: "center" },
-  headerTitle: { color: text, fontSize: 17, fontWeight: "700" },
-  hashIcon: { color: textMuted, fontSize: 20, fontWeight: "400" },
+  floatingHeaderWrapper: {
+    paddingHorizontal: 12,
+    paddingTop: Platform.OS === "ios" ? 6 : 10,
+    paddingBottom: 6,
+    zIndex: 20,
+  },
+  floatingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 6,
+    backdropFilter: "blur(20px)",
+  } as any,
+  floatingBackBtn: {
+    padding: 6,
+    marginRight: 2,
+  },
+  floatingAvatarArea: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 6,
+  },
+  floatingAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: surface,
+  },
+  floatingIconBtn: {
+    padding: 8,
+    marginLeft: 2,
+    borderRadius: 20,
+  },
+  headerTitle: { color: text, fontSize: 16, fontWeight: "700" },
+  hashIcon: { color: textMuted, fontSize: 18, fontWeight: "400" },
   lastSeenText: { color: "#23a559", fontSize: 12, fontWeight: "600", marginTop: 2 },
   streakText: { color: "#f43f5e", fontSize: 12, fontWeight: "600", marginTop: 2 },
   offlineText: { color: textMuted },
-  headerIconButton: { marginLeft: 16 },
   emptyContainer: { flex: 1, justifyContent: "flex-end", padding: 16, paddingBottom: 40 },
   hashCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: inputBg, justifyContent: "center", alignItems: "center", marginBottom: 16 },
   welcomeTitle: { color: text, fontSize: 24, fontWeight: "bold", marginBottom: 8 },
@@ -731,11 +802,47 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   replyBannerText: { color: textMuted, fontSize: 13 },
   editingBanner: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: surface, paddingHorizontal: 16, paddingVertical: 8, marginHorizontal: 16, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
   editingBannerText: { color: textMuted, fontSize: 14, fontWeight: "bold" },
-  inputArea: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: Platform.OS === "ios" ? 24 : 12, backgroundColor: bg },
-  inputWrapper: { flexDirection: "row", alignItems: "flex-end", backgroundColor: inputBg, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, minHeight: 48 },
-  attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: textMuted, justifyContent: "center", alignItems: "center", marginRight: 12 },
-  textInput: { flex: 1, color: isAmoled ? "#ffffff" : theme.text, fontSize: 16, maxHeight: 120, paddingTop: 8, paddingBottom: 0, marginTop: 4, outlineStyle: "none" as any },
-  emojiButton: { marginLeft: 12, padding: 2, marginBottom: 2 },
+  inputArea: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingBottom: Platform.OS === "ios" ? 24 : 12,
+    backgroundColor: bg,
+    gap: 10,
+  },
+  inputWrapper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    backgroundColor: inputBg,
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "#e5e7eb" : theme.id === "pink" ? "#fbcfe8" : "#3f4147"),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+    backdropFilter: "blur(16px)",
+  } as any,
+  attachButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: textMuted, justifyContent: "center", alignItems: "center", marginRight: 10 },
+  textInput: { flex: 1, color: isAmoled ? "#ffffff" : theme.text, fontSize: 16, maxHeight: 120, paddingTop: 6, paddingBottom: 2, marginTop: 2, outlineStyle: "none" as any },
+  circularSendBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   systemMessageContainer: { paddingVertical: 12, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", marginVertical: 8 },
   systemMessageText: { color: textMuted, fontSize: 14, fontStyle: "italic", textAlign: "center" },
   imageViewerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" },
