@@ -448,44 +448,77 @@ export default function ChatScreen() {
         {showWallpaper && (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings?.wallpaper_dim || 0})` }]} />
         )}
-        {/* Floating glassmorphism header */}
+        {/* 3 Separate Floating glassmorphism pills */}
         <View style={styles.floatingHeaderWrapper}>
+          {/* 1. Left Back Button Pill */}
+          <TouchableOpacity
+            onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
+            style={[
+              styles.headerPill,
+              styles.headerBackPill,
+              isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+              showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+              theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+              theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+              { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+            ]}
+            activeOpacity={0.7}
+          >
+            <ChevronLeft size={24} color={isAmoled ? "#ffffff" : ((theme.id === "light" || theme.id === "pink") ? "#111111" : "#ffffff")} />
+          </TouchableOpacity>
+
+          {/* 2. Middle Profile Info Pill */}
+          <TouchableOpacity
+            style={[
+              styles.headerPill,
+              styles.headerProfilePill,
+              isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+              showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+              theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+              theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+              { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+            ]}
+            onPress={() => setInfoVisible(true)}
+            activeOpacity={0.7}
+          >
+            {!isGroup && targetUser?.avatar_url ? (
+              <Image source={{ uri: targetUser.avatar_url }} style={styles.floatingAvatar} />
+            ) : (
+              <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: 'center', alignItems: 'center' }]}>
+                <User size={18} color="#fff" />
+              </View>
+            )}
+            <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
+              <Text style={[styles.headerTitle, { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") }]} numberOfLines={1}>
+                {name || "chat"}
+              </Text>
+              {targetUser && !isGroup && (
+                <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
+                  {isTargetOnline ? "● Online" : "○ Offline"}
+                </Text>
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {/* 3. Right Action Buttons Pill */}
           <View style={[
-            styles.floatingHeader,
+            styles.headerPill,
+            styles.headerActionsPill,
             isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
             showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
             theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
             theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
             { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
           ]}>
-            <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.floatingBackBtn}>
-              <ChevronLeft size={24} color={isAmoled ? "#ffffff" : ((theme.id === "light" || theme.id === "pink") ? "#111111" : "#ffffff")} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.floatingAvatarArea} onPress={() => setInfoVisible(true)} activeOpacity={0.7}>
-              {!isGroup && targetUser?.avatar_url ? (
-                <Image source={{ uri: targetUser.avatar_url }} style={styles.floatingAvatar} />
-              ) : (
-                <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: 'center', alignItems: 'center' }]}>
-                  <User size={18} color="#fff" />
-                </View>
-              )}
-              <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
-                <Text style={[styles.headerTitle, { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") }]} numberOfLines={1}>
-                  {name || "chat"}
-                </Text>
-                {targetUser && !isGroup && (
-                  <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
-                    {isTargetOnline ? "● Online" : "○ Offline"}
-                  </Text>
-                )}
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.floatingIconBtn} onPress={() => {
-              if (typingChannelRef.current) {
-                typingChannelRef.current.send({ type: "broadcast", event: "ping", payload: {} });
-                setPingVisible(true);
-              }
-            }}>
+            <TouchableOpacity
+              style={styles.floatingIconBtn}
+              onPress={() => {
+                if (typingChannelRef.current) {
+                  typingChannelRef.current.send({ type: "broadcast", event: "ping", payload: {} });
+                  setPingVisible(true);
+                }
+              }}
+            >
               <Heart size={20} color="#f23f43" />
             </TouchableOpacity>
             <TouchableOpacity style={styles.floatingIconBtn} onPress={() => setSettingsVisible(true)}>
@@ -711,45 +744,55 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   safeArea: { flex: 1, backgroundColor: bg },
   container: { flex: 1, backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: border, overflow: "hidden" },
   floatingHeaderWrapper: {
-    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
     paddingTop: Platform.OS === "ios" ? 6 : 10,
     paddingBottom: 6,
     zIndex: 20,
+    gap: 8,
   },
-  floatingHeader: {
+  headerPill: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 30,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 24,
     borderWidth: 1,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 5,
     backdropFilter: "blur(20px)",
   } as any,
-  floatingBackBtn: {
-    padding: 6,
-    marginRight: 2,
-  },
-  floatingAvatarArea: {
-    flex: 1,
-    flexDirection: "row",
+  headerBackPill: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
     alignItems: "center",
-    paddingRight: 6,
+  },
+  headerProfilePill: {
+    flex: 1,
+    height: 44,
+    paddingLeft: 4,
+    paddingRight: 12,
+  },
+  headerActionsPill: {
+    height: 44,
+    paddingHorizontal: 4,
+    gap: 2,
+    justifyContent: "center",
+    alignItems: "center",
   },
   floatingAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: surface,
   },
   floatingIconBtn: {
-    padding: 8,
-    marginLeft: 2,
-    borderRadius: 20,
+    padding: 7,
+    borderRadius: 18,
   },
   headerTitle: { color: text, fontSize: 16, fontWeight: "700" },
   hashIcon: { color: textMuted, fontSize: 18, fontWeight: "400" },
