@@ -422,7 +422,7 @@ export default function ChatScreen() {
 
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
-      <MessageRow 
+      <MessageRow theme={theme} styles={styles} 
         item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
         hoveredMsg={hoveredMsg} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
         setEditingMsgId={setEditingMsgId} setInputText={setInputText} deleteMessage={deleteMessage}
@@ -733,7 +733,7 @@ const createStyles = (theme: any) => StyleSheet.create({
 
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl }: any) => {
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, theme, styles }: any) => {
   const isNew = index === 0;
   const scale = useSharedValue(isNew ? 0.8 : 1);
   const opacity = useSharedValue(isNew ? 0 : 1);
@@ -913,6 +913,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     </Animated.View>
   );
 });
+
 
 
 
