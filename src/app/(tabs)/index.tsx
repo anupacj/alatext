@@ -263,7 +263,7 @@ export default function Home() {
               {mode === "dm" ? (
                 <>
                   <Text style={styles.modalSubtitle}>Enter your friend&apos;s exact username.</Text>
-                  <TextInput style={styles.modalInput} placeholder="Username (e.g. jdoe123)" placeholderTextColor=theme.textMuted
+                  <TextInput style={styles.modalInput} placeholder="Username (e.g. jdoe123)" ={theme.}
                     value={searchUsername} onChangeText={setSearchUsername} autoCapitalize="none" />
                   <View style={styles.modalActions}>
                     <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={resetModal}>
@@ -276,11 +276,11 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <TextInput style={styles.modalInput} placeholder="Group name" placeholderTextColor=theme.textMuted
+                  <TextInput style={styles.modalInput} placeholder="Group name" ={theme.}
                     value={groupName} onChangeText={setGroupName} />
                   <View style={styles.addMemberRow}>
                     <TextInput style={[styles.modalInput, { flex: 1, marginBottom: 0 }]} placeholder="Add member username"
-                      placeholderTextColor=theme.textMuted value={memberInput} onChangeText={setMemberInput} autoCapitalize="none" />
+                      ={theme.} value={memberInput} onChangeText={setMemberInput} autoCapitalize="none" />
                     <TouchableOpacity style={styles.addMemberBtn} onPress={handleAddMember}>
                       <Plus size={20} color="#fff" />
                     </TouchableOpacity>

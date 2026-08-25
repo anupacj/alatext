@@ -572,7 +572,7 @@ export default function ChatScreen() {
                   messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
                 ]} 
                 placeholder={`Message #${name || "chat"}`} 
-                placeholderTextColor=theme.textMuted
+                ={theme.}
                 value={inputText}
                 onChangeText={(text) => {
                   setInputText(text);
