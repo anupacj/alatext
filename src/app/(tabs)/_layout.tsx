@@ -1,16 +1,19 @@
 import { Tabs } from 'expo-router';
 import { MessageCircle, User } from 'lucide-react-native';
 import { Platform, View, StyleSheet } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function TabsLayout() {
+  const { theme } = useTheme();
+  
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarActiveTintColor: '#ffffff',
-        tabBarInactiveTintColor: '#80848e',
-        tabBarStyle: styles.tabBar,
+        tabBarActiveTintColor: theme.text,
+        tabBarInactiveTintColor: theme.textMuted,
+        tabBarStyle: [styles.tabBar, { backgroundColor: theme.border }],
         tabBarItemStyle: styles.tabBarItem,
       }}
     >
@@ -18,7 +21,7 @@ export default function TabsLayout() {
         name="index"
         options={{
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && styles.iconContainerFocused]}>
+            <View style={[styles.iconContainer, focused && { backgroundColor: theme.surface }]}>
               <MessageCircle size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
             </View>
           ),
@@ -28,7 +31,7 @@ export default function TabsLayout() {
         name="profile"
         options={{
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && styles.iconContainerFocused]}>
+            <View style={[styles.iconContainer, focused && { backgroundColor: theme.surface }]}>
               <User size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
             </View>
           ),
@@ -46,7 +49,6 @@ const styles = StyleSheet.create({
     transform: [{ translateX: Platform.OS === 'web' ? -100 : '-50%' as any }],
     width: 200,
     height: 64,
-    backgroundColor: '#1e1f22',
     borderRadius: 32,
     borderTopWidth: 0,
     elevation: 8,
@@ -69,8 +71,5 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  iconContainerFocused: {
-    backgroundColor: '#313338',
   }
 });

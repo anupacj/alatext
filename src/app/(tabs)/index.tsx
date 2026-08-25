@@ -7,9 +7,12 @@ import { useRouter } from "expo-router";
 import { User, Search, MessageSquare, Plus, Users, X, Check, Settings } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../context/AuthContext";
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from "../../context/AuthContext";\nimport { useTheme } from "../../context/ThemeContext";
 
 export default function Home() {
+  const { theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);\n  const { theme } = useTheme();\n  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const { user } = useAuth();
   const [chats, setChats] = useState<any[]>([]);
@@ -193,13 +196,13 @@ export default function Home() {
         <Image source={{ uri: item.avatar }} style={styles.avatar} />
       ) : (
         <View style={[styles.avatar, styles.avatarFallback]}>
-          {item.isGroup ? <Users size={24} color="#b5bac1" /> : <User size={24} color="#b5bac1" />}
+          {item.isGroup ? <Users size={24} color={theme.text}Muted /> : <User size={24} color={theme.text}Muted />}
         </View>
       )}
       <View style={styles.chatContent}>
         <View style={styles.chatHeader}>
           <Text style={[styles.chatName, item.unread > 0 && styles.chatNameUnread]}>{item.name}</Text>
-          <Text style={[styles.chatTime, item.unread > 0 && { color: "#f2f3f5", fontWeight: "bold" }]}>{item.time}</Text>
+          <Text style={[styles.chatTime, item.unread > 0 && { color: theme.text, fontWeight: "bold" }]}>{item.time}</Text>
         </View>
         <View style={styles.messageRow}>
           <Text style={[styles.lastMessage, item.unread > 0 && styles.lastMessageUnread]} numberOfLines={1}>{item.lastMessage}</Text>
@@ -218,15 +221,15 @@ export default function Home() {
             <Text style={styles.headerTitle}>ala chat</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <TouchableOpacity style={styles.iconButton} onPress={() => setSettingsModalVisible(true)}><Settings size={20} color="#b5bac1" /></TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}><Search size={20} color="#b5bac1" /></TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton} onPress={() => setSettingsModalVisible(true)}><Settings size={20} color={theme.text}Muted /></TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton}><Search size={20} color={theme.text}Muted /></TouchableOpacity>
           </View>
         </View>
         {loading ? (
-          <View style={styles.centerContainer}><ActivityIndicator size="large" color="#5865F2" /></View>
+          <View style={styles.centerContainer}><ActivityIndicator size="large" color={theme.accent} /></View>
         ) : chats.length === 0 ? (
           <View style={styles.centerContainer}>
-            <MessageSquare size={64} color="#4f545c" />
+            <MessageSquare size={64} color={theme.text}Muted />
             <Text style={styles.emptyText}>No chats yet</Text>
             <Text style={styles.emptySubtext}>Tap the + button to start texting!</Text>
           </View>
@@ -246,11 +249,11 @@ export default function Home() {
               {/* Mode toggle */}
               <View style={styles.modeToggle}>
                 <TouchableOpacity style={[styles.modeBtn, mode === "dm" && styles.modeBtnActive]} onPress={() => { setMode("dm"); setSearchError(""); }}>
-                  <User size={16} color={mode === "dm" ? "#fff" : "#949ba4"} />
+                  <User size={16} color={mode === "dm" ? "#fff" : theme.textMuted} />
                   <Text style={[styles.modeBtnText, mode === "dm" && styles.modeBtnTextActive]}>Direct</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.modeBtn, mode === "group" && styles.modeBtnActive]} onPress={() => { setMode("group"); setSearchError(""); }}>
-                  <Users size={16} color={mode === "group" ? "#fff" : "#949ba4"} />
+                  <Users size={16} color={mode === "group" ? "#fff" : theme.textMuted} />
                   <Text style={[styles.modeBtnText, mode === "group" && styles.modeBtnTextActive]}>Group</Text>
                 </TouchableOpacity>
               </View>
@@ -260,7 +263,7 @@ export default function Home() {
               {mode === "dm" ? (
                 <>
                   <Text style={styles.modalSubtitle}>Enter your friend&apos;s exact username.</Text>
-                  <TextInput style={styles.modalInput} placeholder="Username (e.g. jdoe123)" placeholderTextColor="#949ba4"
+                  <TextInput style={styles.modalInput} placeholder="Username (e.g. jdoe123)" placeholderTextColor=theme.textMuted
                     value={searchUsername} onChangeText={setSearchUsername} autoCapitalize="none" />
                   <View style={styles.modalActions}>
                     <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={resetModal}>
@@ -273,11 +276,11 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <TextInput style={styles.modalInput} placeholder="Group name" placeholderTextColor="#949ba4"
+                  <TextInput style={styles.modalInput} placeholder="Group name" placeholderTextColor=theme.textMuted
                     value={groupName} onChangeText={setGroupName} />
                   <View style={styles.addMemberRow}>
                     <TextInput style={[styles.modalInput, { flex: 1, marginBottom: 0 }]} placeholder="Add member username"
-                      placeholderTextColor="#949ba4" value={memberInput} onChangeText={setMemberInput} autoCapitalize="none" />
+                      placeholderTextColor=theme.textMuted value={memberInput} onChangeText={setMemberInput} autoCapitalize="none" />
                     <TouchableOpacity style={styles.addMemberBtn} onPress={handleAddMember}>
                       <Plus size={20} color="#fff" />
                     </TouchableOpacity>
@@ -288,7 +291,7 @@ export default function Home() {
                         <View key={m.id} style={styles.chip}>
                           <Text style={styles.chipText}>{m.username}</Text>
                           <TouchableOpacity onPress={() => setGroupMembers(prev => prev.filter(gm => gm.id !== m.id))}>
-                            <X size={14} color="#b5bac1" style={{ marginLeft: 4 }} />
+                            <X size={14} color={theme.text}Muted style={{ marginLeft: 4 }} />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -313,17 +316,17 @@ export default function Home() {
             <View style={styles.modalView}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <Text style={styles.modalTitle}>App Settings</Text>
-                <TouchableOpacity onPress={() => setSettingsModalVisible(false)}><X size={24} color="#b5bac1" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => setSettingsModalVisible(false)}><X size={24} color={theme.text}Muted /></TouchableOpacity>
               </View>
               
-              <Text style={{ color: "#dbdee1", fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>Notifications</Text>
+              <Text style={{ color: theme.text, fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>Notifications</Text>
               
               <TouchableOpacity 
                 style={[styles.modeBtn, { marginBottom: 8, justifyContent: "flex-start", padding: 12 }, notificationPref === "concealed_limited" && styles.modeBtnActive]} 
                 onPress={() => saveNotificationPref("concealed_limited")}
               >
                 <Text style={[styles.modeBtnText, notificationPref === "concealed_limited" && styles.modeBtnTextActive]}>?? Concealed & Limited (1/hr)</Text>
-                <Text style={{ color: notificationPref === "concealed_limited" ? "#e0e1e5" : "#949ba4", fontSize: 12, marginTop: 4 }}>Shows "Potato delivery". Max 1 notification per hour.</Text>
+                <Text style={{ color: notificationPref === "concealed_limited" ? "#e0e1e5" : theme.textMuted, fontSize: 12, marginTop: 4 }}>Shows "Potato delivery". Max 1 notification per hour.</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -331,7 +334,7 @@ export default function Home() {
                 onPress={() => saveNotificationPref("unconcealed_limitless")}
               >
                 <Text style={[styles.modeBtnText, notificationPref === "unconcealed_limitless" && styles.modeBtnTextActive]}>?? Unconcealed & Limitless</Text>
-                <Text style={{ color: notificationPref === "unconcealed_limitless" ? "#e0e1e5" : "#949ba4", fontSize: 12, marginTop: 4 }}>Shows the actual message. No cooldown limit.</Text>
+                <Text style={{ color: notificationPref === "unconcealed_limitless" ? "#e0e1e5" : theme.textMuted, fontSize: 12, marginTop: 4 }}>Shows the actual message. No cooldown limit.</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modeBtn, { justifyContent: "flex-start", padding: 12, marginTop: 8 }]} onPress={async () => { if (typeof window !== "undefined" && "Notification" in window) { if (Notification.permission === "denied") { alert("Your browser is blocking notifications! Click the padlock icon next to the URL, change Notifications to Allow, and refresh the page."); } else { const perm = await Notification.requestPermission(); if (perm === "granted") alert("Notifications enabled!"); } } }}>
                 <Text style={styles.modeBtnText}>?? Request / Check Notification Permission</Text>
@@ -344,52 +347,54 @@ export default function Home() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#2b2d31" },
-  container: { flex: 1, backgroundColor: "#2b2d31", maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: "#1e1f22" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 16, backgroundColor: "#2b2d31", borderBottomWidth: 1, borderBottomColor: "#1e1f22" },
+const createStyles = (theme: any) => StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: theme.surface },
+  container: { flex: 1, backgroundColor: theme.surface, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: theme.border },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 16, backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.border },
   headerLeft: { flexDirection: "row", alignItems: "center" },
-  userAvatarMini: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#5865F2", marginRight: 12, justifyContent: "center", alignItems: "center" },
-  headerTitle: { color: "#f2f3f5", fontSize: 22, fontWeight: "800", letterSpacing: -0.5 },
-  iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#1e1f22", justifyContent: "center", alignItems: "center" },
+  userAvatarMini: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.accent, marginRight: 12, justifyContent: "center", alignItems: "center" },
+  headerTitle: { color: theme.text, fontSize: 22, fontWeight: "800", letterSpacing: -0.5 },
+  iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.border, justifyContent: "center", alignItems: "center" },
   listContainer: { paddingTop: 8, paddingBottom: 120 },
   centerContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingBottom: 100 },
-  emptyText: { color: "#f2f3f5", fontSize: 18, fontWeight: "600", marginTop: 16 },
-  emptySubtext: { color: "#949ba4", fontSize: 14, marginTop: 8 },
+  emptyText: { color: theme.text, fontSize: 18, fontWeight: "600", marginTop: 16 },
+  emptySubtext: { color: theme.textMuted, fontSize: 14, marginTop: 8 },
   chatItem: { flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12, alignItems: "center" },
-  avatar: { width: 52, height: 52, borderRadius: 26, marginRight: 14, backgroundColor: "#313338" },
+  avatar: { width: 52, height: 52, borderRadius: 26, marginRight: 14, backgroundColor: theme.background },
   avatarFallback: { justifyContent: "center", alignItems: "center" },
   chatContent: { flex: 1, justifyContent: "center" },
   chatHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
-  chatName: { color: "#f2f3f5", fontSize: 17, fontWeight: "600" },
-  chatNameUnread: { color: "#ffffff", fontWeight: "900" },
-  chatTime: { color: "#949ba4", fontSize: 12, fontWeight: "500" },
+  chatName: { color: theme.text, fontSize: 17, fontWeight: "600" },
+  chatNameUnread: { color: theme.text, fontWeight: "900" },
+  chatTime: { color: theme.textMuted, fontSize: 12, fontWeight: "500" },
   messageRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  lastMessage: { color: "#949ba4", fontSize: 15, flex: 1, paddingRight: 16 },
-  lastMessageUnread: { color: "#ffffff", fontWeight: "800" },
+  lastMessage: { color: theme.textMuted, fontSize: 15, flex: 1, paddingRight: 16 },
+  lastMessageUnread: { color: theme.text, fontWeight: "800" },
   badge: { backgroundColor: "#f23f43", borderRadius: 4, width: 8, height: 8, alignSelf: "center", marginLeft: 8 },
-  badgeText: { color: "#ffffff", fontSize: 12, fontWeight: "bold" },
-  fab: { position: "absolute", bottom: 100, right: 24, width: 56, height: 56, borderRadius: 16, backgroundColor: "#5865F2", justifyContent: "center", alignItems: "center", elevation: 6, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+  badgeText: { color: theme.text, fontSize: 12, fontWeight: "bold" },
+  fab: { position: "absolute", bottom: 100, right: 24, width: 56, height: 56, borderRadius: 16, backgroundColor: theme.accent, justifyContent: "center", alignItems: "center", elevation: 6, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 },
-  modalView: { width: "100%", maxWidth: 400, backgroundColor: "#313338", borderRadius: 8, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 10 },
-  modalTitle: { color: "#f2f3f5", fontSize: 20, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
-  modeToggle: { flexDirection: "row", backgroundColor: "#1e1f22", borderRadius: 8, padding: 4, marginBottom: 20 },
+  modalView: { width: "100%", maxWidth: 400, backgroundColor: theme.background, borderRadius: 8, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 10 },
+  modalTitle: { color: theme.text, fontSize: 20, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
+  modeToggle: { flexDirection: "row", backgroundColor: theme.border, borderRadius: 8, padding: 4, marginBottom: 20 },
   modeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 8, borderRadius: 6, gap: 6 },
-  modeBtnActive: { backgroundColor: "#5865F2" },
-  modeBtnText: { color: "#949ba4", fontSize: 14, fontWeight: "600" },
-  modeBtnTextActive: { color: "#ffffff" },
-  modalSubtitle: { color: "#b5bac1", fontSize: 14, marginBottom: 16, textAlign: "center" },
+  modeBtnActive: { backgroundColor: theme.accent },
+  modeBtnText: { color: theme.textMuted, fontSize: 14, fontWeight: "600" },
+  modeBtnTextActive: { color: theme.text },
+  modalSubtitle: { color: theme.textMuted, fontSize: 14, marginBottom: 16, textAlign: "center" },
   errorText: { color: "#f23f43", fontSize: 13, marginBottom: 12, textAlign: "center" },
-  modalInput: { backgroundColor: "#1e1f22", color: "#dbdee1", borderRadius: 4, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 16 },
+  modalInput: { backgroundColor: theme.border, color: theme.text, borderRadius: 4, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 16 },
   addMemberRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
-  addMemberBtn: { width: 44, height: 44, borderRadius: 8, backgroundColor: "#5865F2", justifyContent: "center", alignItems: "center" },
+  addMemberBtn: { width: 44, height: 44, borderRadius: 8, backgroundColor: theme.accent, justifyContent: "center", alignItems: "center" },
   chipsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  chip: { flexDirection: "row", alignItems: "center", backgroundColor: "#2b2d31", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  chipText: { color: "#f2f3f5", fontSize: 14 },
+  chip: { flexDirection: "row", alignItems: "center", backgroundColor: theme.surface, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  chipText: { color: theme.text, fontSize: 14 },
   modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
   modalButton: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 4, minWidth: 80, alignItems: "center" },
   cancelButton: { backgroundColor: "transparent" },
-  cancelButtonText: { color: "#f2f3f5", fontSize: 14, fontWeight: "600" },
-  startButton: { backgroundColor: "#5865F2" },
-  startButtonText: { color: "#ffffff", fontSize: 14, fontWeight: "600" },
+  cancelButtonText: { color: theme.text, fontSize: 14, fontWeight: "600" },
+  startButton: { backgroundColor: theme.accent },
+  startButtonText: { color: theme.text, fontSize: 14, fontWeight: "600" },
 });
+
+

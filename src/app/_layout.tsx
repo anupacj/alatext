@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { AuthProvider } from '../context/AuthContext';
+import { ThemeProvider } from '../context/ThemeContext';
 import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { Platform } from 'react-native';
@@ -19,11 +20,13 @@ export default function Layout() {
 
   return (
     <AuthProvider>
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#313338' } }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="chat" options={{ headerShown: false }} />
-        <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
-      </Stack>
+      <ThemeProvider>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#313338' } }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="chat" options={{ headerShown: false }} />
+          <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
+        </Stack>
+      </ThemeProvider>
     </AuthProvider>
   );
 }

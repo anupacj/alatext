@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { Settings, User, Camera, LogOut } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,6 +8,8 @@ import { supabase } from '../../lib/supabase';
 import { uploadAvatarToR2 } from '../../lib/r2';
 
 export default function Profile() {
+  const { theme, setTheme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -141,6 +144,17 @@ export default function Profile() {
             </View>
           </View>
 
+                    <View style={[styles.settingsGroup, { marginTop: 16 }]}>
+            <Text style={[styles.label, { marginBottom: 16 }]}>APP THEME</Text>
+            <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+              {[{ id: 'dark', color: '#313338' }, { id: 'black', color: '#000000' }, { id: 'light', color: '#f2f3f5', border: '#e3e5e8' }, { id: 'pink', color: '#fdf2f8' }, { id: 'hacker', color: '#0a0a0a', border: '#4ade80' }].map(t => (
+                <TouchableOpacity key={t.id} onPress={() => setTheme(t.id)}
+                  style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: t.color, borderWidth: theme.id === t.id ? 2 : 1, borderColor: theme.id === t.id ? theme.accent : (t.border || theme.border) }}
+                />
+              ))}
+            </View>
+          </View>
+
           <View style={{ flex: 1 }} />
 
           <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
@@ -153,48 +167,49 @@ export default function Profile() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#313338' },
+const createStyles = (theme: any) => StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: theme.background },
   container: {
-    flex: 1, backgroundColor: '#313338', maxWidth: Platform.OS === 'web' ? 800 : '100%',
+    flex: 1, backgroundColor: theme.background, maxWidth: Platform.OS === 'web' ? 800 : '100%',
     width: '100%', alignSelf: 'center',
-    borderLeftWidth: Platform.OS === 'web' ? 1 : 0, borderRightWidth: Platform.OS === 'web' ? 1 : 0, borderColor: '#1e1f22',
+    borderLeftWidth: Platform.OS === 'web' ? 1 : 0, borderRightWidth: Platform.OS === 'web' ? 1 : 0, borderColor: theme.border,
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#2b2d31',
+    paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: theme.surface,
   },
-  headerTitle: { color: '#f2f3f5', fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#1e1f22', justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { color: theme.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.border, justifyContent: 'center', alignItems: 'center' },
   content: { flex: 1, alignItems: 'center', paddingTop: 32, paddingHorizontal: 16 },
   avatarContainer: { position: 'relative', marginBottom: 8 },
-  avatarImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 6, borderColor: '#313338' },
+  avatarImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 6, borderColor: theme.background },
   avatarPlaceholder: {
-    width: 120, height: 120, borderRadius: 60, backgroundColor: '#5865F2',
-    justifyContent: 'center', alignItems: 'center', borderWidth: 6, borderColor: '#313338',
+    width: 120, height: 120, borderRadius: 60, backgroundColor: theme.accent,
+    justifyContent: 'center', alignItems: 'center', borderWidth: 6, borderColor: theme.background,
   },
   editBadge: {
     position: 'absolute', bottom: 4, right: 4, width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#1e1f22', justifyContent: 'center', alignItems: 'center',
-    borderWidth: 3, borderColor: '#313338',
+    backgroundColor: theme.border, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 3, borderColor: theme.background,
   },
-  username: { color: '#b5bac1', fontSize: 16, fontWeight: '600', marginBottom: 32 },
+  username: { color: theme.textMuted, fontSize: 16, fontWeight: '600', marginBottom: 32 },
   editSection: { width: '100%', marginBottom: 24 },
-  label: { fontSize: 12, fontWeight: 'bold', color: '#b5bac1', marginBottom: 8 },
+  label: { fontSize: 12, fontWeight: 'bold', color: theme.textMuted, marginBottom: 8 },
   inputRow: { flexDirection: 'row', gap: 8 },
   textInput: {
-    flex: 1, backgroundColor: '#1e1f22', color: '#dbdee1', borderRadius: 4,
+    flex: 1, backgroundColor: theme.border, color: theme.text, borderRadius: 4,
     paddingHorizontal: 16, paddingVertical: 12, fontSize: 16,
   },
-  saveButton: { backgroundColor: '#5865F2', borderRadius: 4, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center' },
-  saveButtonText: { color: '#ffffff', fontWeight: 'bold' },
-  settingsGroup: { width: '100%', backgroundColor: '#2b2d31', borderRadius: 8, padding: 16 },
+  saveButton: { backgroundColor: theme.accent, borderRadius: 4, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center' },
+  saveButtonText: { color: theme.text, fontWeight: 'bold' },
+  settingsGroup: { width: '100%', backgroundColor: theme.surface, borderRadius: 8, padding: 16 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  infoLabel: { color: '#b5bac1', fontSize: 16 },
-  infoValue: { color: '#dbdee1', fontSize: 16 },
+  infoLabel: { color: theme.textMuted, fontSize: 16 },
+  infoValue: { color: theme.text, fontSize: 16 },
   logoutButton: {
     flexDirection: 'row', backgroundColor: 'transparent', borderWidth: 1, borderColor: '#da373c',
     paddingHorizontal: 24, paddingVertical: 12, borderRadius: 4, alignItems: 'center', marginBottom: 120, width: '100%', justifyContent: 'center'
   },
   logoutText: { color: '#da373c', fontSize: 16, fontWeight: '600' }
 });
+
