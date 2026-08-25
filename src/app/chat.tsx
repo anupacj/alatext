@@ -59,7 +59,9 @@ function SendingDots() {
 export default function ChatScreen() {
   const { theme } = useTheme();
   const isAmoled = theme.id === "black";
-  const styles = React.useMemo(() => createStyles(isAmoled, theme), [isAmoled, theme]);
+  // showWallpaper drives all wallpaper-dependent transparency - never show in AMOLED
+  const showWallpaper = !isAmoled && !!chatSettings?.wallpaper_url;
+  const styles = React.useMemo(() => createStyles(isAmoled, theme, showWallpaper), [isAmoled, theme, showWallpaper]);
   const { id, name, avatar } = useLocalSearchParams();
   const { user } = useAuth();
   const router = useRouter();
@@ -436,15 +438,15 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {!isAmoled && chatSettings?.wallpaper_url && (
+        {showWallpaper && (
           <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
-            <Image source={{ uri: chatSettings.wallpaper_url }}
-              style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings.wallpaper_zoom || 1 }] }]}
-              blurRadius={(chatSettings.wallpaper_blur || 0) * 20} />
+            <Image source={{ uri: chatSettings!.wallpaper_url }}
+              style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings?.wallpaper_zoom || 1 }] }]}
+              blurRadius={(chatSettings?.wallpaper_blur || 0) * 20} />
           </View>
         )}
-        {!isAmoled && chatSettings?.wallpaper_url && (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings.wallpaper_dim || 0})` }]} />
+        {showWallpaper && (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings?.wallpaper_dim || 0})` }]} />
         )}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.backButton}>
@@ -480,7 +482,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconButton} onPress={() => setSettingsVisible(true)}><MoreVertical size={24} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
         </View>
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: (!isAmoled && chatSettings?.wallpaper_url) ? "transparent" : (isAmoled ? "#000000" : theme.background) }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
           <HeartPing visible={pingVisible} onComplete={() => setPingVisible(false)} />
           {messages.length === 0 ? (
@@ -550,8 +552,8 @@ export default function ChatScreen() {
             </View>
           )}
 
-          <View style={[styles.inputArea, (!isAmoled && chatSettings?.wallpaper_url) && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
-            <View style={[styles.inputWrapper, (!isAmoled && chatSettings?.wallpaper_url) && { backgroundColor: "rgba(56,58,64,0.85)" }]}>
+          <View style={[styles.inputArea, showWallpaper && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
+            <View style={[styles.inputWrapper, showWallpaper && { backgroundColor: "rgba(56,58,64,0.85)" }]}>
               <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                 {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#111111" : "#383a40"} /> : <Plus size={20} color={isAmoled ? "#111111" : "#383a40"} />}
               </TouchableOpacity>
@@ -662,7 +664,7 @@ export default function ChatScreen() {
 }
 
 
-const createStyles = (isAmoled: boolean, theme: any) => {
+const createStyles = (isAmoled: boolean, theme: any, showWallpaper = false) => {
   const bg = isAmoled ? '#000000' : theme.background;
   const surface = isAmoled ? '#000000' : '#2b2d31';
   const border = isAmoled ? '#222222' : '#1e1f22';
@@ -673,8 +675,8 @@ const createStyles = (isAmoled: boolean, theme: any) => {
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
-  container: { flex: 1, backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: border, overflow: "hidden" },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: bg, borderBottomWidth: 1, borderBottomColor: surface, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 3, zIndex: 10 },
+  container: { flex: 1, backgroundColor: showWallpaper ? "transparent" : bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: border, overflow: "hidden" },
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: showWallpaper ? "rgba(0,0,0,0.35)" : bg, borderBottomWidth: 1, borderBottomColor: surface, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 3, zIndex: 10 },
   backButton: { marginRight: 8, padding: 4 },
   headerTitleContainer: { flex: 1, justifyContent: "center" },
   headerTitle: { color: text, fontSize: 17, fontWeight: "700" },
