@@ -65,6 +65,22 @@ const DOODLE_OPTIONS = [
   { label: "🌸 Petals", value: "petals" },
 ];
 
+const SEND_EMOJI_PRESETS = [
+  { label: "Default", emoji: "" },
+  { label: "🚀 Rocket", emoji: "🚀" },
+  { label: "🔥 Fire", emoji: "🔥" },
+  { label: "❤️ Heart", emoji: "❤️" },
+  { label: "⚡ Bolt", emoji: "⚡" },
+  { label: "✨ Sparkles", emoji: "✨" },
+  { label: "🕊️ Dove", emoji: "🕊️" },
+  { label: "💬 Bubble", emoji: "💬" },
+  { label: "🎯 Target", emoji: "🎯" },
+  { label: "🌸 Sakura", emoji: "🌸" },
+  { label: "💌 Letter", emoji: "💌" },
+  { label: "👾 Arcade", emoji: "👾" },
+  { label: "🍕 Pizza", emoji: "🍕" },
+];
+
 export const FONT_OPTIONS = [
   { label: "System", value: "system" },
   { label: "BenchNine", value: "BenchNine" },
@@ -113,6 +129,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
   const [gradientColor2, setGradientColor2] = useState(currentSettings?.bubble_gradient_color2 || "#a78bfa");
   const [wallpaperDoodle, setWallpaperDoodle] = useState(currentSettings?.wallpaper_doodle || "none");
   const [anniversaryDate, setAnniversaryDate] = useState(currentSettings?.anniversary_date || null);
+  const [sendButtonEmoji, setSendButtonEmoji] = useState(currentSettings?.send_button_emoji || "");
 
   const [alertTitle, setAlertTitle] = useState("LEAVE 'STUDY TOGETHER!'");
   const [alertMessage, setAlertMessage] = useState("Are you sure you want to leave Study Together!? You won't be able to rejoin this server unless you are re-invited.");
@@ -134,6 +151,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
       setGradientColor2(currentSettings.bubble_gradient_color2 || "#a78bfa");
       setWallpaperDoodle(currentSettings.wallpaper_doodle || "none");
       setAnniversaryDate(currentSettings.anniversary_date || null);
+      setSendButtonEmoji(currentSettings.send_button_emoji || "");
     }
   }, [visible, currentSettings]);
 
@@ -164,7 +182,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
   const saveSettings = async () => {
     setLoading(true);
     try {
-      const updates = {
+      const updates: any = {
         wallpaper_url: wallpaperUrl,
         wallpaper_dim: dim,
         wallpaper_blur: blur,
@@ -177,9 +195,25 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
         bubble_gradient_color2: gradientColor2,
         wallpaper_doodle: wallpaperDoodle,
         anniversary_date: anniversaryDate,
+        send_button_emoji: sendButtonEmoji || null,
       };
-      const { error } = await supabase.from("chat_participants").update(updates).eq("chat_id", chatId).eq("user_id", userId);
-      if (error) throw error;
+
+      try {
+        const cached = await AsyncStorage.getItem(`chat_${chatId}_settings`);
+        const merged = { ...(cached ? JSON.parse(cached) : {}), ...updates };
+        await AsyncStorage.setItem(`chat_${chatId}_settings`, JSON.stringify(merged));
+      } catch (e) {}
+
+      try {
+        const { error } = await supabase.from("chat_participants").update(updates).eq("chat_id", chatId).eq("user_id", userId);
+        if (error) {
+          const { send_button_emoji, ...restUpdates } = updates;
+          await supabase.from("chat_participants").update(restUpdates).eq("chat_id", chatId).eq("user_id", userId);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
       if (wallpaperUrl !== currentSettings?.wallpaper_url && wallpaperUrl) {
         await supabase.from("messages").insert({ chat_id: chatId, sender_id: userId, content: "updated their chat wallpaper. Tap here to apply it too!", type: "system" });
       }
@@ -373,8 +407,55 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
               ))}
             </View>
 
+            {/* SEND BUTTON ICON / EMOJI */}
+            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚀 Send Button Icon</Text>
+            <Text style={{ color: "#949ba4", fontSize: 13, marginBottom: 12 }}>
+              Replace your send arrow button with a custom emoji icon for this chat.
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              {SEND_EMOJI_PRESETS.map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  style={[
+                    styles.shapeOption,
+                    { minWidth: 62, marginRight: 8, paddingVertical: 8, paddingHorizontal: 10, alignItems: "center" },
+                    sendButtonEmoji === item.emoji && styles.shapeOptionSelected,
+                  ]}
+                  onPress={() => setSendButtonEmoji(item.emoji)}
+                >
+                  <Text style={{ fontSize: item.emoji ? 20 : 16 }}>{item.emoji || "➤"}</Text>
+                  <Text
+                    style={[
+                      styles.shapeLabel,
+                      { fontSize: 11, marginTop: 4 },
+                      sendButtonEmoji === item.emoji && { color: "#f23f43", fontWeight: "bold" },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
+              <Text style={{ color: "#dbdee1", fontSize: 13 }}>Or type custom emoji:</Text>
+              <TextInput
+                style={[styles.alertInput, { width: 70, textAlign: "center", fontSize: 18, paddingVertical: 6 }]}
+                value={sendButtonEmoji}
+                onChangeText={setSendButtonEmoji}
+                placeholder="🛸"
+                placeholderTextColor="#949ba4"
+                maxLength={4}
+              />
+              {sendButtonEmoji ? (
+                <TouchableOpacity onPress={() => setSendButtonEmoji("")} style={{ padding: 6 }}>
+                  <Text style={{ color: "#f43f5e", fontSize: 12, fontWeight: "600" }}>Reset to Arrow</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
             {/* CUSTOM ALERT */}
-            <Text style={[styles.sectionTitle, { marginTop: 30 }]}>🚨 Send Custom Alert</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚨 Send Custom Alert</Text>
             <Text style={{ color: "#949ba4", fontSize: 13, marginBottom: 12 }}>Instantly pops up on their screen if they are online. Limit 1 per minute.</Text>
             
             <View style={{ backgroundColor: "#2b2d31", padding: 16, borderRadius: 12, marginBottom: 24, gap: 12 }}>
