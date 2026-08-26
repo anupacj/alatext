@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image, Modal, ScrollView } from 'react-native';
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import { Settings, User, Camera, LogOut } from 'lucide-react-native';
+import { Settings, User, Camera, LogOut, X, Bell, Palette, Check } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadAvatarToR2 } from '../../lib/r2';
+
+const THEME_OPTIONS = [
+  { id: 'dark', label: 'Dark', color: '#313338', textColor: '#f2f3f5' },
+  { id: 'black', label: 'AMOLED', color: '#000000', textColor: '#ffffff', border: '#333333' },
+  { id: 'light', label: 'Light', color: '#ffffff', textColor: '#111111', border: '#d1d5db' },
+  { id: 'pink', label: 'Pink', color: '#fdf2f8', textColor: '#831843', border: '#f472b6' },
+  { id: 'hacker', label: 'Hacker', color: '#0a0a0a', textColor: '#4ade80', border: '#22c55e' },
+];
 
 export default function Profile() {
   const { theme, setTheme } = useTheme();
@@ -15,6 +23,8 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editName, setEditName] = useState('');
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [notificationPref, setNotificationPref] = useState('concealed_limited');
 
   useEffect(() => {
     if (!user) return;
@@ -29,12 +39,25 @@ export default function Profile() {
       if (!error && data) {
         setProfile(data);
         setEditName(data.display_name || data.username);
+        if (data.notification_preference) {
+          setNotificationPref(data.notification_preference);
+        }
       }
       setLoading(false);
     };
     
     fetchProfile();
   }, [user]);
+
+  const saveNotificationPref = async (val: string) => {
+    setNotificationPref(val);
+    const { error } = await supabase.from("profiles").update({ notification_preference: val }).eq("id", user!.id);
+    if (!error) {
+      alert("Notification preference updated successfully!");
+    } else {
+      alert("Failed to update preference.");
+    }
+  };
 
   const handlePickImage = async () => {
     try {
@@ -100,8 +123,8 @@ export default function Profile() {
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity style={styles.iconButton}>
-            <Settings size={24} color="#b5bac1" />
+          <TouchableOpacity style={styles.iconButton} onPress={() => setSettingsModalVisible(true)}>
+            <Settings size={22} color={theme.text} />
           </TouchableOpacity>
         </View>
 
@@ -144,17 +167,6 @@ export default function Profile() {
             </View>
           </View>
 
-                    <View style={[styles.settingsGroup, { marginTop: 16 }]}>
-            <Text style={[styles.label, { marginBottom: 16 }]}>APP THEME</Text>
-            <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
-              {[{ id: 'dark', color: '#313338' }, { id: 'black', color: '#000000' }, { id: 'light', color: '#f2f3f5', border: '#e3e5e8' }, { id: 'pink', color: '#fdf2f8' }, { id: 'hacker', color: '#0a0a0a', border: '#4ade80' }].map(t => (
-                <TouchableOpacity key={t.id} onPress={() => setTheme(t.id)}
-                  style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: t.color, borderWidth: theme.id === t.id ? 2 : 1, borderColor: theme.id === t.id ? theme.accent : (t.border || theme.border) }}
-                />
-              ))}
-            </View>
-          </View>
-
           <View style={{ flex: 1 }} />
 
           <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
@@ -162,6 +174,101 @@ export default function Profile() {
             <Text style={styles.logoutText}>Log Out</Text>
           </TouchableOpacity>
         </View>
+
+        <Modal
+          animationType="fade"
+          transparent
+          visible={settingsModalVisible}
+          onRequestClose={() => setSettingsModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalView}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>App Settings</Text>
+                <TouchableOpacity onPress={() => setSettingsModalVisible(false)} style={{ padding: 4 }}>
+                  <X size={24} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <Palette size={18} color={theme.accent} />
+                    <Text style={styles.sectionHeader}>App Theme</Text>
+                  </View>
+                  <View style={styles.themeGrid}>
+                    {THEME_OPTIONS.map(t => {
+                      const isSelected = theme.id === t.id;
+                      return (
+                        <TouchableOpacity
+                          key={t.id}
+                          onPress={() => setTheme(t.id)}
+                          style={[
+                            styles.themeOptionCard,
+                            { backgroundColor: t.color, borderColor: isSelected ? theme.accent : (t.border || theme.border) },
+                            isSelected && styles.themeOptionSelected,
+                          ]}
+                        >
+                          <Text style={[styles.themeOptionLabel, { color: t.textColor }]}>{t.label}</Text>
+                          {isSelected && (
+                            <View style={[styles.checkCircle, { backgroundColor: theme.accent }]}>
+                              <Check size={12} color="#fff" />
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.modalSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <Bell size={18} color={theme.accent} />
+                    <Text style={styles.sectionHeader}>Notifications</Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.prefCard, notificationPref === "concealed_limited" && styles.prefCardActive]}
+                    onPress={() => saveNotificationPref("concealed_limited")}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.prefTitle, notificationPref === "concealed_limited" && { color: theme.text }]}>🥔 Concealed & Limited (1/hr)</Text>
+                      {notificationPref === "concealed_limited" && <Check size={16} color={theme.accent} />}
+                    </View>
+                    <Text style={[styles.prefSubtext, notificationPref === "concealed_limited" && { color: theme.textMuted }]}>Shows "Potato delivery". Max 1 notification per hour.</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.prefCard, notificationPref === "unconcealed_limitless" && styles.prefCardActive]}
+                    onPress={() => saveNotificationPref("unconcealed_limitless")}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.prefTitle, notificationPref === "unconcealed_limitless" && { color: theme.text }]}>💬 Unconcealed & Limitless</Text>
+                      {notificationPref === "unconcealed_limitless" && <Check size={16} color={theme.accent} />}
+                    </View>
+                    <Text style={[styles.prefSubtext, notificationPref === "unconcealed_limitless" && { color: theme.textMuted }]}>Shows the actual message text. No cooldown limit.</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.permissionBtn}
+                    onPress={async () => {
+                      if (typeof window !== "undefined" && "Notification" in window) {
+                        if (Notification.permission === "denied") {
+                          alert("Your browser is blocking notifications! Click the padlock icon next to the URL, change Notifications to Allow, and refresh the page.");
+                        } else {
+                          const perm = await Notification.requestPermission();
+                          if (perm === "granted") alert("Notifications enabled!");
+                        }
+                      }
+                    }}
+                  >
+                    <Text style={styles.permissionBtnText}>🔔 Request / Check Browser Permission</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -179,7 +286,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: theme.surface,
   },
   headerTitle: { color: theme.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.border, justifyContent: 'center', alignItems: 'center' },
+  iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, justifyContent: 'center', alignItems: 'center' },
   content: { flex: 1, alignItems: 'center', paddingTop: 32, paddingHorizontal: 16 },
   avatarContainer: { position: 'relative', marginBottom: 8 },
   avatarImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 6, borderColor: theme.background },
@@ -210,10 +317,24 @@ const createStyles = (theme: any) => StyleSheet.create({
     flexDirection: 'row', backgroundColor: 'transparent', borderWidth: 1, borderColor: '#da373c',
     paddingHorizontal: 24, paddingVertical: 12, borderRadius: 4, alignItems: 'center', marginBottom: 120, width: '100%', justifyContent: 'center'
   },
-  logoutText: { color: '#da373c', fontSize: 16, fontWeight: '600' }
+  logoutText: { color: '#da373c', fontSize: 16, fontWeight: '600' },
+  
+  // Modal styles
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 20 },
+  modalView: { width: "100%", maxWidth: 440, backgroundColor: theme.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: theme.border, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 12, maxHeight: '85%' },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
+  modalTitle: { color: theme.text, fontSize: 20, fontWeight: "bold" },
+  modalSection: { marginBottom: 24 },
+  sectionHeader: { color: theme.text, fontSize: 16, fontWeight: "700" },
+  themeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  themeOptionCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1.5, minWidth: '45%', flex: 1 },
+  themeOptionSelected: { borderWidth: 2 },
+  themeOptionLabel: { fontSize: 14, fontWeight: "700" },
+  checkCircle: { width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  prefCard: { backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 14, marginBottom: 10 },
+  prefCardActive: { borderColor: theme.accent, backgroundColor: theme.border },
+  prefTitle: { color: theme.text, fontSize: 14, fontWeight: "700", marginBottom: 4 },
+  prefSubtext: { color: theme.textMuted, fontSize: 12, lineHeight: 16 },
+  permissionBtn: { backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, alignItems: 'center', marginTop: 4 },
+  permissionBtnText: { color: theme.text, fontSize: 13, fontWeight: "600" },
 });
-
-
-
-
-
