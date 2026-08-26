@@ -75,19 +75,34 @@ export default function ChatInfoModal({
         setGroupName(chat.name || "Group Chat");
       }
 
-      // 2. Fetch participants with profile info
+      // 2. Fetch participants with profile info (robust 2-step fetch)
       const { data: parts } = await supabase
         .from("chat_participants")
-        .select("user_id, joined_at, profiles(id, username, display_name, avatar_url, bio, updated_at)")
+        .select("user_id")
         .eq("chat_id", chatId);
-      if (parts) {
-        setParticipants(
-          parts.map((p: any) => ({
+
+      if (parts && parts.length > 0) {
+        const userIds = parts.map((p: any) => p.user_id);
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar_url, bio, updated_at")
+          .in("id", userIds);
+
+        const profMap = new Map((profs || []).map((p: any) => [p.id, p]));
+        const formatted = parts.map((p: any) => {
+          const pr = profMap.get(p.user_id) || {};
+          return {
             user_id: p.user_id,
-            joined_at: p.joined_at,
-            ...p.profiles,
-          }))
-        );
+            username: pr.username || "user",
+            display_name: pr.display_name,
+            avatar_url: pr.avatar_url,
+            bio: pr.bio,
+            updated_at: pr.updated_at,
+          };
+        });
+        setParticipants(formatted);
+      } else {
+        setParticipants([]);
       }
     } catch (e) {
       console.error("Error fetching group details:", e);
@@ -497,26 +512,56 @@ export default function ChatInfoModal({
               </View>
             </ScrollView>
           ) : (
-            /* DM CONTACT PROFILE */
-            <View style={styles.dmProfile}>
-              <Image
-                source={{ uri: targetUser?.avatar_url || "https://ui-avatars.com/api/?name=U" }}
-                style={styles.hugeAvatar}
-              />
-              <Text style={styles.hugeUsername}>{targetUser?.display_name || targetUser?.username}</Text>
-              <Text style={styles.hugeHandle}>@{targetUser?.username}</Text>
+            /* DM CONTACT PROFILE WITH SHARED MEDIA GALLERY */
+            <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+              <View style={styles.dmProfile}>
+                <Image
+                  source={{ uri: targetUser?.avatar_url || "https://ui-avatars.com/api/?name=U" }}
+                  style={styles.hugeAvatar}
+                />
+                <Text style={styles.hugeUsername}>{targetUser?.display_name || targetUser?.username}</Text>
+                <Text style={styles.hugeHandle}>@{targetUser?.username}</Text>
 
-              {targetUser?.bio ? (
-                <View style={styles.bioBox}>
-                  <Text style={styles.bioTitle}>About</Text>
-                  <Text style={styles.bioTextLarge}>{targetUser.bio}</Text>
+                {targetUser?.bio ? (
+                  <View style={styles.bioBox}>
+                    <Text style={styles.bioTitle}>About</Text>
+                    <Text style={styles.bioTextLarge}>{targetUser.bio}</Text>
+                  </View>
+                ) : null}
+
+                <Text style={styles.joinedText}>
+                  Joined on {new Date(targetUser?.created_at || Date.now()).toLocaleDateString()}
+                </Text>
+              </View>
+
+              {/* SHARED MEDIA GALLERY IN DM */}
+              <View style={[styles.sectionContainer, { marginTop: 16, marginBottom: 40 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <ImageIcon size={18} color={theme.accent} />
+                  <Text style={styles.sectionTitle}>Shared Media ({sharedMedia.length})</Text>
                 </View>
-              ) : null}
 
-              <Text style={styles.joinedText}>
-                Joined on {new Date(targetUser?.created_at || Date.now()).toLocaleDateString()}
-              </Text>
-            </View>
+                {loadingMedia ? (
+                  <ActivityIndicator style={{ marginVertical: 16 }} color={theme.accent} />
+                ) : sharedMedia.length === 0 ? (
+                  <View style={styles.emptyMediaBox}>
+                    <Text style={styles.emptyMediaText}>No shared photos in this chat yet.</Text>
+                  </View>
+                ) : (
+                  <View style={styles.mediaGrid}>
+                    {sharedMedia.map((m) => (
+                      <TouchableOpacity
+                        key={m.id}
+                        style={styles.mediaGridItem}
+                        onPress={() => setSelectedImage(m.content)}
+                      >
+                        <Image source={{ uri: m.content }} style={styles.mediaThumb} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </ScrollView>
           )}
 
           {/* ADD MEMBER MODAL / DRAWER */}
