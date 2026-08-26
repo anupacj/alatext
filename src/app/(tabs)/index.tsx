@@ -4,7 +4,7 @@ import {
   SafeAreaView, Platform, ActivityIndicator, Modal, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { User, Search, MessageSquare, Plus, Users, X, Check, Settings } from "lucide-react-native";
+import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { useTheme } from "../../context/ThemeContext";
@@ -25,6 +25,38 @@ export default function Home() {
   const [groupName, setGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState<{ id: string; username: string }[]>([]);
   const [memberInput, setMemberInput] = useState("");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const handleFullscreenChange = () => {
+        setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+      };
+      document.addEventListener("fullscreenchange", handleFullscreenChange);
+      document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+      return () => {
+        document.removeEventListener("fullscreenchange", handleFullscreenChange);
+        document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      };
+    }
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    try {
+      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+        const el = document.documentElement as any;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      } else {
+        const doc = document as any;
+        if (doc.exitFullscreen) doc.exitFullscreen();
+        else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+      }
+    } catch (e) {
+      console.error("Fullscreen toggle error:", e);
+    }
+  };
 
   const fetchChats = useCallback(async () => {
     if (!user) return;
@@ -200,7 +232,20 @@ export default function Home() {
             <View style={styles.userAvatarMini}><User size={16} color="#fff" /></View>
             <Text style={styles.headerTitle}>ala chat</Text>
           </View>
-          <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+            {Platform.OS === 'web' && (
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={toggleFullscreen}
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Mode"}
+              >
+                {isFullscreen ? (
+                  <Minimize2 size={18} color={theme.accent} />
+                ) : (
+                  <Maximize2 size={18} color={theme.textMuted} />
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.iconButton}><Search size={20} color={theme.textMuted} /></TouchableOpacity>
           </View>
         </View>

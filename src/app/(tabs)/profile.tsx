@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image, Modal, ScrollView } from 'react-native';
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import { Settings, User, Camera, LogOut, X, Bell, Palette, Check } from 'lucide-react-native';
+import { Settings, User, Camera, LogOut, X, Bell, Palette, Check, Smartphone, Download, Maximize2, Minimize2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadAvatarToR2 } from '../../lib/r2';
@@ -25,6 +25,68 @@ export default function Profile() {
   const [editName, setEditName] = useState('');
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [notificationPref, setNotificationPref] = useState('concealed_limited');
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const handleBeforeInstall = (e: any) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+      };
+      window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+
+      const checkStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      if (checkStandalone) setIsInstalled(true);
+
+      const handleFullscreenChange = () => {
+        setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+      };
+      document.addEventListener("fullscreenchange", handleFullscreenChange);
+      document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+
+      return () => {
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+        document.removeEventListener("fullscreenchange", handleFullscreenChange);
+        document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      };
+    }
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setIsInstalled(true);
+        setDeferredPrompt(null);
+      }
+    } else {
+      if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        alert("To install on iOS:\n1. Tap the Share button (square with arrow up)\n2. Tap 'Add to Home Screen'\n\nThis launches the app full-screen without any address bars!");
+      } else {
+        alert("To install on Android:\nTap browser menu (⋮) -> 'Install app' or 'Add to Home Screen' to launch in fullscreen mode!");
+      }
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    try {
+      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+        const el = document.documentElement as any;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      } else {
+        const doc = document as any;
+        if (doc.exitFullscreen) doc.exitFullscreen();
+        else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+      }
+    } catch (e) {
+      console.error("Fullscreen toggle error:", e);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -263,6 +325,54 @@ export default function Profile() {
                     }}
                   >
                     <Text style={styles.permissionBtnText}>🔔 Request / Check Browser Permission</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* MOBILE DISPLAY & FULLSCREEN */}
+                <View style={styles.modalSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <Smartphone size={18} color={theme.accent} />
+                    <Text style={styles.sectionHeader}>Mobile Display & Fullscreen</Text>
+                  </View>
+
+                  {/* 1-Tap Browser Fullscreen Toggle */}
+                  <TouchableOpacity
+                    style={[styles.prefCard, isFullscreen && styles.prefCardActive]}
+                    onPress={toggleFullscreen}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        {isFullscreen ? <Minimize2 size={16} color={theme.accent} /> : <Maximize2 size={16} color={theme.text} />}
+                        <Text style={[styles.prefTitle, isFullscreen && { color: theme.text }]}>
+                          {isFullscreen ? "Exit Fullscreen Mode" : "Expand to Fullscreen"}
+                        </Text>
+                      </View>
+                      {isFullscreen && <Check size={16} color={theme.accent} />}
+                    </View>
+                    <Text style={[styles.prefSubtext, isFullscreen && { color: theme.textMuted }]}>
+                      Temporarily removes browser address bar and top bar on mobile browsers.
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Add to Home Screen / PWA Install */}
+                  <TouchableOpacity
+                    style={[styles.prefCard, isInstalled && styles.prefCardActive]}
+                    onPress={handleInstallApp}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Download size={16} color={theme.accent} />
+                        <Text style={[styles.prefTitle, isInstalled && { color: theme.text }]}>
+                          {isInstalled ? "App Installed (Standalone)" : "Add to Home Screen (Permanent Fullscreen)"}
+                        </Text>
+                      </View>
+                      {isInstalled && <Check size={16} color={theme.accent} />}
+                    </View>
+                    <Text style={[styles.prefSubtext, isInstalled && { color: theme.textMuted }]}>
+                      {isInstalled
+                        ? "Running in standalone app mode with zero address bars."
+                        : "Installs on your phone's home screen. Opens edge-to-edge like a real native app with no address bars."}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </ScrollView>
