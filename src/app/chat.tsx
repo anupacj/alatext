@@ -7,7 +7,7 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -67,6 +67,8 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [targetUser, setTargetUser] = useState<any>(null);
+  const [groupChatData, setGroupChatData] = useState<any>(null);
+  const [groupMemberCount, setGroupMemberCount] = useState<number>(0);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [infoVisible, setInfoVisible] = useState(false);
   const [chatSettings, setChatSettings] = useState<any>(null);
@@ -134,8 +136,13 @@ export default function ChatScreen() {
         setChatSettings(mySettings);
         AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(mySettings)).catch(() => {});
       }
-      const { data: chatData } = await supabase.from("chats").select("is_group").eq("id", id).single();
-      if (chatData?.is_group) setIsGroup(true);
+      const { data: chatData } = await supabase.from("chats").select("*").eq("id", id).single();
+      if (chatData?.is_group) {
+        setIsGroup(true);
+        setGroupChatData(chatData);
+        const { count } = await supabase.from("chat_participants").select("*", { count: "exact", head: true }).eq("chat_id", id);
+        if (count) setGroupMemberCount(count);
+      }
       const { data: parts } = await supabase.from("chat_participants").select("user_id, last_read_at").eq("chat_id", id).neq("user_id", user.id).limit(1);
       if (parts && parts.length > 0) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("id", parts[0].user_id).single();
@@ -244,8 +251,13 @@ export default function ChatScreen() {
     // We are reverting presence back to heartbeat for stability as requested.
     // The targetUser's updated_at field will serve as the online indicator.
 
+    const chatChannel = supabase.channel(`chats_${id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chats", filter: `id=eq.${id}` }, (payload) => {
+        setGroupChatData((prev: any) => ({ ...prev, ...payload.new }));
+      }).subscribe();
+
     return () => {
-      supabase.removeChannel(channel); supabase.removeChannel(pChannel); supabase.removeChannel(tChannel); supabase.removeChannel(profChannel);
+      supabase.removeChannel(channel); supabase.removeChannel(pChannel); supabase.removeChannel(tChannel); supabase.removeChannel(profChannel); supabase.removeChannel(chatChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [id, user?.id]);
@@ -481,7 +493,15 @@ export default function ChatScreen() {
             onPress={() => setInfoVisible(true)}
             activeOpacity={0.7}
           >
-            {!isGroup && targetUser?.avatar_url ? (
+            {isGroup ? (
+              groupChatData?.avatar_url ? (
+                <Image source={{ uri: groupChatData.avatar_url }} style={styles.floatingAvatar} />
+              ) : (
+                <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: 'center', alignItems: 'center' }]}>
+                  <Users size={18} color="#fff" />
+                </View>
+              )
+            ) : targetUser?.avatar_url ? (
               <Image source={{ uri: targetUser.avatar_url }} style={styles.floatingAvatar} />
             ) : (
               <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: 'center', alignItems: 'center' }]}>
@@ -490,13 +510,17 @@ export default function ChatScreen() {
             )}
             <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
               <Text style={[styles.headerTitle, { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") }]} numberOfLines={1}>
-                {name || "chat"}
+                {isGroup ? (groupChatData?.name || name || "Group Chat") : (name || "chat")}
               </Text>
-              {targetUser && !isGroup && (
+              {isGroup ? (
+                <Text style={styles.groupSubtitle}>
+                  {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
+                </Text>
+              ) : targetUser ? (
                 <Text style={[styles.lastSeenText, !isTargetOnline && styles.offlineText]}>
                   {isTargetOnline ? "● Online" : "○ Offline"}
                 </Text>
-              )}
+              ) : null}
             </View>
           </TouchableOpacity>
 
@@ -702,7 +726,10 @@ export default function ChatScreen() {
             chatId={id as string} 
             isGroup={isGroup} 
             targetUser={targetUser} 
-            currentUserId={user.id} 
+            currentUserId={user.id}
+            onGroupUpdated={(updated) => {
+              setGroupChatData((prev: any) => ({ ...prev, ...updated }));
+            }}
           />
         )}
       </View>
@@ -801,6 +828,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   headerTitle: { color: text, fontSize: 16, fontWeight: "700" },
   hashIcon: { color: textMuted, fontSize: 18, fontWeight: "400" },
   lastSeenText: { color: "#23a559", fontSize: 12, fontWeight: "600", marginTop: 2 },
+  groupSubtitle: { color: textMuted, fontSize: 12, fontWeight: "500", marginTop: 2 },
   streakText: { color: "#f43f5e", fontSize: 12, fontWeight: "600", marginTop: 2 },
   offlineText: { color: textMuted },
   emptyContainer: { flex: 1, justifyContent: "flex-end", padding: 16, paddingBottom: 40 },
