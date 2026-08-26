@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, FlatList, Image, Dimensions, TextInput } from "react-native";
 import { X, Plus, Download, AlertCircle } from "lucide-react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
-import { uploadBlobToR2 } from "../lib/r2";
+import { uploadBlobToR2, getThumbnailUrl } from "../lib/r2";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -42,7 +43,18 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
   }, [selectedPackId, isImporting]);
 
   const fetchPacks = async () => {
-    setLoading(true);
+    try {
+      const cached = await AsyncStorage.getItem(`cached_sticker_packs_${chatId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.length > 0) {
+          setPacks(parsed);
+          if (!selectedPackId) setSelectedPackId(parsed[0].id);
+          setLoading(false);
+        }
+      }
+    } catch (e) {}
+
     const { data } = await supabase
       .from("sticker_packs")
       .select("*")
@@ -51,14 +63,25 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
     
     if (data) {
       setPacks(data);
+      AsyncStorage.setItem(`cached_sticker_packs_${chatId}`, JSON.stringify(data)).catch(() => {});
       if (data.length > 0 && !selectedPackId) setSelectedPackId(data[0].id);
     }
     setLoading(false);
   };
 
   const fetchStickers = async (packId: string) => {
+    try {
+      const cached = await AsyncStorage.getItem(`cached_stickers_${packId}`);
+      if (cached) {
+        setStickers(JSON.parse(cached));
+      }
+    } catch (e) {}
+
     const { data } = await supabase.from("stickers").select("*").eq("pack_id", packId).order("created_at", { ascending: true });
-    if (data) setStickers(data);
+    if (data) {
+      setStickers(data);
+      AsyncStorage.setItem(`cached_stickers_${packId}`, JSON.stringify(data)).catch(() => {});
+    }
   };
 
   const handleImport = async () => {
@@ -223,7 +246,7 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
                     style={styles.stickerWrapper} 
                     onPress={() => { onSelectSticker(item.file_url); onClose(); }}
                   >
-                    <Image source={{ uri: item.file_url }} style={styles.stickerImg} resizeMode="contain" />
+                    <Image source={{ uri: getThumbnailUrl(item.file_url, 180, 180, 80) }} style={styles.stickerImg} resizeMode="contain" />
                   </TouchableOpacity>
                 )}
               />
@@ -242,7 +265,7 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
                       onPress={() => setSelectedPackId(item.id)}
                     >
                       {item.cover_url ? (
-                        <Image source={{ uri: item.cover_url }} style={styles.tabIcon} />
+                        <Image source={{ uri: getThumbnailUrl(item.cover_url, 80, 80, 80) }} style={styles.tabIcon} />
                       ) : (
                         <Text style={{ color: "#fff", fontSize: 16 }}>📦</Text>
                       )}

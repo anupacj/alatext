@@ -21,6 +21,15 @@ export const uploadChatImageToR2 = async (chatId: string, base64Data: string, mi
   return uploadImageToR2(`chat-images/${chatId}-${Date.now()}`, base64Data, mimeType);
 };
 
+export const getThumbnailUrl = (url: string, width = 250, height = 250, quality = 75): string => {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    // wsrv.nl globally compresses and converts high-res images to tiny lightweight WebP thumbnails
+    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=${width}&h=${height}&fit=cover&q=${quality}&output=webp`;
+  }
+  return url;
+};
+
 export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mimeType: string): Promise<string> => {
   if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT) {
     throw new Error("R2 credentials are not configured in .env");

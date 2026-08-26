@@ -9,7 +9,7 @@ import {
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../lib/supabase";
-import { uploadImageToR2, deleteFileFromR2ByUrl } from "../lib/r2";
+import { uploadImageToR2, deleteFileFromR2ByUrl, getThumbnailUrl } from "../lib/r2";
 import { useTheme } from "../context/ThemeContext";
 import { useRouter } from "expo-router";
 
@@ -495,7 +495,7 @@ export default function ChatInfoModal({
                           style={styles.mediaGridItem}
                           onPress={() => setSelectedImage(m.content)}
                         >
-                          <Image source={{ uri: m.content }} style={styles.mediaThumb} />
+                          <Image source={{ uri: getThumbnailUrl(m.content, 260, 260, 75) }} style={styles.mediaThumb} />
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -555,7 +555,7 @@ export default function ChatInfoModal({
                         style={styles.mediaGridItem}
                         onPress={() => setSelectedImage(m.content)}
                       >
-                        <Image source={{ uri: m.content }} style={styles.mediaThumb} />
+                        <Image source={{ uri: getThumbnailUrl(m.content, 260, 260, 75) }} style={styles.mediaThumb} />
                       </TouchableOpacity>
                     ))}
                   </View>
