@@ -1,86 +1,98 @@
 import { Tabs } from 'expo-router';
 import { MessageCircle, User } from 'lucide-react-native';
-import { Platform, View, StyleSheet } from 'react-native';
+import { Platform, View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 
-export default function TabsLayout() {
+function CustomTabBar({ state, descriptors, navigation }: any) {
   const { theme } = useTheme();
-  
+
+  return (
+    <View style={styles.floatingWrapper} pointerEvents="box-none">
+      <View style={[styles.pillContainer, { backgroundColor: theme.border }]}>
+        {state.routes.map((route: any, index: number) => {
+          const isFocused = state.index === index;
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          const Icon = route.name === 'profile' ? User : MessageCircle;
+          const color = isFocused ? theme.text : theme.textMuted;
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              onPress={onPress}
+              activeOpacity={0.7}
+              style={styles.tabBtn}
+            >
+              <View style={[styles.iconCircle, isFocused && { backgroundColor: theme.surface }]}>
+                <Icon size={22} color={color} strokeWidth={isFocused ? 2.5 : 2} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+export default function TabsLayout() {
   return (
     <Tabs
+      tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
-        tabBarActiveTintColor: theme.text,
-        tabBarInactiveTintColor: theme.textMuted,
-        tabBarSafeAreaInsets: { bottom: 0, top: 0, left: 0, right: 0 },
-        tabBarStyle: [
-          styles.tabBar,
-          {
-            backgroundColor: theme.border,
-          }
-        ],
-        tabBarItemStyle: styles.tabBarItem,
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && { backgroundColor: theme.surface }]}>
-              <MessageCircle size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && { backgroundColor: theme.surface }]}>
-              <User size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
-            </View>
-          ),
-        }}
-      />
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="profile" />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
+  floatingWrapper: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 24 : 20,
-    left: '50%',
-    marginLeft: -100,
+    bottom: Platform.OS === 'ios' ? 28 : 20,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  pillContainer: {
+    flexDirection: 'row',
     width: 200,
     height: 56,
     borderRadius: 28,
-    borderTopWidth: 0,
-    elevation: 8,
+    alignItems: 'center',
+    justifyContent: 'space-evenly',
+    elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingHorizontal: 0,
   },
-  tabBarItem: {
+  tabBtn: {
     flex: 1,
     height: 56,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 0,
-    margin: 0,
+    justifyContent: 'center',
   },
-  iconContainer: {
+  iconCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 6,
-  }
+    justifyContent: 'center',
+  },
 });
