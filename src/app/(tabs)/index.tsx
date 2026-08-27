@@ -7,6 +7,8 @@ import { useRouter } from "expo-router";
 import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
+import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 import { useAlaPin } from "../../context/AlaPinContext";
 
 export default function Home() {

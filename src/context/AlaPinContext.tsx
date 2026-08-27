@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface AlaPinContextType {
@@ -116,6 +116,19 @@ export const AlaPinProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 export const useAlaPin = () => {
   const context = useContext(AlaPinContext);
-  if (!context) throw new Error("useAlaPin must be used within an AlaPinProvider");
+  if (!context) {
+    return {
+      isLocked: false,
+      isDecoyMode: false,
+      isPinEnabled: false,
+      realPin: null,
+      decoyPin: null,
+      unlockWithPin: () => ({ success: false, isDecoy: false }),
+      setupRealPin: async () => {},
+      setupDecoyPin: async () => {},
+      togglePinEnabled: async () => {},
+      lockNow: () => {},
+    };
+  }
   return context;
 };

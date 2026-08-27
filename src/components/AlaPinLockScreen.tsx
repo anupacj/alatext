@@ -96,7 +96,7 @@ export default function AlaPinLockScreen() {
                 style={[
                   styles.dot,
                   isFilled
-                    ? { backgroundColor: theme.accent, borderColor: theme.accent, scale: 1.1 }
+                    ? { backgroundColor: theme.accent, borderColor: theme.accent, transform: [{ scale: 1.1 }] }
                     : { backgroundColor: "transparent", borderColor: isAmoled ? "#444" : "rgba(150,150,150,0.4)" },
                 ]}
               />
