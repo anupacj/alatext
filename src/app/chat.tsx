@@ -8,7 +8,7 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -17,8 +17,10 @@ import StickerPicker from '../components/StickerPicker';
 import { HeartPing } from "../components/HeartPing";
 import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
+import AudioPlayerBubble from "../components/AudioPlayerBubble";
+import VoiceRecorder from "../components/VoiceRecorder";
 import { supabase } from "../lib/supabase";
-import { uploadChatImageToR2 } from "../lib/r2";
+import { uploadChatImageToR2, uploadAudioBlobToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 
@@ -93,6 +95,7 @@ export default function ChatScreen() {
   const [messageFont, setMessageFont] = useState<string | null>(null);
   const [customAlert, setCustomAlert] = useState<any>(null);
   const [pingVisible, setPingVisible] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
@@ -436,6 +439,27 @@ export default function ChatScreen() {
     });
   }, [id, user]);
 
+  const handleSendVoiceMessage = useCallback(async (blob: Blob, mimeType: string) => {
+    if (!id || !user) return;
+    try {
+      const publicUrl = await uploadAudioBlobToR2(id as string, blob, mimeType);
+      await supabase.from("messages").insert({
+        chat_id: id,
+        sender_id: user.id,
+        content: publicUrl,
+        type: "audio",
+        reply_to_id: replyingTo?.id || null,
+        reply_to_content: replyingTo?.text || null,
+        reply_to_sender: replyingTo?.sender || null,
+      });
+      setReplyingTo(null);
+      setIsRecordingVoice(false);
+    } catch (e: any) {
+      console.error("Voice upload error:", e);
+      alert("Failed to upload voice message: " + (e.message || e));
+    }
+  }, [id, user?.id, replyingTo]);
+
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
       <MessageRow isAmoled={isAmoled} styles={styles} theme={theme}
@@ -622,73 +646,82 @@ export default function ChatScreen() {
           )}
 
           <View style={[styles.inputArea, showWallpaper && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
-            <View style={[
-              styles.inputWrapper, 
-              showWallpaper && { backgroundColor: "rgba(56,58,64,0.85)" },
-              (theme.id === 'light' || theme.id === 'pink') && !showWallpaper && !isAmoled && { backgroundColor: theme.surface }
-            ]}>
-              <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
-                {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#ffffff" : "#fff"} /> : <Plus size={18} color={isAmoled ? "#ffffff" : "#fff"} />}
-              </TouchableOpacity>
-              {Platform.OS === "web" && (
-                <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
-              )}
-              <TouchableOpacity style={styles.inputIconButton} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
-                <Type size={19} color={fontPickerOpen ? (isAmoled ? "#ffffff" : theme.accent) : (isAmoled ? "#888888" : theme.textMuted)} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
-                <Sticker size={20} color={isAmoled ? "#888888" : theme.textMuted} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
-                <Smile size={20} color={isAmoled ? "#888888" : theme.textMuted} />
-              </TouchableOpacity>
-              <TextInput 
-                style={[
-                  styles.textInput, 
-                  messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
-                ]} 
-                placeholder={`Message #${name || "chat"}`} 
-                placeholderTextColor={isAmoled ? "#888888" : theme.textMuted}
-                value={inputText}
-                onChangeText={(text) => {
-                  setInputText(text);
-                  const now = Date.now();
-                  if (typingChannelRef.current && user && now - lastTypingSentRef.current > 2000) {
-                    lastTypingSentRef.current = now;
-                    typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { user_id: user.id } });
-                  }
-                }}
-                onKeyPress={(e: any) => {
-                  if (Platform.OS === "web" && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey) { e.preventDefault(); sendMessage(); }
-                }}
-                multiline />
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.circularSendBtn,
-                {
-                  backgroundColor: inputText.trim()
-                    ? (isAmoled ? "#ffffff" : (theme.accent || "#5865F2"))
-                    : (isAmoled ? "#1a1a1a" : (theme.id === "light" ? "#e0e0e0" : "#2b2d31"))
-                }
-              ]}
-              onPress={sendMessage}
-              disabled={!inputText.trim()}
-            >
-              {chatSettings?.send_button_emoji ? (
-                <Text style={{ fontSize: 20 }}>{chatSettings.send_button_emoji}</Text>
-              ) : (
-                <Send
-                  size={19}
-                  color={
-                    inputText.trim()
-                      ? (isAmoled ? "#000000" : "#ffffff")
-                      : (isAmoled ? "#444444" : theme.textMuted)
-                  }
-                  style={{ marginLeft: 2 }}
-                />
-              )}
-            </TouchableOpacity>
+            {isRecordingVoice ? (
+              <VoiceRecorder onSendAudio={handleSendVoiceMessage} onCancel={() => setIsRecordingVoice(false)} />
+            ) : (
+              <>
+                <View style={[
+                  styles.inputWrapper, 
+                  showWallpaper && { backgroundColor: "rgba(56,58,64,0.85)" },
+                  (theme.id === 'light' || theme.id === 'pink') && !showWallpaper && !isAmoled && { backgroundColor: theme.surface }
+                ]}>
+                  <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
+                    {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#ffffff" : "#fff"} /> : <Plus size={18} color={isAmoled ? "#ffffff" : "#fff"} />}
+                  </TouchableOpacity>
+                  {Platform.OS === "web" && (
+                    <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                  )}
+                  <TouchableOpacity style={styles.inputIconButton} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
+                    <Type size={19} color={fontPickerOpen ? (isAmoled ? "#ffffff" : theme.accent) : (isAmoled ? "#888888" : theme.textMuted)} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
+                    <Sticker size={20} color={isAmoled ? "#888888" : theme.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
+                    <Smile size={20} color={isAmoled ? "#888888" : theme.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.inputIconButton} onPress={() => setIsRecordingVoice(true)}>
+                    <Mic size={20} color={isAmoled ? "#888888" : theme.textMuted} />
+                  </TouchableOpacity>
+                  <TextInput 
+                    style={[
+                      styles.textInput, 
+                      messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
+                    ]} 
+                    placeholder={`Message #${name || "chat"}`} 
+                    placeholderTextColor={isAmoled ? "#888888" : theme.textMuted}
+                    value={inputText}
+                    onChangeText={(text) => {
+                      setInputText(text);
+                      const now = Date.now();
+                      if (typingChannelRef.current && user && now - lastTypingSentRef.current > 2000) {
+                        lastTypingSentRef.current = now;
+                        typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { user_id: user.id } });
+                      }
+                    }}
+                    onKeyPress={(e: any) => {
+                      if (Platform.OS === "web" && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey) { e.preventDefault(); sendMessage(); }
+                    }}
+                    multiline />
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.circularSendBtn,
+                    {
+                      backgroundColor: inputText.trim()
+                        ? (isAmoled ? "#ffffff" : (theme.accent || "#5865F2"))
+                        : (isAmoled ? "#1a1a1a" : (theme.id === "light" ? "#e0e0e0" : "#2b2d31"))
+                    }
+                  ]}
+                  onPress={sendMessage}
+                  disabled={!inputText.trim()}
+                >
+                  {chatSettings?.send_button_emoji ? (
+                    <Text style={{ fontSize: 20 }}>{chatSettings.send_button_emoji}</Text>
+                  ) : (
+                    <Send
+                      size={18}
+                      color={
+                        inputText.trim()
+                          ? (isAmoled ? "#000000" : "#ffffff")
+                          : (isAmoled ? "#555555" : (theme.id === "light" ? "#a0a0a0" : "#5d6269"))
+                      }
+                      style={{ marginLeft: 2 }}
+                    />
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </KeyboardAvoidingView>
                 {stickerPickerOpen && (
@@ -1067,6 +1100,9 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           <Image source={{ uri: item.text }} style={styles.inlineImage} resizeMode="cover" />
         </TouchableOpacity>
       );
+    }
+    if (item.type === "audio") {
+      return <AudioPlayerBubble audioUrl={item.text} isMe={item.isMe} />;
     }
     const activeFont = item.custom_font || chatSettings?.font_family;
     return (

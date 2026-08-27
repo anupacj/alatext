@@ -48,6 +48,24 @@ export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mi
   return `${R2_PUBLIC_URL}/${fileName}`;
 };
 
+export const uploadAudioBlobToR2 = async (chatId: string, blob: Blob, mimeType: string): Promise<string> => {
+  if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT) {
+    throw new Error("R2 credentials are not configured in .env");
+  }
+  const ext = mimeType.includes("webm") ? "webm" : (mimeType.includes("mp4") ? "mp4" : "ogg");
+  const fileName = `voice-messages/${chatId}-${Date.now()}.${ext}`;
+  const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || "alatext";
+  const uploadUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
+  const arrayBuffer = await blob.arrayBuffer();
+  const response = await aws.fetch(uploadUrl.toString(), {
+    method: "PUT",
+    body: arrayBuffer,
+    headers: { "Content-Type": mimeType },
+  });
+  if (!response.ok) throw new Error(`Audio upload failed: ${response.statusText}`);
+  return `${R2_PUBLIC_URL}/${fileName}`;
+};
+
 export const deleteFileFromR2ByUrl = async (publicUrl: string) => {
   if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT || !publicUrl.startsWith(R2_PUBLIC_URL)) return;
   const fileName = publicUrl.replace(`${R2_PUBLIC_URL}/`, '');
