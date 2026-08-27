@@ -58,7 +58,7 @@ export default function Layout() {
       <ThemeProvider>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#313338' } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="chat" options={{ headerShown: false }} />
+          <Stack.Screen name="chat" options={{ headerShown: false, animation: 'slide_from_right' }} />
           <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
         </Stack>
       </ThemeProvider>
