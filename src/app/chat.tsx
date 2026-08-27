@@ -8,7 +8,7 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -118,6 +118,28 @@ export default function ChatScreen() {
   const [customAlert, setCustomAlert] = useState<any>(null);
   const [pingVisible, setPingVisible] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [pinnedMessage, setPinnedMessage] = useState<{ id: string; text: string; sender: string } | null>(null);
+
+  const handlePinMessage = useCallback(async (msg: Message | null) => {
+    const pinData = msg ? { id: msg.id, text: msg.text, sender: msg.sender } : null;
+    setPinnedMessage(pinData);
+
+    if (typingChannelRef.current) {
+      typingChannelRef.current.send({
+        type: "broadcast",
+        event: "pin_update",
+        payload: { pinnedMessage: pinData },
+      });
+    }
+
+    if (id) {
+      if (pinData) {
+        await AsyncStorage.setItem(`chat_${id}_pinned`, JSON.stringify(pinData));
+      } else {
+        await AsyncStorage.removeItem(`chat_${id}_pinned`);
+      }
+    }
+  }, [id]);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
@@ -155,6 +177,8 @@ export default function ChatScreen() {
       try {
         const cachedSettings = await AsyncStorage.getItem(`chat_${id}_settings`);
         if (cachedSettings) setChatSettings(JSON.parse(cachedSettings));
+        const cachedPin = await AsyncStorage.getItem(`chat_${id}_pinned`);
+        if (cachedPin) setPinnedMessage(JSON.parse(cachedPin));
       } catch (e) {}
 
       const { data: mySettings } = await supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).single();
@@ -277,6 +301,9 @@ export default function ChatScreen() {
         if (Platform.OS === "web") {
           alert(`📢 Response from ${responder}:\n"${choice}" for "${title}"`);
         }
+      })
+      .on("broadcast", { event: "pin_update" }, (payload) => {
+        setPinnedMessage(payload.payload.pinnedMessage || null);
       }).subscribe();
     typingChannelRef.current = tChannel;
 
@@ -591,9 +618,10 @@ export default function ChatScreen() {
         hoveredMsg={hoveredMsg} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
         setEditingMsgId={setEditingMsgId} setInputText={setInputText} deleteMessage={deleteMessage}
         handleApplyWallpaper={handleApplyWallpaper} setSettingsVisible={setSettingsVisible} setImageViewerUrl={setImageViewerUrl}
+        handlePinMessage={handlePinMessage}
       />
     );
-  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage]);
+  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage]);
 
 
   return (
@@ -735,6 +763,37 @@ export default function ChatScreen() {
               ListFooterComponent={loadingOlder ? <ActivityIndicator color={isAmoled ? "#ffffff" : "#5865F2"} style={{ paddingVertical: 12 }} /> : null} />
           )}
           <View style={[styles.inputArea, showWallpaper && { backgroundColor: "transparent" }]}>
+            {pinnedMessage && (
+              <View style={[
+                styles.replyBanner,
+                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: '#222' } :
+                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.75)', borderColor: 'rgba(255,255,255,0.12)' } :
+                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(0,0,0,0.08)' } :
+                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.9)', borderColor: 'rgba(131,24,67,0.12)' } :
+                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+              ]}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}
+                  onPress={() => {
+                    const idx = messages.findIndex(m => m.id === pinnedMessage.id);
+                    if (idx !== -1 && flatListRef.current) {
+                      flatListRef.current.scrollToIndex({ index: idx, animated: true });
+                    }
+                  }}
+                >
+                  <Pin size={16} color={theme.accent} style={{ marginRight: 8 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.replyBannerSender, { color: theme.accent }]}>Pinned Message • {pinnedMessage.sender}</Text>
+                    <Text style={[styles.replyBannerText, { color: isAmoled ? "#aaaaaa" : theme.textMuted }]} numberOfLines={1}>
+                      {pinnedMessage.text}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handlePinMessage(null)} style={{ padding: 4 }}>
+                  <X size={16} color={isAmoled ? "#888888" : theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+            )}
             {isTyping && targetUser && (
               <View style={[
                 styles.typingBanner,
@@ -1214,7 +1273,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
 
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, isAmoled, styles, theme }: any) => {
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme }: any) => {
   const isNew = index === 0;
   const scale = useSharedValue(isNew ? 0.8 : 1);
   const opacity = useSharedValue(isNew ? 0 : 1);
@@ -1382,6 +1441,9 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             <View style={[styles.messageActions, item.isMe ? { right: '100%', marginRight: 8, top: 0 } : { left: '100%', marginLeft: 8, top: 0, right: 'auto' }]}>
               <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
                 <Reply size={16} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { handlePinMessage(item); setHoveredMsg(null); }} style={styles.actionIcon}>
+                <Pin size={16} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} />
               </TouchableOpacity>
               {item.isMe && (
                 <>
