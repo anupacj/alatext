@@ -655,61 +655,90 @@ export default function ChatScreen() {
               onEndReached={loadOlderMessages} onEndReachedThreshold={0.3}
               ListFooterComponent={loadingOlder ? <ActivityIndicator color={isAmoled ? "#ffffff" : "#5865F2"} style={{ paddingVertical: 12 }} /> : null} />
           )}
-          {isTyping && targetUser && (
-            <View style={styles.typingBanner}><Text style={styles.typingText}>{targetUser.username} is typing<SendingDots /></Text></View>
-          )}
-          {replyingTo && (
-            <View style={styles.replyBanner}>
-              <Reply size={16} color={isAmoled ? "#ffffff" : "#5865F2"} style={{ marginRight: 8 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.replyBannerSender}>{replyingTo.sender}</Text>
-                {replyingTo.text?.startsWith("http") ? (
-                  <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
-                ) : (
-                  <Text style={styles.replyBannerText} numberOfLines={1}>{replyingTo.text}</Text>
-                )}
+          <View style={[styles.inputArea, showWallpaper && { backgroundColor: "transparent" }]}>
+            {isTyping && targetUser && (
+              <View style={[
+                styles.typingBanner,
+                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: '#222' } :
+                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.75)', borderColor: 'rgba(255,255,255,0.12)' } :
+                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(0,0,0,0.08)' } :
+                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.9)', borderColor: 'rgba(131,24,67,0.12)' } :
+                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+              ]}>
+                <Text style={[styles.typingText, { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") }]}>
+                  {targetUser.username} is typing<SendingDots />
+                </Text>
               </View>
-              <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
-            </View>
-          )}
-          {editingMsgId && (
-            <View style={styles.editingBanner}>
-              <Text style={styles.editingBannerText}>Editing Message</Text>
-              <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
-            </View>
-          )}
-          {fontPickerOpen && (
-            <View style={{ backgroundColor: "#2b2d31", padding: 12, marginHorizontal: 16, borderTopLeftRadius: 8, borderTopRightRadius: 8, elevation: 4 }}>
-              <Text style={{ color: "#dbdee1", fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Select Font for this Message</Text>
-              <FlatList
-                horizontal
-                data={FONT_OPTIONS}
-                keyExtractor={(item) => item.value}
-                showsHorizontalScrollIndicator={false}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={{
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      backgroundColor: messageFont === item.value ? "#5865F2" : "#383a40",
-                      borderRadius: 16,
-                      marginRight: 8,
-                    }}
-                    onPress={() => setMessageFont(item.value)}
-                  >
-                    <Text style={{ 
-                      color: messageFont === item.value ? "#fff" : "#dbdee1", 
-                      fontFamily: item.value === "system" ? undefined : item.value 
-                    }}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              />
-            </View>
-          )}
+            )}
 
-          <View style={[styles.inputArea, showWallpaper && { backgroundColor: "transparent" }, fontPickerOpen && { paddingTop: 8 }]}>
+            {replyingTo && (
+              <View style={[
+                styles.replyBanner,
+                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: '#222' } :
+                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.75)', borderColor: 'rgba(255,255,255,0.12)' } :
+                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(0,0,0,0.08)' } :
+                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.9)', borderColor: 'rgba(131,24,67,0.12)' } :
+                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+              ]}>
+                <Reply size={16} color={isAmoled ? "#ffffff" : theme.accent} style={{ marginRight: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.replyBannerSender, { color: theme.accent }]}>{replyingTo.sender}</Text>
+                  {replyingTo.text?.startsWith("http") ? (
+                    <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
+                  ) : (
+                    <Text style={[styles.replyBannerText, { color: isAmoled ? "#aaaaaa" : theme.textMuted }]} numberOfLines={1}>{replyingTo.text}</Text>
+                  )}
+                </View>
+                <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
+              </View>
+            )}
+
+            {editingMsgId && (
+              <View style={[
+                styles.editingBanner,
+                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: '#222' } :
+                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.75)', borderColor: 'rgba(255,255,255,0.12)' } :
+                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(0,0,0,0.08)' } :
+                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.9)', borderColor: 'rgba(131,24,67,0.12)' } :
+                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+              ]}>
+                <Text style={[styles.editingBannerText, { color: isAmoled ? "#ffffff" : theme.text }]}>Editing Message</Text>
+                <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
+              </View>
+            )}
+
+            {fontPickerOpen && (
+              <View style={{ backgroundColor: isAmoled ? "#111" : theme.surface, padding: 12, borderRadius: 16, marginBottom: 8, elevation: 4, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+                <Text style={{ color: isAmoled ? "#aaa" : theme.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Select Font for this Message</Text>
+                <FlatList
+                  horizontal
+                  data={FONT_OPTIONS}
+                  keyExtractor={(item) => item.value}
+                  showsHorizontalScrollIndicator={false}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        backgroundColor: messageFont === item.value ? theme.accent : (isAmoled ? "#222" : "rgba(255,255,255,0.08)"),
+                        borderRadius: 16,
+                        marginRight: 8,
+                      }}
+                      onPress={() => setMessageFont(item.value)}
+                    >
+                      <Text style={{ 
+                        color: messageFont === item.value ? "#fff" : (isAmoled ? "#ddd" : theme.text), 
+                        fontFamily: item.value === "system" ? undefined : item.value 
+                      }}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            )}
+
+            <View style={styles.inputAreaRow}>
             {isRecordingVoice ? (
               <VoiceRecorder onSendAudio={handleSendVoiceMessage} onCancel={() => setIsRecordingVoice(false)} />
             ) : (
@@ -972,26 +1001,64 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   replyQuoteText: { color: textMuted, fontSize: 13 },
   messageActions: { position: "absolute", top: -12, right: 10, backgroundColor: surface, borderRadius: 8, padding: 4, flexDirection: "row", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
   actionIcon: { padding: 6 },
-  typingBanner: { paddingHorizontal: 24, paddingBottom: 4 },
-  typingText: { color: textMuted, fontSize: 13, fontStyle: "italic" },
-  replyBanner: { flexDirection: "row", alignItems: "center", backgroundColor: surface, paddingHorizontal: 16, paddingVertical: 10, marginHorizontal: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, borderLeftWidth: 3, borderLeftColor: accent },
-  replyBannerSender: { color: accent, fontSize: 12, fontWeight: "700" },
-  replyBannerText: { color: textMuted, fontSize: 13 },
-  editingBanner: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: surface, paddingHorizontal: 16, paddingVertical: 8, marginHorizontal: 16, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
-  editingBannerText: { color: textMuted, fontSize: 14, fontWeight: "bold" },
+  typingBanner: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 6,
+    marginLeft: 4,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+    backdropFilter: "blur(16px)",
+  } as any,
+  typingText: { fontSize: 13, fontStyle: "italic", fontWeight: "500" },
+  replyBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginBottom: 6,
+    borderLeftWidth: 3,
+    borderWidth: 1,
+    backdropFilter: "blur(16px)",
+  } as any,
+  replyBannerSender: { fontSize: 12, fontWeight: "700" },
+  replyBannerText: { fontSize: 13 },
+  editingBanner: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginBottom: 6,
+    borderWidth: 1,
+    backdropFilter: "blur(16px)",
+  } as any,
+  editingBannerText: { fontSize: 14, fontWeight: "bold" },
   inputArea: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: "row",
-    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 10,
     paddingBottom: Platform.OS === "ios" ? 24 : 12,
     backgroundColor: "transparent",
-    gap: 10,
     zIndex: 50,
+  },
+  inputAreaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   inputWrapper: {
     flex: 1,
