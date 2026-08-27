@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Vibration,
   Platform,
 } from "react-native";
-import { ShieldCheck, Delete, Lock, KeyRound } from "lucide-react-native";
+import { ShieldCheck, Lock, KeyRound, X } from "lucide-react-native";
 import { useAlaPin } from "../context/AlaPinContext";
 import { useTheme } from "../context/ThemeContext";
 
@@ -141,7 +141,7 @@ export default function AlaPinLockScreen() {
             onPress={handleDelete}
             activeOpacity={0.7}
           >
-            <Delete size={22} color={isAmoled ? "#ffffff" : theme.text} />
+            <X size={22} color={isAmoled ? "#ffffff" : theme.text} />
           </TouchableOpacity>
         </View>
       </View>
