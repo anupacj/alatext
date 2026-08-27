@@ -816,6 +816,7 @@ export default function ChatScreen() {
               </>
             )}
           </View>
+        </View>
         </KeyboardAvoidingView>
                 {stickerPickerOpen && (
           <StickerPicker 
@@ -885,7 +886,6 @@ export default function ChatScreen() {
         </View>
       </Modal>
     </View>
-  </View>
   );
 }
 
