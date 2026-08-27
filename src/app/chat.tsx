@@ -459,8 +459,7 @@ export default function ChatScreen() {
           ) : null}
         </View>
       )}
-      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
-        <View style={[styles.container, { backgroundColor: "transparent" }]}>
+      <View style={[styles.container, { backgroundColor: "transparent" }]}>
         {/* 3 Separate Floating glassmorphism pills */}
         <View style={styles.floatingHeaderWrapper}>
           {/* 1. Left Back Button Pill */}
@@ -758,7 +757,6 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
     </View>
   );
 }
@@ -784,7 +782,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 10,
-    paddingTop: Platform.OS === "ios" ? 6 : 10,
+    paddingTop: Platform.OS === "ios" ? 44 : 36,
     paddingBottom: 6,
     zIndex: 50,
     gap: 8,
@@ -841,7 +839,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   hashCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: inputBg, justifyContent: "center", alignItems: "center", marginBottom: 16 },
   welcomeTitle: { color: text, fontSize: 24, fontWeight: "bold", marginBottom: 8 },
   welcomeSubtitle: { color: textMuted, fontSize: 16 },
-  listContainer: { paddingHorizontal: 16, paddingTop: 80, paddingBottom: 76 },
+  listContainer: { paddingHorizontal: 16, paddingTop: 84, paddingBottom: 110 },
   messageContainer: { flexDirection: "row", marginBottom: 18 },
   messageContainerLeft: { justifyContent: "flex-start" },
   messageContainerRight: { justifyContent: "flex-end" },
