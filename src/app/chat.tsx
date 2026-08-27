@@ -99,30 +99,6 @@ export default function ChatScreen() {
   const typingChannelRef = useRef<any>(null);
   const fileInputRef = useRef<any>(null);
 
-  const screenWidth = Dimensions.get('window').width;
-  const slideAnim = useRef(new RNAnimated.Value(screenWidth)).current;
-
-  useEffect(() => {
-    RNAnimated.timing(slideAnim, {
-      toValue: 0,
-      duration: 250,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, []);
-
-  const handleGoBack = useCallback(() => {
-    RNAnimated.timing(slideAnim, {
-      toValue: screenWidth,
-      duration: 200,
-      easing: Easing.in(Easing.cubic),
-      useNativeDriver: false,
-    }).start(() => {
-      if (router.canGoBack()) router.back();
-      else router.replace("/");
-    });
-  }, [router, screenWidth, slideAnim]);
-
   const formatMsg = useCallback((msg: any): Message => {
     const ts = new Date(msg.created_at).getTime();
     return {
@@ -472,7 +448,7 @@ export default function ChatScreen() {
 
 
   return (
-    <RNAnimated.View style={{ flex: 1, backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), transform: [{ translateX: slideAnim }] }}>
+    <View style={{ flex: 1, backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }}>
       {showWallpaper && (
         <View style={StyleSheet.absoluteFill}>
           <Image source={{ uri: chatSettings!.wallpaper_url }}
@@ -488,7 +464,7 @@ export default function ChatScreen() {
         <View style={styles.floatingHeaderWrapper}>
           {/* 1. Left Back Button Pill */}
           <TouchableOpacity
-            onPress={handleGoBack}
+            onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
             style={[
               styles.headerPill,
               styles.headerBackPill,
@@ -781,7 +757,7 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
-    </RNAnimated.View>
+    </View>
   );
 }
 
