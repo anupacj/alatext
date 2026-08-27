@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
   Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
-  LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder
+  LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder,
+  Animated as RNAnimated, Easing, Dimensions
 } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
@@ -96,8 +97,31 @@ export default function ChatScreen() {
   const typingTimeoutRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
   const typingChannelRef = useRef<any>(null);
-  const profileCache = useRef<Map<string, any>>(new Map());
   const fileInputRef = useRef<any>(null);
+
+  const screenWidth = Dimensions.get('window').width;
+  const slideAnim = useRef(new RNAnimated.Value(screenWidth)).current;
+
+  useEffect(() => {
+    RNAnimated.timing(slideAnim, {
+      toValue: 0,
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, []);
+
+  const handleGoBack = useCallback(() => {
+    RNAnimated.timing(slideAnim, {
+      toValue: screenWidth,
+      duration: 200,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: false,
+    }).start(() => {
+      if (router.canGoBack()) router.back();
+      else router.replace("/");
+    });
+  }, [router, screenWidth, slideAnim]);
 
   const formatMsg = useCallback((msg: any): Message => {
     const ts = new Date(msg.created_at).getTime();
@@ -448,7 +472,7 @@ export default function ChatScreen() {
 
 
   return (
-    <View style={{ flex: 1, backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }}>
+    <RNAnimated.View style={{ flex: 1, backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), transform: [{ translateX: slideAnim }] }}>
       {showWallpaper && (
         <View style={StyleSheet.absoluteFill}>
           <Image source={{ uri: chatSettings!.wallpaper_url }}
@@ -464,7 +488,7 @@ export default function ChatScreen() {
         <View style={styles.floatingHeaderWrapper}>
           {/* 1. Left Back Button Pill */}
           <TouchableOpacity
-            onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
+            onPress={handleGoBack}
             style={[
               styles.headerPill,
               styles.headerBackPill,
@@ -757,7 +781,7 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </RNAnimated.View>
   );
 }
 
