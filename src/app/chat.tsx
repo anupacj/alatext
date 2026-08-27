@@ -97,6 +97,7 @@ export default function ChatScreen() {
   const typingTimeoutRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
   const typingChannelRef = useRef<any>(null);
+  const profileCache = useRef<Map<string, any>>(new Map());
   const fileInputRef = useRef<any>(null);
 
   const formatMsg = useCallback((msg: any): Message => {
