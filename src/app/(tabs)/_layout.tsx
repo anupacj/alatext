@@ -13,11 +13,11 @@ export default function TabsLayout() {
         tabBarShowLabel: false,
         tabBarActiveTintColor: theme.text,
         tabBarInactiveTintColor: theme.textMuted,
+        tabBarSafeAreaInsets: { bottom: 0, top: 0, left: 0, right: 0 },
         tabBarStyle: [
           styles.tabBar,
           {
             backgroundColor: theme.border,
-            bottom: Platform.OS === 'web' ? 16 : (Platform.OS === 'ios' ? 20 : 16),
           }
         ],
         tabBarItemStyle: styles.tabBarItem,
@@ -50,9 +50,9 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    bottom: 16,
+    bottom: Platform.OS === 'ios' ? 24 : 20,
     left: '50%',
-    transform: [{ translateX: Platform.OS === 'web' ? -100 : ('-50%' as any) }],
+    marginLeft: -100,
     width: 200,
     height: 56,
     borderRadius: 28,
@@ -65,13 +65,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 0,
   },
   tabBarItem: {
     flex: 1,
     height: 56,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 0,
+    margin: 0,
   },
   iconContainer: {
     width: 44,
