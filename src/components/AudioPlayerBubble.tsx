@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator } from "react-native";
 import { Play, Pause, Volume2 } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
@@ -23,13 +23,16 @@ export default function AudioPlayerBubble({ audioUrl, isMe }: AudioPlayerBubbleP
       audioRef.current = audio;
 
       const handleLoadedData = () => {
-        if (audio.duration && !isNaN(audio.duration)) {
+        if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
           setDuration(audio.duration);
         }
       };
 
       const handleTimeUpdate = () => {
         setCurrentTime(audio.currentTime);
+        if ((!duration || !isFinite(duration)) && audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+          setDuration(audio.duration);
+        }
       };
 
       const handleEnded = () => {
@@ -38,17 +41,19 @@ export default function AudioPlayerBubble({ audioUrl, isMe }: AudioPlayerBubbleP
       };
 
       audio.addEventListener("loadeddata", handleLoadedData);
+      audio.addEventListener("loadedmetadata", handleLoadedData);
       audio.addEventListener("timeupdate", handleTimeUpdate);
       audio.addEventListener("ended", handleEnded);
 
       return () => {
         audio.pause();
         audio.removeEventListener("loadeddata", handleLoadedData);
+        audio.removeEventListener("loadedmetadata", handleLoadedData);
         audio.removeEventListener("timeupdate", handleTimeUpdate);
         audio.removeEventListener("ended", handleEnded);
       };
     }
-  }, [audioUrl]);
+  }, [audioUrl, duration]);
 
   const togglePlayPause = () => {
     if (!audioRef.current) return;
@@ -71,7 +76,7 @@ export default function AudioPlayerBubble({ audioUrl, isMe }: AudioPlayerBubbleP
   };
 
   const formatTime = (secs: number) => {
-    if (isNaN(secs) || secs < 0) return "0:00";
+    if (!secs || isNaN(secs) || !isFinite(secs) || secs < 0) return "0:00";
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s < 10 ? "0" : ""}${s}`;

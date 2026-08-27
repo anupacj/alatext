@@ -34,22 +34,26 @@ export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mi
   if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT) {
     throw new Error("R2 credentials are not configured in .env");
   }
-  const fileExt = mimeType.split("/")[1] || "jpeg";
-  const fileName = `${pathPrefix}.${fileExt}`;
+  const cleanMime = mimeType.split(";")[0].trim();
+  let rawExt = cleanMime.split("/")[1] || "jpeg";
+  if (rawExt.includes("webm")) rawExt = "webm";
+  if (rawExt.includes("mp4")) rawExt = "mp4";
+  if (rawExt.includes("ogg")) rawExt = "ogg";
+  const fileName = `${pathPrefix}.${rawExt}`;
   const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || "alatext";
   const uploadUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
   const arrayBuffer = decode(base64Data);
   const response = await aws.fetch(uploadUrl.toString(), {
     method: "PUT",
     body: arrayBuffer,
-    headers: { "Content-Type": mimeType },
+    headers: { "Content-Type": cleanMime },
   });
   if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
   return `${R2_PUBLIC_URL}/${fileName}`;
 };
 
 export const uploadAudioToR2 = async (chatId: string, base64Data: string, mimeType: string): Promise<string> => {
-  const cleanMime = mimeType.split(";")[0] || "audio/webm";
+  const cleanMime = mimeType.split(";")[0].trim() || "audio/webm";
   return uploadImageToR2(`voice-messages/${chatId}-${Date.now()}`, base64Data, cleanMime);
 };
 
