@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator } from "react-native";
 import { Mic, Trash2, Send, Square } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
@@ -101,6 +101,11 @@ export default function VoiceRecorder({ onSendAudio, onCancel }: VoiceRecorderPr
       }
     };
 
+    try {
+      if (recorder.state === "recording") {
+        recorder.requestData();
+      }
+    } catch (e) {}
     recorder.stop();
   };
 

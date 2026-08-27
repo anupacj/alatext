@@ -441,6 +441,32 @@ export default function ChatScreen() {
 
   const handleSendVoiceMessage = useCallback(async (blob: Blob, mimeType: string) => {
     if (!id || !user) return;
+    setIsRecordingVoice(false);
+
+    const localAudioUrl = Platform.OS === "web" ? URL.createObjectURL(blob) : "";
+    const tempId = `temp-${Date.now()}`;
+    const curReply = replyingTo;
+    setReplyingTo(null);
+
+    const tempMsg: Message = {
+      id: tempId,
+      sender: user.user_metadata?.username || "Me",
+      sender_id: user.id,
+      text: localAudioUrl,
+      type: "audio",
+      created_at: new Date().toISOString(),
+      created_at_ts: Date.now(),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      avatar: user.user_metadata?.avatar_url || "https://ui-avatars.com/api/?name=U",
+      isMe: true,
+      status: "sending",
+      reply_to_id: curReply?.id || null,
+      reply_to_content: curReply?.text || null,
+      reply_to_sender: curReply?.sender || null,
+    };
+
+    setMessages(prev => [tempMsg, ...prev]);
+
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
@@ -449,27 +475,33 @@ export default function ChatScreen() {
           const cleanBase64 = resultStr.includes(",") ? resultStr.split(",")[1] : resultStr;
           const publicUrl = await uploadAudioToR2(id as string, cleanBase64, mimeType);
           
-          await supabase.from("messages").insert({
+          const { data, error } = await supabase.from("messages").insert({
             chat_id: id,
             sender_id: user.id,
             content: publicUrl,
             type: "audio",
-            reply_to_id: replyingTo?.id || null,
-            reply_to_content: replyingTo?.text || null,
-            reply_to_sender: replyingTo?.sender || null,
-          });
-          setReplyingTo(null);
-          setIsRecordingVoice(false);
+            reply_to_id: curReply?.id || null,
+            reply_to_content: curReply?.text || null,
+            reply_to_sender: curReply?.sender || null,
+          }).select("id").single();
+
+          if (error) {
+            console.error("Voice insert failed:", error);
+            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "failed" } : m));
+          } else if (data) {
+            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.id, text: publicUrl, status: "sent" } : m));
+          }
         } catch (err: any) {
           console.error("Voice upload error:", err);
-          alert("Failed to send voice message: " + (err.message || err));
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "failed" } : m));
         }
       };
       reader.readAsDataURL(blob);
     } catch (e: any) {
       console.error("FileReader error:", e);
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "failed" } : m));
     }
-  }, [id, user?.id, replyingTo]);
+  }, [id, user, replyingTo]);
 
   // Escape key handler to exit chat to home or close active modals
   useEffect(() => {
