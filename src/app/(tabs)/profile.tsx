@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image, Modal, ScrollView } from 'react-native';
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import { Settings, User, Camera, LogOut, X, Bell, Palette, Check, Smartphone, Download, Maximize2, Minimize2 } from 'lucide-react-native';
+import { Settings, User, Camera, LogOut, X, Bell, Palette, Check, Smartphone, Download, Maximize2, Minimize2, ShieldCheck } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadAvatarToR2 } from '../../lib/r2';
+import AlaPinSettingsModal from '../../components/AlaPinSettingsModal';
 
 const THEME_OPTIONS = [
   { id: 'dark', label: 'Dark', color: '#313338', textColor: '#f2f3f5' },
@@ -24,6 +25,7 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [editName, setEditName] = useState('');
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [alaPinModalVisible, setAlaPinModalVisible] = useState(false);
   const [notificationPref, setNotificationPref] = useState('concealed_limited');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -375,10 +377,35 @@ export default function Profile() {
                     </Text>
                   </TouchableOpacity>
                 </View>
+                {/* ALAPIN SECURITY */}
+                <View style={styles.modalSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <ShieldCheck size={18} color={theme.accent} />
+                    <Text style={styles.sectionHeader}>Security & Passcode</Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.prefCard]}
+                    onPress={() => {
+                      setSettingsModalVisible(false);
+                      setTimeout(() => setAlaPinModalVisible(true), 200);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.prefTitle, { color: theme.text }]}>🔒 AlaPin Security (Passcode & Decoy PIN)</Text>
+                      <ShieldCheck size={16} color={theme.accent} />
+                    </View>
+                    <Text style={[styles.prefSubtext, { color: theme.textMuted }]}>
+                      Configure 4-digit passcode protection and stealth Decoy PIN mode.
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
             </View>
           </View>
         </Modal>
+
+        <AlaPinSettingsModal visible={alaPinModalVisible} onClose={() => setAlaPinModalVisible(false)} />
       </View>
     </SafeAreaView>
   );

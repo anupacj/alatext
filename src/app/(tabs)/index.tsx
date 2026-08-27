@@ -7,17 +7,19 @@ import { useRouter } from "expo-router";
 import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
-import { useTheme } from "../../context/ThemeContext";
-import { useAuth } from "../../context/AuthContext";
+import { useAlaPin } from "../../context/AlaPinContext";
 
 export default function Home() {
   const { theme } = useTheme();
+  const { isDecoyMode } = useAlaPin();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const { user } = useAuth();
   const [chats, setChats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+
+  const displayedChats = isDecoyMode ? [] : chats;
   const [mode, setMode] = useState<"dm" | "group">("dm");
   const [searchUsername, setSearchUsername] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -251,14 +253,14 @@ export default function Home() {
         </View>
         {loading ? (
           <View style={styles.centerContainer}><ActivityIndicator size="large" color={theme.accent} /></View>
-        ) : chats.length === 0 ? (
+        ) : displayedChats.length === 0 ? (
           <View style={styles.centerContainer}>
             <MessageSquare size={64} color={theme.textMuted} />
             <Text style={styles.emptyText}>No chats yet</Text>
             <Text style={styles.emptySubtext}>Tap the + button to start texting!</Text>
           </View>
         ) : (
-          <FlatList data={chats} keyExtractor={item => item.id} renderItem={renderItem}
+          <FlatList data={displayedChats} keyExtractor={item => item.id} renderItem={renderItem}
             contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={false} />
         )}
         <TouchableOpacity style={styles.fab} activeOpacity={0.8} onPress={() => setModalVisible(true)}>

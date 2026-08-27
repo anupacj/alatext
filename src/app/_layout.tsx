@@ -5,6 +5,9 @@ import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { Platform } from 'react-native';
 
+import { AlaPinProvider } from '../context/AlaPinContext';
+import AlaPinLockScreen from '../components/AlaPinLockScreen';
+
 SplashScreen.preventAutoHideAsync();
 
 export default function Layout() {
@@ -56,11 +59,14 @@ export default function Layout() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#313338' } }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="chat" options={{ headerShown: false, animation: 'fade' }} />
-          <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
-        </Stack>
+        <AlaPinProvider>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#313338' } }}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="chat" options={{ headerShown: false, animation: 'fade' }} />
+            <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
+          </Stack>
+          <AlaPinLockScreen />
+        </AlaPinProvider>
       </ThemeProvider>
     </AuthProvider>
   );
