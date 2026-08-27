@@ -75,29 +75,39 @@ export default function ChatInfoModal({
         setGroupName(chat.name || "Group Chat");
       }
 
-      // 2. Fetch participants with profile info (robust 2-step fetch)
+      // 2. Fetch participants with joined profiles + fallback map
       const { data: parts } = await supabase
         .from("chat_participants")
-        .select("user_id")
+        .select("user_id, profiles(id, username, display_name, avatar_url, bio, updated_at)")
         .eq("chat_id", chatId);
 
       if (parts && parts.length > 0) {
-        const userIds = parts.map((p: any) => p.user_id);
-        const { data: profs } = await supabase
-          .from("profiles")
-          .select("id, username, display_name, avatar_url, bio, updated_at")
-          .in("id", userIds);
+        const userIds = parts.map((p: any) => p.user_id).filter(Boolean);
 
-        const profMap = new Map((profs || []).map((p: any) => [p.id, p]));
+        // Backup direct query for any missing profile joins
+        let profMap = new Map();
+        try {
+          const { data: profs } = await supabase
+            .from("profiles")
+            .select("id, username, display_name, avatar_url, bio, updated_at")
+            .in("id", userIds);
+          if (profs && profs.length > 0) {
+            profs.forEach((pr: any) => profMap.set(pr.id, pr));
+          }
+        } catch (e) {}
+
         const formatted = parts.map((p: any) => {
-          const pr = profMap.get(p.user_id) || {};
+          const joined = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
+          const direct = profMap.get(p.user_id);
+          const pr = joined || direct || {};
+
           return {
             user_id: p.user_id,
             username: pr.username || "user",
-            display_name: pr.display_name,
-            avatar_url: pr.avatar_url,
-            bio: pr.bio,
-            updated_at: pr.updated_at,
+            display_name: pr.display_name || pr.username || "user",
+            avatar_url: pr.avatar_url || null,
+            bio: pr.bio || null,
+            updated_at: pr.updated_at || null,
           };
         });
         setParticipants(formatted);
