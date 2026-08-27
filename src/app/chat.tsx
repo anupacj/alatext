@@ -885,6 +885,7 @@ export default function ChatScreen() {
         </View>
       </Modal>
     </View>
+  </View>
   );
 }
 
