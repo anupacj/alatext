@@ -4,7 +4,7 @@ import {
   SafeAreaView, Platform, ActivityIndicator, Modal, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2 } from "lucide-react-native";
+import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2, Lock } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { useTheme } from "../../context/ThemeContext";
@@ -13,7 +13,7 @@ import { useAlaPin } from "../../context/AlaPinContext";
 
 export default function Home() {
   const { theme } = useTheme();
-  const { isDecoyMode } = useAlaPin();
+  const { isDecoyMode, isPinEnabled, realPin, lockNow } = useAlaPin();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const { user } = useAuth();
@@ -237,6 +237,11 @@ export default function Home() {
             <Text style={styles.headerTitle}>ala chat</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+            {isPinEnabled && !!realPin && (
+              <TouchableOpacity style={styles.iconButton} onPress={lockNow} title="Lock App Now">
+                <Lock size={18} color="#f43f5e" />
+              </TouchableOpacity>
+            )}
             {Platform.OS === 'web' && (
               <TouchableOpacity
                 style={styles.iconButton}

@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: "100%",
     maxWidth: 420,
-    borderRadius: 20,
+    borderRadius: 8,
     padding: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: 8,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     height: 46,
-    borderRadius: 23,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
     marginTop: 8,
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
   lockNowBtn: {
     flexDirection: "row",
     height: 40,
-    borderRadius: 20,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(244,63,94,0.12)",
