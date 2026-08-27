@@ -20,7 +20,7 @@ import ChatInfoModal from "../components/ChatInfoModal";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import { supabase } from "../lib/supabase";
-import { uploadChatImageToR2, uploadAudioBlobToR2 } from "../lib/r2";
+import { uploadChatImageToR2, uploadAudioToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 
@@ -442,23 +442,55 @@ export default function ChatScreen() {
   const handleSendVoiceMessage = useCallback(async (blob: Blob, mimeType: string) => {
     if (!id || !user) return;
     try {
-      const publicUrl = await uploadAudioBlobToR2(id as string, blob, mimeType);
-      await supabase.from("messages").insert({
-        chat_id: id,
-        sender_id: user.id,
-        content: publicUrl,
-        type: "audio",
-        reply_to_id: replyingTo?.id || null,
-        reply_to_content: replyingTo?.text || null,
-        reply_to_sender: replyingTo?.sender || null,
-      });
-      setReplyingTo(null);
-      setIsRecordingVoice(false);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const resultStr = reader.result as string;
+          const cleanBase64 = resultStr.includes(",") ? resultStr.split(",")[1] : resultStr;
+          const publicUrl = await uploadAudioToR2(id as string, cleanBase64, mimeType);
+          
+          await supabase.from("messages").insert({
+            chat_id: id,
+            sender_id: user.id,
+            content: publicUrl,
+            type: "audio",
+            reply_to_id: replyingTo?.id || null,
+            reply_to_content: replyingTo?.text || null,
+            reply_to_sender: replyingTo?.sender || null,
+          });
+          setReplyingTo(null);
+          setIsRecordingVoice(false);
+        } catch (err: any) {
+          console.error("Voice upload error:", err);
+          alert("Failed to send voice message: " + (err.message || err));
+        }
+      };
+      reader.readAsDataURL(blob);
     } catch (e: any) {
-      console.error("Voice upload error:", e);
-      alert("Failed to upload voice message: " + (e.message || e));
+      console.error("FileReader error:", e);
     }
   }, [id, user?.id, replyingTo]);
+
+  // Escape key handler to exit chat to home or close active modals
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape" || e.keyCode === 27) {
+          if (infoVisible) { setInfoVisible(false); return; }
+          if (settingsVisible) { setSettingsVisible(false); return; }
+          if (emojiOpen) { setEmojiOpen(false); return; }
+          if (stickerPickerOpen) { setStickerPickerOpen(false); return; }
+          if (fontPickerOpen) { setFontPickerOpen(false); return; }
+          if (imageViewerUrl) { setImageViewerUrl(null); return; }
+          
+          if (router.canGoBack()) router.back();
+          else router.replace("/");
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [infoVisible, settingsVisible, emojiOpen, stickerPickerOpen, fontPickerOpen, imageViewerUrl, router]);
 
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
