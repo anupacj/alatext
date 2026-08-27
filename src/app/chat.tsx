@@ -448,18 +448,19 @@ export default function ChatScreen() {
 
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={[styles.container, showWallpaper && { backgroundColor: 'transparent' }]}>
-        {showWallpaper && (
-          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
-            <Image source={{ uri: chatSettings!.wallpaper_url }}
-              style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings?.wallpaper_zoom || 1 }] }]}
-              blurRadius={(chatSettings?.wallpaper_blur || 0) * 20} />
-          </View>
-        )}
-        {showWallpaper && (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings?.wallpaper_dim || 0})` }]} />
-        )}
+    <View style={{ flex: 1, backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }}>
+      {showWallpaper && (
+        <View style={StyleSheet.absoluteFill}>
+          <Image source={{ uri: chatSettings!.wallpaper_url }}
+            style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings?.wallpaper_zoom || 1 }] }]}
+            blurRadius={(chatSettings?.wallpaper_blur || 0) * 20} />
+          {chatSettings?.wallpaper_dim ? (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings?.wallpaper_dim || 0})` }]} />
+          ) : null}
+        </View>
+      )}
+      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+        <View style={[styles.container, { backgroundColor: "transparent" }]}>
         {/* 3 Separate Floating glassmorphism pills */}
         <View style={styles.floatingHeaderWrapper}>
           {/* 1. Left Back Button Pill */}
@@ -758,6 +759,7 @@ export default function ChatScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+    </View>
   );
 }
 

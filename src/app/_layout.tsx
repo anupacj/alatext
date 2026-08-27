@@ -16,11 +16,16 @@ export default function Layout() {
       link.rel = "stylesheet";
       document.head.appendChild(link);
 
-      // 2. PWA Manifest Link
+      // 2. PWA Manifest Link & Apple Touch Icon
       const manifestLink = document.createElement("link");
       manifestLink.rel = "manifest";
       manifestLink.href = "/manifest.json";
       document.head.appendChild(manifestLink);
+
+      const appleIconLink = document.createElement("link");
+      appleIconLink.rel = "apple-touch-icon";
+      appleIconLink.href = "/icon.png";
+      document.head.appendChild(appleIconLink);
 
       // 3. Apple & Mobile Standalone Meta Tags (Hides Browser Address Bar)
       const setMeta = (name: string, content: string) => {
@@ -37,7 +42,13 @@ export default function Layout() {
       setMeta("apple-mobile-web-app-capable", "yes");
       setMeta("apple-mobile-web-app-status-bar-style", "black-translucent");
       setMeta("apple-mobile-web-app-title", "AlaText");
+      setMeta("theme-color", "#1e1f22");
       setMeta("viewport", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover");
+
+      // 4. Register PWA Service Worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      }
     }
     SplashScreen.hideAsync();
   }, []);
