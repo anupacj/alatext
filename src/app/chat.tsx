@@ -249,6 +249,12 @@ export default function ChatScreen() {
       })
       .on("broadcast", { event: "custom_alert" }, (payload) => {
         setCustomAlert(payload.payload);
+      })
+      .on("broadcast", { event: "alert_response" }, (payload) => {
+        const { choice, title, responder } = payload.payload;
+        if (Platform.OS === "web") {
+          alert(`📢 Response from ${responder}:\n"${choice}" for "${title}"`);
+        }
       }).subscribe();
     typingChannelRef.current = tChannel;
 
@@ -503,6 +509,38 @@ export default function ChatScreen() {
     }
   }, [id, user, replyingTo]);
 
+  const handleRespondToAlert = useCallback(async (choice: string) => {
+    if (!customAlert || !user || !id) return;
+    const alertId = customAlert.messageId;
+    const alertTitle = customAlert.title || "Custom Alert";
+    const responderName = user.user_metadata?.username || user.email?.split("@")[0] || "User";
+
+    setCustomAlert(null);
+
+    if (alertId) {
+      await supabase.from("messages").delete().eq("id", alertId);
+    }
+
+    if (typingChannelRef.current) {
+      typingChannelRef.current.send({
+        type: "broadcast",
+        event: "alert_response",
+        payload: {
+          choice,
+          title: alertTitle,
+          responder: responderName,
+        },
+      });
+    }
+
+    await supabase.from("messages").insert({
+      chat_id: id,
+      sender_id: user.id,
+      content: `📢 ${responderName} selected "${choice}" for "${alertTitle}"`,
+      type: "system",
+    });
+  }, [customAlert, user, id]);
+
   // Escape key handler to exit chat to home or close active modals
   useEffect(() => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -625,10 +663,18 @@ export default function ChatScreen() {
           ]}>
             <TouchableOpacity
               style={styles.floatingIconBtn}
-              onPress={() => {
+              onPress={async () => {
+                setPingVisible(true);
                 if (typingChannelRef.current) {
-                  typingChannelRef.current.send({ type: "broadcast", event: "ping", payload: {} });
-                  setPingVisible(true);
+                  typingChannelRef.current.send({ type: "broadcast", event: "ping", payload: { sender_id: user?.id } });
+                }
+                if (id && user) {
+                  await supabase.from("messages").insert({
+                    chat_id: id,
+                    sender_id: user.id,
+                    content: "❤️ Sent a heart ping! Thinking of you...",
+                    type: "ping",
+                  });
                 }
               }}
             >
@@ -867,7 +913,7 @@ export default function ChatScreen() {
           <TouchableOpacity style={styles.imageViewerClose} onPress={() => setImageViewerUrl(null)}><X size={28} color="#fff" /></TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-      <Modal visible={!!customAlert} transparent animationType="fade" onRequestClose={() => { if (customAlert?.messageId) supabase.from('messages').delete().eq('id', customAlert.messageId).then(); setCustomAlert(null); }}>
+      <Modal visible={!!customAlert} transparent animationType="fade" onRequestClose={() => {}}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ width: '90%', maxWidth: 440, backgroundColor: '#313338', borderRadius: 8, overflow: 'hidden' }}>
             <View style={{ padding: 24, paddingBottom: 16 }}>
@@ -875,10 +921,10 @@ export default function ChatScreen() {
               <Text style={{ color: '#dbdee1', fontSize: 16, lineHeight: 22 }}>{customAlert?.message}</Text>
             </View>
             <View style={{ backgroundColor: '#2b2d31', padding: 16, flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
-              <TouchableOpacity onPress={() => { if (customAlert?.messageId) supabase.from('messages').delete().eq('id', customAlert.messageId).then(); setCustomAlert(null); }} style={{ paddingVertical: 10, paddingHorizontal: 16 }}>
+              <TouchableOpacity onPress={() => handleRespondToAlert(customAlert?.cancelText || "Cancel")} style={{ paddingVertical: 10, paddingHorizontal: 16 }}>
                 <Text style={{ color: '#f2f3f5', fontSize: 15, fontWeight: '500' }}>{customAlert?.cancelText}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { if (customAlert?.messageId) supabase.from('messages').delete().eq('id', customAlert.messageId).then(); setCustomAlert(null); }} style={{ backgroundColor: '#f23f43', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 4 }}>
+              <TouchableOpacity onPress={() => handleRespondToAlert(customAlert?.actionText || "Action")} style={{ backgroundColor: '#f23f43', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}>
                 <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '600' }}>{customAlert?.actionText}</Text>
               </TouchableOpacity>
             </View>
