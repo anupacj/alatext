@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -157,7 +157,7 @@ export default function AlaContextMenu() {
   };
 
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
+    <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setVisible(false)}>
       <Animated.View
         style={[
           styles.menuCard,
@@ -232,7 +232,7 @@ export default function AlaContextMenu() {
           </View>
         </View>
       </Animated.View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

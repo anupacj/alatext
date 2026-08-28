@@ -913,17 +913,11 @@ export default function ChatScreen() {
                   {Platform.OS === "web" && (
                     <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
                   )}
-                  <TouchableOpacity style={styles.inputIconButton} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
-                    <Type size={19} color={fontPickerOpen ? (isAmoled ? "#ffffff" : theme.accent) : (isAmoled ? "#888888" : theme.textMuted)} />
-                  </TouchableOpacity>
                   <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
                     <Sticker size={20} color={isAmoled ? "#888888" : theme.textMuted} />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
                     <Smile size={20} color={isAmoled ? "#888888" : theme.textMuted} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.inputIconButton} onPress={() => setIsRecordingVoice(true)}>
-                    <Mic size={20} color={isAmoled ? "#888888" : theme.textMuted} />
                   </TouchableOpacity>
                   <TextInput 
                     style={[
@@ -950,26 +944,36 @@ export default function ChatScreen() {
                   style={[
                     styles.circularSendBtn,
                     {
-                      backgroundColor: inputText.trim()
-                        ? (isAmoled ? "#ffffff" : (theme.accent || "#5865F2"))
-                        : (isAmoled ? "#1a1a1a" : (theme.id === "light" ? "#e0e0e0" : "#2b2d31"))
+                      backgroundColor: isAmoled
+                        ? (inputText.trim() ? "#ffffff" : "#222222")
+                        : (theme.accent || "#5865F2")
                     }
                   ]}
-                  onPress={sendMessage}
-                  disabled={!inputText.trim()}
+                  onPress={() => {
+                    if (inputText.trim()) {
+                      sendMessage();
+                    } else {
+                      setIsRecordingVoice(true);
+                    }
+                  }}
+                  onLongPress={() => setFontPickerOpen(!fontPickerOpen)}
+                  delayLongPress={300}
                 >
-                  {chatSettings?.send_button_emoji ? (
-                    <Text style={{ fontSize: 20 }}>{chatSettings.send_button_emoji}</Text>
+                  {inputText.trim() ? (
+                    chatSettings?.send_button_emoji ? (
+                      <Text style={{ fontSize: 20 }}>{chatSettings.send_button_emoji}</Text>
+                    ) : (
+                      <Send
+                        size={18}
+                        color={isAmoled ? "#000000" : "#ffffff"}
+                        style={{ marginLeft: 2 }}
+                      />
+                    )
                   ) : (
-                    <Send
-                      size={18}
-                      color={
-                        inputText.trim()
-                          ? (isAmoled ? "#000000" : "#ffffff")
-                          : (isAmoled ? "#555555" : (theme.id === "light" ? "#a0a0a0" : "#5d6269"))
-                      }
-                      style={{ marginLeft: 2 }}
-                    />
+                    <Mic size={20} color={isAmoled ? "#ffffff" : "#ffffff"} />
+                  )}
+                  {fontPickerOpen && (
+                    <View style={{ position: "absolute", top: -2, right: -2, backgroundColor: "#f43f5e", width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: "#fff" }} />
                   )}
                 </TouchableOpacity>
               </>
