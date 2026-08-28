@@ -106,9 +106,13 @@ export default function Home() {
           .order("created_at", { ascending: false })
           .limit(1);
         const lastMsg = lastMsgData?.[0];
-        const lastMsgText = lastMsg
-          ? lastMsg.type === "image" ? "📷 Image" : lastMsg.content
-          : "Tap to view messages...";
+        let lastMsgText = "Tap to view messages...";
+        if (lastMsg) {
+          if (lastMsg.type === "image") lastMsgText = "📷 Image";
+          else if (lastMsg.type === "audio") lastMsgText = "🎵 Voice note";
+          else if (lastMsg.type === "alert" || lastMsg.content?.startsWith('{"title":')) lastMsgText = "🚨 Custom Alert";
+          else lastMsgText = lastMsg.content;
+        }
         const lastMsgTime = lastMsg
           ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
           : "";

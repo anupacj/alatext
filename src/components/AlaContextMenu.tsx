@@ -1,11 +1,12 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Platform,
-  Dimensions,
+  Animated,
+  Easing,
 } from "react-native";
 import {
   RotateCw,
@@ -14,19 +15,19 @@ import {
   Minimize2,
   MessageSquare,
   Palette,
-  Check,
-  ShieldCheck,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "../context/ThemeContext";
 import { useAlaPin } from "../context/AlaPinContext";
 
-const THEME_OPTIONS = [
-  { id: "dark", label: "Dark", color: "#313338" },
-  { id: "black", label: "AMOLED", color: "#000000" },
-  { id: "light", label: "Light", color: "#ffffff" },
-  { id: "pink", label: "Pink", color: "#fdf2f8" },
-  { id: "hacker", label: "Hacker", color: "#0a0a0a" },
+const THEME_LIST = [
+  { id: "dark", label: "Dark" },
+  { id: "black", label: "AMOLED" },
+  { id: "light", label: "Light" },
+  { id: "pink", label: "Pink" },
+  { id: "hacker", label: "Hacker" },
 ];
 
 export default function AlaContextMenu() {
@@ -39,28 +40,54 @@ export default function AlaContextMenu() {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(-10)).current;
+  const scaleAnim = useRef(new Animated.Value(0.96)).current;
+
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
-      
+
       const screenW = window.innerWidth;
       const screenH = window.innerHeight;
       let posX = e.clientX;
       let posY = e.clientY;
 
-      if (posX + 240 > screenW) posX = screenW - 250;
-      if (posY + 320 > screenH) posY = screenH - 330;
+      if (posX + 220 > screenW) posX = screenW - 230;
+      if (posY + 260 > screenH) posY = screenH - 270;
 
       setPos({ x: Math.max(10, posX), y: Math.max(10, posY) });
       setVisible(true);
+
+      opacityAnim.setValue(0);
+      slideAnim.setValue(-12);
+      scaleAnim.setValue(0.95);
+
+      Animated.parallel([
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 160,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.quad),
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.back(1.2)),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.quad),
+        }),
+      ]).start();
     };
 
-    const handleClickOutside = () => {
-      setVisible(false);
-    };
-
+    const handleClickOutside = () => setVisible(false);
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setVisible(false);
     };
@@ -88,11 +115,18 @@ export default function AlaContextMenu() {
 
   if (!visible || Platform.OS !== "web") return null;
 
+  const currentThemeIdx = THEME_LIST.findIndex((t) => t.id === theme.id);
+
+  const handleNextTheme = (dir: "next" | "prev") => {
+    let newIdx = dir === "next" ? currentThemeIdx + 1 : currentThemeIdx - 1;
+    if (newIdx >= THEME_LIST.length) newIdx = 0;
+    if (newIdx < 0) newIdx = THEME_LIST.length - 1;
+    setTheme(THEME_LIST[newIdx].id);
+  };
+
   const handleRefresh = () => {
     setVisible(false);
-    if (typeof window !== "undefined") {
-      window.location.reload();
-    }
+    if (typeof window !== "undefined") window.location.reload();
   };
 
   const handleLock = () => {
@@ -123,82 +157,81 @@ export default function AlaContextMenu() {
   };
 
   return (
-    <View style={[styles.overlay]} pointerEvents="box-none">
-      <View
+    <View style={styles.overlay} pointerEvents="box-none">
+      <Animated.View
         style={[
           styles.menuCard,
           {
             top: pos.y,
             left: pos.x,
-            backgroundColor: isAmoled ? "rgba(10,10,10,0.92)" : "rgba(30,31,34,0.92)",
-            borderColor: isAmoled ? "#222" : "rgba(255,255,255,0.12)",
+            opacity: opacityAnim,
+            transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
+            backgroundColor: isAmoled
+              ? "rgba(10,10,12,0.88)"
+              : theme.id === "light" || theme.id === "pink"
+              ? "rgba(255,255,255,0.88)"
+              : "rgba(24,25,28,0.85)",
+            borderColor: isAmoled
+              ? "rgba(255,255,255,0.15)"
+              : theme.id === "light"
+              ? "rgba(0,0,0,0.1)"
+              : "rgba(255,255,255,0.12)",
           },
         ]}
       >
-        {/* Section 1: Refresh & Lock */}
-        <TouchableOpacity style={styles.menuItem} onPress={handleRefresh}>
-          <RotateCw size={16} color={theme.accent} style={{ marginRight: 10 }} />
+        {/* Refresh Data */}
+        <TouchableOpacity style={styles.menuItem} onPress={handleRefresh} activeOpacity={0.7}>
+          <RotateCw size={15} color={theme.accent} style={{ marginRight: 10 }} />
           <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Refresh Chat & Data</Text>
         </TouchableOpacity>
 
+        {/* Lock App Now (AlaPin) */}
         {isPinEnabled && !!realPin && (
-          <TouchableOpacity style={styles.menuItem} onPress={handleLock}>
-            <Lock size={16} color="#f43f5e" style={{ marginRight: 10 }} />
-            <Text style={[styles.menuText, { color: "#f43f5e", fontWeight: "600" }]}>Lock App Now (AlaPin)</Text>
+          <TouchableOpacity style={styles.menuItem} onPress={handleLock} activeOpacity={0.7}>
+            <Lock size={15} color="#f43f5e" style={{ marginRight: 10 }} />
+            <Text style={[styles.menuText, { color: "#f43f5e", fontWeight: "600" }]}>Lock App (AlaPin)</Text>
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={styles.menuItem} onPress={toggleFullscreen}>
+        {/* Fullscreen */}
+        <TouchableOpacity style={styles.menuItem} onPress={toggleFullscreen} activeOpacity={0.7}>
           {isFullscreen ? (
-            <Minimize2 size={16} color={theme.accent} style={{ marginRight: 10 }} />
+            <Minimize2 size={15} color={theme.accent} style={{ marginRight: 10 }} />
           ) : (
-            <Maximize2 size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
+            <Maximize2 size={15} color={theme.textMuted} style={{ marginRight: 10 }} />
           )}
           <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>
-            {isFullscreen ? "Exit Fullscreen" : "Toggle Fullscreen"}
+            {isFullscreen ? "Exit Fullscreen" : "Fullscreen Mode"}
           </Text>
         </TouchableOpacity>
 
-        <View style={styles.divider} />
-
-        {/* Section 2: Navigation */}
-        <TouchableOpacity style={styles.menuItem} onPress={handleGoHome}>
-          <MessageSquare size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
-          <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Go to Home / Chats</Text>
+        {/* Home */}
+        <TouchableOpacity style={styles.menuItem} onPress={handleGoHome} activeOpacity={0.7}>
+          <MessageSquare size={15} color={theme.textMuted} style={{ marginRight: 10 }} />
+          <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Go to Home</Text>
         </TouchableOpacity>
 
-        <View style={styles.divider} />
+        <View style={[styles.divider, { backgroundColor: isAmoled ? "#333" : "rgba(255,255,255,0.08)" }]} />
 
-        {/* Section 3: Quick Theme Switcher */}
-        <View style={styles.themeSection}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+        {/* Minimalist Theme Selector: Theme ◄ Dark ► */}
+        <View style={styles.themeRow}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Palette size={14} color={theme.accent} style={{ marginRight: 6 }} />
-            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Quick Theme Switcher</Text>
+            <Text style={[styles.themeLabel, { color: isAmoled ? "#aaa" : theme.textMuted }]}>Theme</Text>
           </View>
-          <View style={styles.themeRow}>
-            {THEME_OPTIONS.map((t) => {
-              const isSelected = theme.id === t.id;
-              return (
-                <TouchableOpacity
-                  key={t.id}
-                  style={[
-                    styles.themeChip,
-                    { backgroundColor: t.color, borderColor: isSelected ? theme.accent : "rgba(255,255,255,0.15)" },
-                  ]}
-                  onPress={() => {
-                    setTheme(t.id);
-                    setVisible(false);
-                  }}
-                >
-                  <Text style={[styles.themeChipText, { color: t.id === "light" || t.id === "pink" ? "#111" : "#fff" }]}>
-                    {t.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.themeSelector}>
+            <TouchableOpacity onPress={() => handleNextTheme("prev")} style={styles.arrowBtn} activeOpacity={0.7}>
+              <ChevronLeft size={14} color={isAmoled ? "#fff" : theme.text} />
+            </TouchableOpacity>
+            <Text style={[styles.themeValueText, { color: theme.accent }]}>
+              {THEME_LIST[currentThemeIdx >= 0 ? currentThemeIdx : 0].label}
+            </Text>
+            <TouchableOpacity onPress={() => handleNextTheme("next")} style={styles.arrowBtn} activeOpacity={0.7}>
+              <ChevronRight size={14} color={isAmoled ? "#fff" : theme.text} />
+            </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -214,24 +247,24 @@ const styles = StyleSheet.create({
   },
   menuCard: {
     position: "absolute",
-    width: 240,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    width: 215,
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
     borderWidth: 1,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
-    shadowRadius: 12,
-    backdropFilter: "blur(20px)",
-    elevation: 10,
+    shadowRadius: 16,
+    backdropFilter: "blur(24px)",
+    elevation: 12,
   } as any,
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: 10,
   },
   menuText: {
     fontSize: 13,
@@ -239,33 +272,36 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    marginVertical: 6,
-  },
-  themeSection: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    marginVertical: 4,
+    marginHorizontal: 6,
   },
   themeRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 4,
-  },
-  themeChip: {
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
   },
-  themeChipText: {
-    fontSize: 11,
+  themeLabel: {
+    fontSize: 12,
     fontWeight: "600",
+  },
+  themeSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  arrowBtn: {
+    padding: 2,
+  },
+  themeValueText: {
+    fontSize: 12,
+    fontWeight: "700",
+    minWidth: 54,
+    textAlign: "center",
   },
 });

@@ -142,6 +142,7 @@ export default function ChatScreen() {
   }, [id]);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
+  const handledResponsesRef = useRef<Set<string>>(new Set());
   const lastTypingSentRef = useRef<number>(0);
   const typingChannelRef = useRef<any>(null);
   const profileCache = useRef<Map<string, any>>(new Map());
@@ -216,8 +217,11 @@ export default function ChatScreen() {
       
       if (!error && data) { 
         const now = Date.now();
+        const handledStr = await AsyncStorage.getItem("@handled_alerts_set").catch(() => null);
+        const handledSet = new Set(handledStr ? JSON.parse(handledStr) : []);
+
         const alertMsg = data.find(m => {
-          if (m.type !== "alert" || m.sender_id === user?.id) return false;
+          if (m.type !== "alert" || m.sender_id === user?.id || handledSet.has(m.id)) return false;
           return (now - new Date(m.created_at).getTime()) < 10 * 60 * 1000;
         });
         if (alertMsg) {
@@ -240,7 +244,11 @@ export default function ChatScreen() {
         if (payload.eventType === "INSERT") {
           if (payload.new.type === "alert") {
             if (payload.new.sender_id !== user?.id) {
-              try { setCustomAlert({ ...JSON.parse(payload.new.content), messageId: payload.new.id }); } catch (e) {}
+              const handledStr = await AsyncStorage.getItem("@handled_alerts_set").catch(() => null);
+              const handledSet = new Set(handledStr ? JSON.parse(handledStr) : []);
+              if (!handledSet.has(payload.new.id)) {
+                try { setCustomAlert({ ...JSON.parse(payload.new.content), messageId: payload.new.id }); } catch (e) {}
+              }
             }
             return;
           }
@@ -297,7 +305,11 @@ export default function ChatScreen() {
         setCustomAlert(payload.payload);
       })
       .on("broadcast", { event: "alert_response" }, (payload) => {
-        const { choice, title, responder } = payload.payload;
+        const { alertId, choice, title, responder } = payload.payload;
+        const key = `${alertId}_${choice}`;
+        if (alertId && handledResponsesRef.current.has(key)) return;
+        if (alertId) handledResponsesRef.current.add(key);
+
         if (Platform.OS === "web") {
           alert(`📢 Response from ${responder}:\n"${choice}" for "${title}"`);
         }
@@ -567,7 +579,15 @@ export default function ChatScreen() {
     setCustomAlert(null);
 
     if (alertId) {
-      await supabase.from("messages").delete().eq("id", alertId);
+      try {
+        const handledStr = await AsyncStorage.getItem("@handled_alerts_set").catch(() => null);
+        const arr = handledStr ? JSON.parse(handledStr) : [];
+        if (!arr.includes(alertId)) {
+          arr.push(alertId);
+          await AsyncStorage.setItem("@handled_alerts_set", JSON.stringify(arr));
+        }
+        await supabase.from("messages").delete().eq("id", alertId);
+      } catch (e) {}
     }
 
     if (typingChannelRef.current) {
@@ -575,6 +595,7 @@ export default function ChatScreen() {
         type: "broadcast",
         event: "alert_response",
         payload: {
+          alertId,
           choice,
           title: alertTitle,
           responder: responderName,
