@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadAvatarToR2 } from '../../lib/r2';
 import AlaPinSettingsModal from '../../components/AlaPinSettingsModal';
+import { isFeatureEnabled } from '../../lib/features';
 
 const THEME_OPTIONS = [
   { id: 'dark', label: 'Dark', color: '#313338', textColor: '#f2f3f5' },
@@ -119,6 +120,8 @@ export default function Profile() {
     }
   };
 
+  const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
+
   useEffect(() => {
     if (!user) return;
     
@@ -136,6 +139,10 @@ export default function Profile() {
           setNotificationPref(data.notification_preference);
         }
       }
+
+      const { data: st } = await supabase.from("app_settings").select("value").eq("key", "public_features").single();
+      if (st?.value && Array.isArray(st.value)) setPublicFeatures(st.value);
+
       setLoading(false);
     };
     
@@ -407,28 +414,30 @@ export default function Profile() {
                   </TouchableOpacity>
                 </View>
                 {/* ALAPIN SECURITY */}
-                <View style={styles.modalSection}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <ShieldCheck size={18} color={theme.accent} />
-                    <Text style={styles.sectionHeader}>Security & Passcode</Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.prefCard]}
-                    onPress={() => {
-                      setSettingsModalVisible(false);
-                      setTimeout(() => setAlaPinModalVisible(true), 200);
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={[styles.prefTitle, { color: theme.text }]}>🔒 AlaPin Security (Passcode & Decoy PIN)</Text>
-                      <ShieldCheck size={16} color={theme.accent} />
+                {isFeatureEnabled("alapin_decoy", profile, publicFeatures) && (
+                  <View style={styles.modalSection}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <ShieldCheck size={18} color={theme.accent} />
+                      <Text style={styles.sectionHeader}>Security & Passcode</Text>
                     </View>
-                    <Text style={[styles.prefSubtext, { color: theme.textMuted }]}>
-                      Configure 4-digit passcode protection and stealth Decoy PIN mode.
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+
+                    <TouchableOpacity
+                      style={[styles.prefCard]}
+                      onPress={() => {
+                        setSettingsModalVisible(false);
+                        setTimeout(() => setAlaPinModalVisible(true), 200);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={[styles.prefTitle, { color: theme.text }]}>🔒 AlaPin Security (Passcode & Decoy PIN)</Text>
+                        <ShieldCheck size={16} color={theme.accent} />
+                      </View>
+                      <Text style={[styles.prefSubtext, { color: theme.textMuted }]}>
+                        Configure 4-digit passcode protection and stealth Decoy PIN mode.
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 {/* ACCOUNT SECURITY & CHANGE PASSWORD */}
                 <View style={styles.modalSection}>

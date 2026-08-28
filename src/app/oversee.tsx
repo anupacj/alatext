@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -30,7 +30,7 @@ import {
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { FeatureKey, UserProfile } from "../lib/features";
+import { FeatureKey, UserProfile, DEFAULT_PUBLIC_FEATURES } from "../lib/features";
 
 const ALL_FEATURES: { key: FeatureKey; label: string; icon: any; desc: string }[] = [
   { key: "ghost_typing", label: "Ghost Typing Preview", icon: Ghost, desc: "Live character typing preview" },
@@ -88,6 +88,11 @@ export default function OverseerScreen() {
 
       if (settings?.value && Array.isArray(settings.value)) {
         setPublicFeatures(settings.value);
+      } else {
+        setPublicFeatures(DEFAULT_PUBLIC_FEATURES);
+        await supabase
+          .from("app_settings")
+          .upsert({ key: "public_features", value: DEFAULT_PUBLIC_FEATURES });
       }
     } catch (e) {
       console.error("Overseer error:", e);

@@ -6,6 +6,7 @@ import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle } from "lucide-rea
 import { uploadImageToR2, deleteFileFromR2ByUrl } from "../lib/r2";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "expo-router";
+import { isFeatureEnabled, UserProfile } from "../lib/features";
 
 const FONTS = [
   { name: "System", value: "system" },
@@ -136,6 +137,22 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
   const [alertActionText, setAlertActionText] = useState("Leave Server");
   const [alertCancelText, setAlertCancelText] = useState("Cancel");
   const [lastSentTime, setLastSentTime] = useState(0);
+
+  const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
+  const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (visible) {
+      if (userId) {
+        supabase.from("profiles").select("*").eq("id", userId).single().then(({ data }) => {
+          if (data) setMyProfile(data);
+        });
+      }
+      supabase.from("app_settings").select("value").eq("key", "public_features").single().then(({ data }) => {
+        if (data?.value && Array.isArray(data.value)) setPublicFeatures(data.value);
+      });
+    }
+  }, [visible, userId]);
 
   useEffect(() => {
     if (visible && currentSettings) {
@@ -398,14 +415,18 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             )}
 
             {/* FONT */}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Chat Font</Text>
-            <View style={styles.fontOptions}>
-              {FONTS.map(f => (
-                <TouchableOpacity key={f.value} style={[styles.fontOption, fontFamily === f.value && styles.fontOptionSelected]} onPress={() => setFontFamily(f.value)}>
-                  <Text style={[styles.fontOptionText, fontFamily === f.value && styles.fontOptionTextSelected, { fontFamily: f.value === "system" ? undefined : f.value }]}>{f.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Chat Font</Text>
+                <View style={styles.fontOptions}>
+                  {FONTS.map(f => (
+                    <TouchableOpacity key={f.value} style={[styles.fontOption, fontFamily === f.value && styles.fontOptionSelected]} onPress={() => setFontFamily(f.value)}>
+                      <Text style={[styles.fontOptionText, fontFamily === f.value && styles.fontOptionTextSelected, { fontFamily: f.value === "system" ? undefined : f.value }]}>{f.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
 
             {/* SEND BUTTON ICON / EMOJI */}
             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚀 Send Button Icon</Text>
@@ -455,46 +476,50 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             </View>
 
             {/* CUSTOM ALERT */}
-            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚨 Send Custom Alert</Text>
-            <Text style={{ color: "#949ba4", fontSize: 13, marginBottom: 12 }}>Instantly pops up on their screen if they are online. Limit 1 per minute.</Text>
-            
-            <View style={{ backgroundColor: "#2b2d31", padding: 16, borderRadius: 12, marginBottom: 24, gap: 12 }}>
-              <View>
-                <Text style={styles.sliderLabel}>Alert Title</Text>
-                <TextInput style={styles.alertInput} value={alertTitle} onChangeText={setAlertTitle} placeholderTextColor="#949ba4" />
-              </View>
-              <View>
-                <Text style={styles.sliderLabel}>Message</Text>
-                <TextInput style={[styles.alertInput, { height: 80, textAlignVertical: 'top' }]} multiline value={alertMessage} onChangeText={setAlertMessage} placeholderTextColor="#949ba4" />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sliderLabel}>Action Button</Text>
-                  <TextInput style={styles.alertInput} value={alertActionText} onChangeText={setAlertActionText} placeholderTextColor="#949ba4" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sliderLabel}>Cancel Button</Text>
-                  <TextInput style={styles.alertInput} value={alertCancelText} onChangeText={setAlertCancelText} placeholderTextColor="#949ba4" />
-                </View>
-              </View>
+            {isFeatureEnabled("custom_alerts", myProfile, publicFeatures) && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚨 Send Custom Alert</Text>
+                <Text style={{ color: "#949ba4", fontSize: 13, marginBottom: 12 }}>Instantly pops up on their screen if they are online. Limit 1 per minute.</Text>
+                
+                <View style={{ backgroundColor: "#2b2d31", padding: 16, borderRadius: 12, marginBottom: 24, gap: 12 }}>
+                  <View>
+                    <Text style={styles.sliderLabel}>Alert Title</Text>
+                    <TextInput style={styles.alertInput} value={alertTitle} onChangeText={setAlertTitle} placeholderTextColor="#949ba4" />
+                  </View>
+                  <View>
+                    <Text style={styles.sliderLabel}>Message</Text>
+                    <TextInput style={[styles.alertInput, { height: 80, textAlignVertical: 'top' }]} multiline value={alertMessage} onChangeText={setAlertMessage} placeholderTextColor="#949ba4" />
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sliderLabel}>Action Button</Text>
+                      <TextInput style={styles.alertInput} value={alertActionText} onChangeText={setAlertActionText} placeholderTextColor="#949ba4" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sliderLabel}>Cancel Button</Text>
+                      <TextInput style={styles.alertInput} value={alertCancelText} onChangeText={setAlertCancelText} placeholderTextColor="#949ba4" />
+                    </View>
+                  </View>
 
-              <TouchableOpacity 
-                style={[styles.saveBtn, { backgroundColor: "#f23f43", marginTop: 8 }, Date.now() - lastSentTime < 60000 && { opacity: 0.5 }]} 
-                onPress={() => {
-                  if (Date.now() - lastSentTime < 60000) {
-                    alert(`Wait ${Math.ceil((60000 - (Date.now() - lastSentTime)) / 1000)}s before sending another.`);
-                    return;
-                  }
-                  if (onSendAlert) {
-                    onSendAlert({ title: alertTitle, message: alertMessage, actionText: alertActionText, cancelText: alertCancelText });
-                    setLastSentTime(Date.now());
-                    alert("Alert broadcasted!");
-                  }
-                }}
-              >
-                <Text style={styles.saveBtnText}>Broadcast Alert Now</Text>
-              </TouchableOpacity>
-            </View>
+                  <TouchableOpacity 
+                    style={[styles.saveBtn, { backgroundColor: "#f23f43", marginTop: 8 }, Date.now() - lastSentTime < 60000 && { opacity: 0.5 }]} 
+                    onPress={() => {
+                      if (Date.now() - lastSentTime < 60000) {
+                        alert(`Wait ${Math.ceil((60000 - (Date.now() - lastSentTime)) / 1000)}s before sending another.`);
+                        return;
+                      }
+                      if (onSendAlert) {
+                        onSendAlert({ title: alertTitle, message: alertMessage, actionText: alertActionText, cancelText: alertCancelText });
+                        setLastSentTime(Date.now());
+                        alert("Alert broadcasted!");
+                      }
+                    }}
+                  >
+                    <Text style={styles.saveBtnText}>Broadcast Alert Now</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
 
             <View style={{ height: 40 }} />
           </ScrollView>
