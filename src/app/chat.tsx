@@ -611,6 +611,31 @@ export default function ChatScreen() {
     });
   }, [customAlert, user, id]);
 
+  // Message context action listener
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const handleMessageAction = (e: any) => {
+        const { action, message } = e.detail || {};
+        if (!message) return;
+        if (action === "reply") {
+          setReplyingTo({ id: message.id, text: message.text, sender: message.sender });
+        } else if (action === "pin") {
+          handlePinMessage(message);
+        } else if (action === "edit") {
+          setEditingMsgId(message.id);
+          setInputText(message.text);
+        } else if (action === "delete") {
+          deleteMessage(message.id);
+        } else if (action === "profile") {
+          setInfoVisible(true);
+        }
+      };
+
+      window.addEventListener("ala_message_action" as any, handleMessageAction);
+      return () => window.removeEventListener("ala_message_action" as any, handleMessageAction);
+    }
+  }, [handlePinMessage, deleteMessage]);
+
   // Escape key handler to exit chat to home or close active modals
   useEffect(() => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -1221,18 +1246,18 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   },
   inputAreaRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     gap: 10,
   },
   inputWrapper: {
     flex: 1,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     backgroundColor: inputBg,
-    borderRadius: 25,
+    borderRadius: 24,
     paddingLeft: 8,
-    paddingRight: 16,
-    height: 48,
+    paddingRight: 14,
+    paddingBottom: 6,
     minHeight: 48,
     maxHeight: 120,
     borderWidth: 1,
@@ -1252,6 +1277,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     justifyContent: "center",
     alignItems: "center",
     marginRight: 4,
+    marginBottom: 1,
   },
   inputIconButton: {
     width: 32,
@@ -1260,13 +1286,13 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     justifyContent: "center",
     alignItems: "center",
     marginRight: 2,
+    marginBottom: 2,
   },
   textInput: {
     flex: 1,
     color: isAmoled ? "#ffffff" : theme.text,
     fontSize: 15,
-    lineHeight: Platform.OS === "web" ? 20 : undefined,
-    height: Platform.OS === "web" ? 36 : undefined,
+    lineHeight: 20,
     minHeight: 36,
     maxHeight: 100,
     paddingTop: Platform.OS === "web" ? 8 : 6,
@@ -1416,6 +1442,19 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
         onHoverOut={() => Platform.OS === "web" && setHoveredMsg(null)}
         onPress={handlePress}
+        {...({
+          onContextMenu: (e: any) => {
+            if (Platform.OS === "web") {
+              e.preventDefault();
+              e.stopPropagation();
+              window.dispatchEvent(
+                new CustomEvent("open_ala_context_menu", {
+                  detail: { x: e.clientX, y: e.clientY, type: "message", item },
+                })
+              );
+            }
+          },
+        } as any)}
       >
         {!item.isMe && (
           <View style={styles.avatarSlot}>
