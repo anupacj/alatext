@@ -168,6 +168,27 @@ export default function Home() {
       const { data: tp, error: pe } = await supabase.from("profiles").select("id, username").eq("username", searchUsername.trim()).single();
       if (pe || !tp) { setSearchError("User not found."); setSearchLoading(false); return; }
       if (tp.id === user.id) { setSearchError("You cannot chat with yourself."); setSearchLoading(false); return; }
+
+      // Check if an existing direct chat already exists with target user
+      const { data: myChats } = await supabase.from("chat_participants").select("chat_id, chats(is_group)").eq("user_id", user.id);
+      if (myChats && myChats.length > 0) {
+        const directChatIds = myChats.filter((c: any) => c.chats && !c.chats.is_group).map((c: any) => c.chat_id);
+        if (directChatIds.length > 0) {
+          const { data: existingPart } = await supabase.from("chat_participants")
+            .select("chat_id")
+            .eq("user_id", tp.id)
+            .in("chat_id", directChatIds)
+            .limit(1);
+
+          if (existingPart && existingPart.length > 0) {
+            const existingChatId = existingPart[0].chat_id;
+            resetModal();
+            router.push({ pathname: "/chat", params: { id: existingChatId, name: tp.username } });
+            return;
+          }
+        }
+      }
+
       const uuid = require("react-native-uuid");
       const newChatId = uuid.default ? uuid.default.v4() : uuid.v4();
       const { error: ce } = await supabase.from("chats").insert([{ id: newChatId, is_group: false, name: tp.username }]);
