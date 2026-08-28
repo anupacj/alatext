@@ -1246,18 +1246,17 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   },
   inputAreaRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     gap: 10,
   },
   inputWrapper: {
     flex: 1,
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     backgroundColor: inputBg,
     borderRadius: 24,
     paddingLeft: 8,
     paddingRight: 14,
-    paddingBottom: 6,
     minHeight: 48,
     maxHeight: 120,
     borderWidth: 1,
@@ -1277,7 +1276,6 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     justifyContent: "center",
     alignItems: "center",
     marginRight: 4,
-    marginBottom: 1,
   },
   inputIconButton: {
     width: 32,
@@ -1286,19 +1284,15 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     justifyContent: "center",
     alignItems: "center",
     marginRight: 2,
-    marginBottom: 2,
   },
   textInput: {
     flex: 1,
     color: isAmoled ? "#ffffff" : theme.text,
     fontSize: 15,
-    lineHeight: 20,
-    minHeight: 36,
-    maxHeight: 100,
-    paddingTop: Platform.OS === "web" ? 8 : 6,
-    paddingBottom: Platform.OS === "web" ? 8 : 6,
+    paddingTop: Platform.OS === "web" ? 10 : 8,
+    paddingBottom: Platform.OS === "web" ? 10 : 8,
     paddingHorizontal: 8,
-    alignSelf: "center",
+    maxHeight: 100,
     outlineStyle: "none" as any,
     textAlignVertical: "center",
   },
@@ -1435,6 +1429,18 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     );
   };
 
+  const handleBubbleContextMenu = (e: any) => {
+    if (Platform.OS === "web") {
+      e.preventDefault();
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent("open_ala_context_menu", {
+          detail: { x: e.clientX, y: e.clientY, type: "message", item },
+        })
+      );
+    }
+  };
+
   return (
     <Animated.View style={animatedStyle} {...panResponder.panHandlers}>
       <Pressable
@@ -1442,19 +1448,6 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
         onHoverOut={() => Platform.OS === "web" && setHoveredMsg(null)}
         onPress={handlePress}
-        {...({
-          onContextMenu: (e: any) => {
-            if (Platform.OS === "web") {
-              e.preventDefault();
-              e.stopPropagation();
-              window.dispatchEvent(
-                new CustomEvent("open_ala_context_menu", {
-                  detail: { x: e.clientX, y: e.clientY, type: "message", item },
-                })
-              );
-            }
-          },
-        } as any)}
       >
         {!item.isMe && (
           <View style={styles.avatarSlot}>
@@ -1464,7 +1457,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             )}
           </View>
         )}
-        <View style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}>
+        <View
+          style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}
+          {...({
+            onContextMenu: handleBubbleContextMenu,
+          } as any)}
+        >
           {(!item.isMe && showMeta && !groupWithPrev) && <Text style={styles.messageSender}>{item.sender}</Text>}
           {item.reply_to_id && (
             <View style={[styles.replyQuote, item.isMe ? styles.replyQuoteRight : styles.replyQuoteLeft]}>
