@@ -383,24 +383,33 @@ export default function OverseerScreen() {
           </View>
 
           <View style={styles.sqlCard}>
-            <Text style={styles.sqlTitle}>2. Ensure Required Overseer Database Columns</Text>
+            <Text style={styles.sqlTitle}>2. Create Overseer Database Tables & Columns</Text>
             <Text style={styles.sqlCode}>
-              {`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS awarded_features TEXT[] DEFAULT '{}';`}
+              {`CREATE TABLE IF NOT EXISTS public.app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "Allow public read access" ON public.app_settings FOR SELECT USING (true);
+CREATE POLICY IF NOT EXISTS "Allow all access" ON public.app_settings FOR ALL USING (true);
+
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS awarded_features TEXT[] DEFAULT '{}';`}
             </Text>
             <TouchableOpacity
               style={styles.copyBtn}
               onPress={() =>
                 copyToClipboard(
-                  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;\nALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;\nALTER TABLE profiles ADD COLUMN IF NOT EXISTS awarded_features TEXT[] DEFAULT '{}';`,
+                  `CREATE TABLE IF NOT EXISTS public.app_settings (\n  key TEXT PRIMARY KEY,\n  value JSONB NOT NULL,\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;\nCREATE POLICY "Allow public read access" ON public.app_settings FOR SELECT USING (true);\nCREATE POLICY "Allow all access" ON public.app_settings FOR ALL USING (true);\n\nALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;\nALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;\nALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS awarded_features TEXT[] DEFAULT '{}';`,
                   "Schema Migration SQL Copied!"
                 )
               }
             >
               <Copy size={14} color="#10b981" style={{ marginRight: 4 }} />
               <Text style={styles.copyBtnText}>
-                {copiedSql === "Schema Migration SQL Copied!" ? "Copied!" : "Copy Migration SQL"}
+                {copiedSql === "Schema Migration SQL Copied!" ? "Copied!" : "Copy Full Migration SQL"}
               </Text>
             </TouchableOpacity>
           </View>
