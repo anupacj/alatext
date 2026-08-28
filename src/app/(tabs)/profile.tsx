@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image, Modal, ScrollView } from 'react-native';
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import { Settings, User, Camera, LogOut, X, Bell, Palette, Check, Smartphone, Download, Maximize2, Minimize2, ShieldCheck } from 'lucide-react-native';
+import { Settings, User, Camera, LogOut, X, Bell, Palette, Check, Smartphone, Download, Maximize2, Minimize2, ShieldCheck, Lock, Eye, EyeOff, KeyRound } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadAvatarToR2 } from '../../lib/r2';
@@ -30,6 +30,35 @@ export default function Profile() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordUpdating, setPasswordUpdating] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const handleUpdatePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      alert('Password must be at least 6 characters!');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert('Passwords do not match!');
+      return;
+    }
+
+    setPasswordUpdating(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordUpdating(false);
+
+    if (error) {
+      alert(error.message || 'Failed to update password.');
+    } else {
+      setPasswordSuccess(true);
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    }
+  };
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -399,6 +428,63 @@ export default function Profile() {
                       Configure 4-digit passcode protection and stealth Decoy PIN mode.
                     </Text>
                   </TouchableOpacity>
+                </View>
+
+                {/* ACCOUNT SECURITY & CHANGE PASSWORD */}
+                <View style={styles.modalSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <KeyRound size={18} color={theme.accent} />
+                    <Text style={styles.sectionHeader}>Account Password</Text>
+                  </View>
+
+                  <View style={[styles.prefCard, { gap: 10 }]}>
+                    <Text style={[styles.prefTitle, { color: theme.text }]}>🔑 Change Account Password</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingHorizontal: 10, height: 42 }}>
+                      <TextInput
+                        style={{ flex: 1, color: theme.text, fontSize: 14 }}
+                        placeholder="New Password (min 6 chars)"
+                        placeholderTextColor={theme.textMuted}
+                        secureTextEntry={!showPassword}
+                        value={newPassword}
+                        onChangeText={setNewPassword}
+                      />
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                        {showPassword ? <EyeOff size={18} color={theme.textMuted} /> : <Eye size={18} color={theme.textMuted} />}
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingHorizontal: 10, height: 42 }}>
+                      <TextInput
+                        style={{ flex: 1, color: theme.text, fontSize: 14 }}
+                        placeholder="Confirm New Password"
+                        placeholderTextColor={theme.textMuted}
+                        secureTextEntry={!showPassword}
+                        value={confirmPassword}
+                        onChangeText={setConfirmPassword}
+                      />
+                    </View>
+
+                    <TouchableOpacity
+                      style={{
+                        height: 42,
+                        borderRadius: 8,
+                        backgroundColor: passwordSuccess ? '#22c55e' : theme.accent,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        marginTop: 4,
+                      }}
+                      onPress={handleUpdatePassword}
+                      disabled={passwordUpdating}
+                    >
+                      {passwordUpdating ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : passwordSuccess ? (
+                        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Password Updated!</Text>
+                      ) : (
+                        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Update Password</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </ScrollView>
             </View>

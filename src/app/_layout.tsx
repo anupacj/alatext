@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 
 import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
+import AlaContextMenu from '../components/AlaContextMenu';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -66,6 +67,7 @@ export default function Layout() {
             <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
           </Stack>
           <AlaPinLockScreen />
+          <AlaContextMenu />
         </AlaPinProvider>
       </ThemeProvider>
     </AuthProvider>
