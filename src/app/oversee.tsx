@@ -51,6 +51,29 @@ export default function OverseerScreen() {
   const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
   const [copiedSql, setCopiedSql] = useState<string | null>(null);
   const [cleaning, setCleaning] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const broadcastSettingsUpdate = (payload: any) => {
+    try {
+      const channel = supabase.channel("app_settings_sync");
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          channel.send({
+            type: "broadcast",
+            event: "settings_updated",
+            payload,
+          });
+        }
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchOverseerData = useCallback(async () => {
     if (!user) return;
@@ -72,12 +95,17 @@ export default function OverseerScreen() {
       setIsAdmin(true);
 
       // 2. Fetch all profiles
-      const { data: allProf } = await supabase
+      const { data: allProf, error: profErr } = await supabase
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (allProf) setProfiles(allProf as UserProfile[]);
+      if (profErr) {
+        console.error("Profiles fetch error:", profErr);
+        showToast("⚠️ Profiles restricted by RLS. Run SQL Migration below.");
+      } else if (allProf) {
+        setProfiles(allProf as UserProfile[]);
+      }
 
       // 3. Fetch app_settings for public_features
       const { data: settings } = await supabase
@@ -107,39 +135,56 @@ export default function OverseerScreen() {
   }, [fetchOverseerData]);
 
   // Toggle Global Public Feature Release
-  const toggleGlobalFeature = async (featureKey: FeatureKey) => {
+  const toggleGlobalFeature = async (featureKey: FeatureKey, label: string) => {
     const updated = publicFeatures.includes(featureKey)
       ? publicFeatures.filter((f) => f !== featureKey)
       : [...publicFeatures, featureKey];
 
+    const isNowPublic = updated.includes(featureKey);
     setPublicFeatures(updated);
+
     try {
-      await supabase
+      const { error } = await supabase
         .from("app_settings")
         .upsert({ key: "public_features", value: updated });
-    } catch (e) {
-      console.error(e);
+
+      if (error) {
+        showToast(`⚠️ Failed to update ${label}: ${error.message}`);
+      } else {
+        showToast(`✓ Saved: ${label} is now ${isNowPublic ? "PUBLIC (EVERYONE)" : "PRIVATE"}`);
+        broadcastSettingsUpdate({ publicFeatures: updated });
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Exception: ${e.message}`);
     }
   };
 
   // Toggle Personal Feature Award per User
-  const togglePersonalAward = async (targetUser: UserProfile, featureKey: FeatureKey) => {
+  const togglePersonalAward = async (targetUser: UserProfile, featureKey: FeatureKey, label: string) => {
     const current = targetUser.awarded_features || [];
     const updated = current.includes(featureKey)
       ? current.filter((f) => f !== featureKey)
       : [...current, featureKey];
 
+    const isNowAwarded = updated.includes(featureKey);
     setProfiles((prev) =>
       prev.map((p) => (p.id === targetUser.id ? { ...p, awarded_features: updated } : p))
     );
 
     try {
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({ awarded_features: updated })
         .eq("id", targetUser.id);
-    } catch (e) {
-      console.error(e);
+
+      if (error) {
+        showToast(`⚠️ Award failed for @${targetUser.username}: ${error.message}`);
+      } else {
+        showToast(`✓ Saved: ${label} ${isNowAwarded ? "awarded to" : "removed from"} @${targetUser.username || "user"}`);
+        broadcastSettingsUpdate({ userId: targetUser.id, awardedFeatures: updated });
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Exception: ${e.message}`);
     }
   };
 
@@ -151,12 +196,19 @@ export default function OverseerScreen() {
     );
 
     try {
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({ is_banned: newBannedState })
         .eq("id", targetUser.id);
-    } catch (e) {
-      console.error(e);
+
+      if (error) {
+        showToast(`⚠️ Ban toggle failed: ${error.message}`);
+      } else {
+        showToast(`✓ Saved: @${targetUser.username} is now ${newBannedState ? "BANNED" : "UNBANNED"}`);
+        broadcastSettingsUpdate({ userId: targetUser.id, isBanned: newBannedState });
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Exception: ${e.message}`);
     }
   };
 
@@ -212,7 +264,12 @@ export default function OverseerScreen() {
         <TouchableOpacity style={styles.refreshBtn} onPress={fetchOverseerData}>
           <RefreshCw size={18} color="#949ba4" />
         </TouchableOpacity>
-      </View>
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <View style={styles.toastBanner}>
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </View>
+      )}
 
       <ScrollView style={styles.scrollContent} contentContainerStyle={{ paddingBottom: 60 }}>
         {/* SECTION 1: GLOBAL PUBLIC FEATURE RELEASES */}
@@ -241,7 +298,7 @@ export default function OverseerScreen() {
                 </View>
                 <Switch
                   value={isPublic}
-                  onValueChange={() => toggleGlobalFeature(item.key)}
+                  onValueChange={() => toggleGlobalFeature(item.key, item.label)}
                   trackColor={{ false: "#333333", true: "#0284c7" }}
                   thumbColor={isPublic ? "#38bdf8" : "#aaaaaa"}
                 />
@@ -306,7 +363,7 @@ export default function OverseerScreen() {
                           isAwarded && styles.awardBadgeActive,
                           isGloballyPublic && styles.awardBadgePublic,
                         ]}
-                        onPress={() => togglePersonalAward(p, f.key)}
+                        onPress={() => togglePersonalAward(p, f.key, f.label)}
                       >
                         <Text
                           style={[
@@ -683,5 +740,28 @@ const styles = StyleSheet.create({
     color: "#10b981",
     fontSize: 12,
     fontWeight: "600",
+  },
+  toastBanner: {
+    position: "absolute",
+    top: Platform.OS === "web" ? 75 : 100,
+    left: 20,
+    right: 20,
+    backgroundColor: "#0284c7",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    zIndex: 999,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  toastText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
   },
 });

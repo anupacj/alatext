@@ -211,6 +211,18 @@ export default function ChatScreen() {
     };
     init();
 
+    const syncChannel = supabase.channel("app_settings_sync");
+    syncChannel
+      .on("broadcast", { event: "settings_updated" }, (payload: any) => {
+        if (payload.payload?.publicFeatures) {
+          setPublicFeatures(payload.payload.publicFeatures);
+        }
+        if (payload.payload?.userId === user?.id && payload.payload?.awardedFeatures) {
+          setMyProfile((prev: any) => (prev ? { ...prev, awarded_features: payload.payload.awardedFeatures } : prev));
+        }
+      })
+      .subscribe();
+
     const fetchMsgs = async () => {
       try {
         const cachedMsgs = await AsyncStorage.getItem(`chat_${id}_messages`);
