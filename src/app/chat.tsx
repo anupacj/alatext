@@ -889,11 +889,10 @@ export default function ChatScreen() {
             {replyingTo && (
               <View style={[
                 styles.replyBanner,
-                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: '#222' } :
-                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.75)', borderColor: 'rgba(255,255,255,0.12)' } :
-                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(0,0,0,0.08)' } :
-                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.9)', borderColor: 'rgba(131,24,67,0.12)' } :
-                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+                {
+                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.9)' : theme.id === 'pink' ? 'rgba(252,231,243,0.9)' : 'rgba(43,45,49,0.88)',
+                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : theme.id === 'light' ? 'rgba(0,0,0,0.08)' : theme.id === 'pink' ? 'rgba(131,24,67,0.12)' : 'rgba(255,255,255,0.08)'
+                }
               ]}>
                 <Reply size={16} color={isAmoled ? "#ffffff" : theme.accent} style={{ marginRight: 8 }} />
                 <View style={{ flex: 1 }}>
@@ -911,11 +910,10 @@ export default function ChatScreen() {
             {editingMsgId && (
               <View style={[
                 styles.editingBanner,
-                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: '#222' } :
-                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.75)', borderColor: 'rgba(255,255,255,0.12)' } :
-                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(0,0,0,0.08)' } :
-                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.9)', borderColor: 'rgba(131,24,67,0.12)' } :
-                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+                {
+                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.9)' : theme.id === 'pink' ? 'rgba(252,231,243,0.9)' : 'rgba(43,45,49,0.88)',
+                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : theme.id === 'light' ? 'rgba(0,0,0,0.08)' : theme.id === 'pink' ? 'rgba(131,24,67,0.12)' : 'rgba(255,255,255,0.08)'
+                }
               ]}>
                 <Text style={[styles.editingBannerText, { color: isAmoled ? "#ffffff" : theme.text }]}>Editing Message</Text>
                 <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
@@ -958,11 +956,7 @@ export default function ChatScreen() {
               <VoiceRecorder onSendAudio={handleSendVoiceMessage} onCancel={() => setIsRecordingVoice(false)} />
             ) : (
               <>
-                <View style={[
-                  styles.inputWrapper, 
-                  showWallpaper && { backgroundColor: "rgba(56,58,64,0.85)" },
-                  (theme.id === 'light' || theme.id === 'pink') && !showWallpaper && !isAmoled && { backgroundColor: theme.surface }
-                ]}>
+                <View style={styles.inputWrapper}>
                   <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                     {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#ffffff" : "#fff"} /> : <Plus size={18} color={isAmoled ? "#ffffff" : "#fff"} />}
                   </TouchableOpacity>
@@ -1288,15 +1282,15 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: inputBg,
+    backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (showWallpaper ? "rgba(28,30,38,0.85)" : (theme.id === "light" ? "rgba(255,255,255,0.9)" : (theme.id === "pink" ? "rgba(252,231,243,0.9)" : "rgba(43,45,49,0.88)"))),
     borderRadius: 28,
     paddingLeft: 8,
     paddingRight: 14,
-    paddingVertical: 6,
+    paddingVertical: 4,
     minHeight: 48,
     maxHeight: 120,
     borderWidth: 1,
-    borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "#e5e7eb" : theme.id === "pink" ? "#fbcfe8" : "#3f4147"),
+    borderColor: isAmoled ? "#222222" : (showWallpaper ? "rgba(255,255,255,0.12)" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(131,24,67,0.12)" : "rgba(255,255,255,0.08)"))),
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -1325,8 +1319,9 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     flex: 1,
     color: isAmoled ? "#ffffff" : theme.text,
     fontSize: 15,
-    paddingTop: 0,
-    paddingBottom: 0,
+    lineHeight: 20,
+    paddingTop: Platform.OS === "web" ? 8 : 6,
+    paddingBottom: Platform.OS === "web" ? 8 : 6,
     paddingHorizontal: 8,
     maxHeight: 100,
     outlineStyle: "none" as any,
