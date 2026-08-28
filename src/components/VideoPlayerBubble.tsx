@@ -6,8 +6,9 @@ import {
   StyleSheet,
   Modal,
   Platform,
+  ActivityIndicator,
 } from "react-native";
-import { Play, Pause, Maximize2, X } from "lucide-react-native";
+import { Play, ExternalLink, AlertTriangle, X } from "lucide-react-native";
 
 interface VideoPlayerBubbleProps {
   videoUrl: string;
@@ -16,7 +17,28 @@ interface VideoPlayerBubbleProps {
 
 export default function VideoPlayerBubble({ videoUrl, isMe }: VideoPlayerBubbleProps) {
   const [modalVisible, setModalVisible] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [hasError, setHasError] = useState(false);
+
+  const handleOpenExternal = () => {
+    if (typeof window !== "undefined") {
+      window.open(videoUrl, "_blank");
+    }
+  };
+
+  if (hasError) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorCard}>
+          <AlertTriangle size={20} color="#f43f5e" style={{ marginBottom: 6 }} />
+          <Text style={styles.errorText}>Video Format Unsupported</Text>
+          <TouchableOpacity style={styles.openBtn} onPress={handleOpenExternal}>
+            <ExternalLink size={14} color="#ffffff" style={{ marginRight: 6 }} />
+            <Text style={styles.openBtnText}>Open Video</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   if (Platform.OS === "web") {
     return (
@@ -26,6 +48,7 @@ export default function VideoPlayerBubble({ videoUrl, isMe }: VideoPlayerBubbleP
           controls
           playsInline
           preload="metadata"
+          onError={() => setHasError(true)}
           style={styles.webVideo as any}
         />
       </View>
@@ -58,6 +81,15 @@ export default function VideoPlayerBubble({ videoUrl, isMe }: VideoPlayerBubbleP
           >
             <X size={28} color="#ffffff" />
           </TouchableOpacity>
+          {Platform.OS === "web" && (
+            <video
+              src={videoUrl}
+              controls
+              autoPlay
+              playsInline
+              style={{ width: "90%", maxHeight: "80%", borderRadius: 12 } as any}
+            />
+          )}
         </View>
       </Modal>
     </View>
@@ -66,23 +98,24 @@ export default function VideoPlayerBubble({ videoUrl, isMe }: VideoPlayerBubbleP
 
 const styles = StyleSheet.create({
   container: {
-    maxWidth: 260,
-    borderRadius: 12,
+    maxWidth: 280,
+    borderRadius: 14,
     overflow: "hidden",
-    marginVertical: 2,
+    marginVertical: 4,
   },
   webVideo: {
     width: "100%",
-    maxWidth: 260,
-    maxHeight: 280,
-    borderRadius: 12,
+    maxWidth: 280,
+    maxHeight: 300,
+    borderRadius: 14,
     backgroundColor: "#000000",
+    display: "block",
   },
   thumbnailPlaceholder: {
     width: 240,
     height: 160,
     backgroundColor: "rgba(0,0,0,0.6)",
-    borderRadius: 12,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -100,6 +133,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
+  errorCard: {
+    width: 240,
+    padding: 16,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  errorText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  openBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#5865F2",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  openBtnText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.95)",
@@ -113,5 +176,6 @@ const styles = StyleSheet.create({
     padding: 8,
     backgroundColor: "rgba(0,0,0,0.5)",
     borderRadius: 24,
+    zIndex: 10,
   },
 });

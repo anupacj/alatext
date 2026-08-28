@@ -21,7 +21,7 @@ import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import { supabase } from "../lib/supabase";
-import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2 } from "../lib/r2";
+import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 
@@ -428,23 +428,21 @@ export default function ChatScreen() {
 
   const handleUploadFile = useCallback(async (file: File) => {
     const isVideo = file.type.startsWith("video");
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
-      setUploadingImage(true);
-      try {
-        const url = isVideo
-          ? await uploadVideoToR2(id as string, base64, file.type)
-          : await uploadChatImageToR2(id as string, base64, file.type);
-        await supabase.from("messages").insert({ 
-          chat_id: id, sender_id: user?.id, content: url, type: isVideo ? "video" : "image",
-          reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
-        });
-        setReplyingTo(null);
-      } catch (e) { console.error(e); }
+    setUploadingImage(true);
+    try {
+      const prefix = isVideo ? `chat-videos/${id}-${Date.now()}` : `chat-images/${id}-${Date.now()}`;
+      const url = await uploadBlobToR2(prefix, file);
+      await supabase.from("messages").insert({ 
+        chat_id: id, sender_id: user?.id, content: url, type: isVideo ? "video" : "image",
+        reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
+      });
+      setReplyingTo(null);
+    } catch (e: any) {
+      console.error("Upload error:", e);
+      alert("Failed to upload file: " + (e.message || e));
+    } finally {
       setUploadingImage(false);
-    };
-    reader.readAsDataURL(file);
+    }
   }, [id, user?.id, replyingTo]);
 
   useEffect(() => {
@@ -469,22 +467,27 @@ export default function ChatScreen() {
     if (Platform.OS === "web") { if (fileInputRef.current) fileInputRef.current.click(); return; }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") return;
-    const result = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.All });
-    if (!result.canceled && result.assets[0].base64) {
+    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.All });
+    if (!result.canceled && result.assets[0]) {
       setUploadingImage(true);
       try {
         const asset = result.assets[0];
         const isVideo = asset.type === "video" || asset.mimeType?.startsWith("video");
-        const url = isVideo
-          ? await uploadVideoToR2(id as string, asset.base64, asset.mimeType || "video/mp4")
-          : await uploadChatImageToR2(id as string, asset.base64, asset.mimeType || "image/jpeg");
+        const resp = await fetch(asset.uri);
+        const blob = await resp.blob();
+        const prefix = isVideo ? `chat-videos/${id}-${Date.now()}` : `chat-images/${id}-${Date.now()}`;
+        const url = await uploadBlobToR2(prefix, blob);
         await supabase.from("messages").insert({ 
           chat_id: id, sender_id: user?.id, content: url, type: isVideo ? "video" : "image",
           reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
         });
         setReplyingTo(null);
-      } catch (e) { console.error(e); }
-      setUploadingImage(false);
+      } catch (e: any) {
+        console.error("Media pick upload error:", e);
+        alert("Failed to upload media: " + (e.message || e));
+      } finally {
+        setUploadingImage(false);
+      }
     }
   }, [id, user?.id, replyingTo]);
 
