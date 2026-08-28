@@ -264,6 +264,8 @@ export default function OverseerScreen() {
         <TouchableOpacity style={styles.refreshBtn} onPress={fetchOverseerData}>
           <RefreshCw size={18} color="#949ba4" />
         </TouchableOpacity>
+      </View>
+
       {/* Toast Notification Banner */}
       {toastMessage && (
         <View style={styles.toastBanner}>
