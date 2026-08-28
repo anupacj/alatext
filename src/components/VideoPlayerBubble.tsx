@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   TouchableOpacity,
@@ -99,17 +99,18 @@ export default function VideoPlayerBubble({ videoUrl, isMe }: VideoPlayerBubbleP
 const styles = StyleSheet.create({
   container: {
     maxWidth: 280,
-    borderRadius: 14,
+    maxHeight: 320,
+    borderRadius: 12,
     overflow: "hidden",
-    marginVertical: 4,
   },
   webVideo: {
-    width: "100%",
     maxWidth: 280,
-    maxHeight: 300,
-    borderRadius: 14,
-    backgroundColor: "#000000",
+    maxHeight: 320,
+    width: "100%",
+    height: "auto",
+    borderRadius: 12,
     display: "block",
+    objectFit: "contain",
   },
   thumbnailPlaceholder: {
     width: 240,

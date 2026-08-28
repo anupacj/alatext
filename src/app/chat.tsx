@@ -1193,7 +1193,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   msgMeta: { flexDirection: "row", alignItems: "center", marginTop: 4 },
   timeText: { color: textMuted, fontSize: 12, fontWeight: "500" },
   checkIcon: { marginLeft: 4 },
-  inlineImage: { width: 200, height: 200, borderRadius: 12 },
+  inlineImage: { maxWidth: 280, maxHeight: 320, minWidth: 140, minHeight: 100, width: "100%", height: "auto", borderRadius: 12, resizeMode: "cover" },
   replyQuote: { borderRadius: 8, padding: 8, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: accent, backgroundColor: "rgba(88,101,242,0.15)", maxWidth: 240 },
   replyQuoteLeft: { alignSelf: "flex-start" },
   replyQuoteRight: { alignSelf: "flex-end" },
@@ -1413,7 +1413,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     item.isMe 
       ? { backgroundColor: item.type === "sticker" ? "transparent" : (gradientEnabled ? "transparent" : sentColor), borderBottomRightRadius: 4 } 
       : { backgroundColor: item.type === "sticker" ? "transparent" : receivedColor, borderBottomLeftRadius: 4 },
-    item.type === "image" && { paddingHorizontal: 4, paddingVertical: 4 }, item.type === "sticker" && { paddingHorizontal: 0, paddingVertical: 0 }
+    (item.type === "image" || item.type === "video") && { paddingHorizontal: 2, paddingVertical: 2 }, item.type === "sticker" && { paddingHorizontal: 0, paddingVertical: 0 }
   ];
   if (item.isMe) { if (groupWithPrev) bubbleStyles.push({ borderTopRightRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomRightRadius: 4 }); }
   else { if (groupWithPrev) bubbleStyles.push({ borderTopLeftRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomLeftRadius: 4 }); }
