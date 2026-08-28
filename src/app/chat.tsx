@@ -24,6 +24,7 @@ import { supabase } from "../lib/supabase";
 import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { isFeatureEnabled, UserProfile } from "../lib/features";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -87,6 +88,8 @@ export default function ChatScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
+  const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
+  const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
   const isTargetOnline = targetUser && targetUser.updated_at 
     ? Date.now() - new Date(targetUser.updated_at).getTime() < 45 * 1000 
     : false;
@@ -182,6 +185,11 @@ export default function ChatScreen() {
         const cachedPin = await AsyncStorage.getItem(`chat_${id}_pinned`);
         if (cachedPin) setPinnedMessage(JSON.parse(cachedPin));
       } catch (e) {}
+
+      const { data: prof } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      if (prof) setMyProfile(prof);
+      const { data: st } = await supabase.from("app_settings").select("value").eq("key", "public_features").single();
+      if (st?.value && Array.isArray(st.value)) setPublicFeatures(st.value);
 
       const { data: mySettings } = await supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).single();
       if (mySettings) {
@@ -992,7 +1000,11 @@ export default function ChatScreen() {
                       setIsRecordingVoice(true);
                     }
                   }}
-                  onLongPress={() => setFontPickerOpen(!fontPickerOpen)}
+                  onLongPress={() => {
+                    if (isFeatureEnabled("custom_fonts", myProfile, publicFeatures)) {
+                      setFontPickerOpen(!fontPickerOpen);
+                    }
+                  }}
                   delayLongPress={300}
                 >
                   {inputText.trim() ? (
