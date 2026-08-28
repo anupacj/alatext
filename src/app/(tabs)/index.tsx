@@ -109,6 +109,7 @@ export default function Home() {
         let lastMsgText = "Tap to view messages...";
         if (lastMsg) {
           if (lastMsg.type === "image") lastMsgText = "📷 Image";
+          else if (lastMsg.type === "video") lastMsgText = "🎥 Video";
           else if (lastMsg.type === "audio") lastMsgText = "🎵 Voice note";
           else if (lastMsg.type === "alert" || lastMsg.content?.startsWith('{"title":')) lastMsgText = "🚨 Custom Alert";
           else lastMsgText = lastMsg.content;

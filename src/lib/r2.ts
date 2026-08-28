@@ -36,6 +36,7 @@ export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mi
   }
   const cleanMime = mimeType.split(";")[0].trim();
   let rawExt = cleanMime.split("/")[1] || "jpeg";
+  if (rawExt.includes("quicktime") || rawExt.includes("mov")) rawExt = "mov";
   if (rawExt.includes("webm")) rawExt = "webm";
   if (rawExt.includes("mp4")) rawExt = "mp4";
   if (rawExt.includes("ogg")) rawExt = "ogg";
@@ -55,6 +56,11 @@ export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mi
 export const uploadAudioToR2 = async (chatId: string, base64Data: string, mimeType: string): Promise<string> => {
   const cleanMime = mimeType.split(";")[0].trim() || "audio/webm";
   return uploadImageToR2(`voice-messages/${chatId}-${Date.now()}`, base64Data, cleanMime);
+};
+
+export const uploadVideoToR2 = async (chatId: string, base64Data: string, mimeType: string): Promise<string> => {
+  const cleanMime = mimeType.split(";")[0].trim() || "video/mp4";
+  return uploadImageToR2(`chat-videos/${chatId}-${Date.now()}`, base64Data, cleanMime);
 };
 
 export const deleteFileFromR2ByUrl = async (publicUrl: string) => {

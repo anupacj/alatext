@@ -18,9 +18,10 @@ import { HeartPing } from "../components/HeartPing";
 import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
+import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import { supabase } from "../lib/supabase";
-import { uploadChatImageToR2, uploadAudioToR2 } from "../lib/r2";
+import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 
@@ -426,14 +427,17 @@ export default function ChatScreen() {
   }, [messages, user?.id]);
 
   const handleUploadFile = useCallback(async (file: File) => {
+    const isVideo = file.type.startsWith("video");
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = (reader.result as string).split(",")[1];
       setUploadingImage(true);
       try {
-        const url = await uploadChatImageToR2(id as string, base64, file.type);
+        const url = isVideo
+          ? await uploadVideoToR2(id as string, base64, file.type)
+          : await uploadChatImageToR2(id as string, base64, file.type);
         await supabase.from("messages").insert({ 
-          chat_id: id, sender_id: user?.id, content: url, type: "image",
+          chat_id: id, sender_id: user?.id, content: url, type: isVideo ? "video" : "image",
           reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
         });
         setReplyingTo(null);
@@ -449,7 +453,7 @@ export default function ChatScreen() {
         const items = e.clipboardData?.items;
         if (items) {
           for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf("image") !== -1) {
+            if (items[i].type.indexOf("image") !== -1 || items[i].type.indexOf("video") !== -1) {
               const file = items[i].getAsFile();
               if (file) handleUploadFile(file);
             }
@@ -465,13 +469,17 @@ export default function ChatScreen() {
     if (Platform.OS === "web") { if (fileInputRef.current) fileInputRef.current.click(); return; }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") return;
-    const result = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+    const result = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.All });
     if (!result.canceled && result.assets[0].base64) {
       setUploadingImage(true);
       try {
-        const url = await uploadChatImageToR2(id as string, result.assets[0].base64, result.assets[0].mimeType || "image/jpeg");
+        const asset = result.assets[0];
+        const isVideo = asset.type === "video" || asset.mimeType?.startsWith("video");
+        const url = isVideo
+          ? await uploadVideoToR2(id as string, asset.base64, asset.mimeType || "video/mp4")
+          : await uploadChatImageToR2(id as string, asset.base64, asset.mimeType || "image/jpeg");
         await supabase.from("messages").insert({ 
-          chat_id: id, sender_id: user?.id, content: url, type: "image",
+          chat_id: id, sender_id: user?.id, content: url, type: isVideo ? "video" : "image",
           reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
         });
         setReplyingTo(null);
@@ -936,7 +944,7 @@ export default function ChatScreen() {
                     {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#ffffff" : "#fff"} /> : <Plus size={18} color={isAmoled ? "#ffffff" : "#fff"} />}
                   </TouchableOpacity>
                   {Platform.OS === "web" && (
-                    <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                    <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
                   )}
                   <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
                     <Sticker size={20} color={isAmoled ? "#888888" : theme.textMuted} />
@@ -1419,6 +1427,9 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     }
     if (item.type === "audio") {
       return <AudioPlayerBubble audioUrl={item.text} isMe={item.isMe} />;
+    }
+    if (item.type === "video") {
+      return <VideoPlayerBubble videoUrl={item.text} isMe={item.isMe} />;
     }
     const activeFont = item.custom_font || chatSettings?.font_family;
     return (
