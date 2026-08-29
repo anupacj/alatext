@@ -980,7 +980,7 @@ export default function ChatScreen() {
                       styles.textInput, 
                       messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
                     ]} 
-                    placeholder={`Message ${name || "chat"}`} 
+                    placeholder={name || "Message..."} 
                     placeholderTextColor={isAmoled ? "#888888" : theme.textMuted}
                     value={inputText}
                     onChangeText={(text) => {
@@ -1289,7 +1289,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (theme.id === "light" ? "rgba(255,255,255,0.9)" : (theme.id === "pink" ? "rgba(252,231,243,0.9)" : "rgba(43,45,49,0.88)")),
-    borderRadius: 22,
+    borderRadius: 9999,
     paddingLeft: 6,
     paddingRight: 12,
     paddingVertical: 3,
@@ -1325,9 +1325,9 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     flex: 1,
     color: isAmoled ? "#ffffff" : theme.text,
     fontSize: 14.5,
-    lineHeight: 19,
-    paddingTop: Platform.OS === "web" ? 3 : 2,
-    paddingBottom: Platform.OS === "web" ? 3 : 2,
+    lineHeight: 20,
+    paddingTop: Platform.OS === "web" ? 11 : 8,
+    paddingBottom: Platform.OS === "web" ? 11 : 8,
     paddingHorizontal: 8,
     maxHeight: 100,
     outlineStyle: "none" as any,
