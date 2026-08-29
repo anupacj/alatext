@@ -964,23 +964,23 @@ export default function ChatScreen() {
                   }
                 ]}>
                   <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
-                    {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#ffffff" : "#fff"} /> : <Plus size={18} color={isAmoled ? "#ffffff" : "#fff"} />}
+                    {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#ffffff" : "#fff"} /> : <Plus size={16} color={isAmoled ? "#ffffff" : "#fff"} />}
                   </TouchableOpacity>
                   {Platform.OS === "web" && (
                     <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
                   )}
                   <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
-                    <Sticker size={20} color={isAmoled ? "#888888" : theme.textMuted} />
+                    <Sticker size={18} color={isAmoled ? "#888888" : theme.textMuted} />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
-                    <Smile size={20} color={isAmoled ? "#888888" : theme.textMuted} />
+                    <Smile size={18} color={isAmoled ? "#888888" : theme.textMuted} />
                   </TouchableOpacity>
                   <TextInput 
                     style={[
                       styles.textInput, 
                       messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
                     ]} 
-                    placeholder={`Message #${name || "chat"}`} 
+                    placeholder={`Message ${name || "chat"}`} 
                     placeholderTextColor={isAmoled ? "#888888" : theme.textMuted}
                     value={inputText}
                     onChangeText={(text) => {
@@ -1282,18 +1282,18 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   inputAreaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
   },
   inputWrapper: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (theme.id === "light" ? "rgba(255,255,255,0.9)" : (theme.id === "pink" ? "rgba(252,231,243,0.9)" : "rgba(43,45,49,0.88)")),
-    borderRadius: 28,
-    paddingLeft: 8,
-    paddingRight: 14,
-    paddingVertical: 4,
-    minHeight: 48,
+    borderRadius: 22,
+    paddingLeft: 6,
+    paddingRight: 12,
+    paddingVertical: 3,
+    minHeight: 42,
     maxHeight: 120,
     borderWidth: 1,
     borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(131,24,67,0.12)" : "rgba(255,255,255,0.08)")),
@@ -1305,18 +1305,18 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     backdropFilter: "blur(16px)",
   } as any,
   attachButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: isAmoled ? "#222" : (theme.id === "light" || theme.id === "pink" ? (theme.accent || "#ec4899") : "#5865F2"),
     justifyContent: "center",
     alignItems: "center",
     marginRight: 4,
   },
   inputIconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 2,
@@ -1324,19 +1324,19 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   textInput: {
     flex: 1,
     color: isAmoled ? "#ffffff" : theme.text,
-    fontSize: 15,
-    lineHeight: 20,
-    paddingTop: Platform.OS === "web" ? 8 : 6,
-    paddingBottom: Platform.OS === "web" ? 8 : 6,
+    fontSize: 14.5,
+    lineHeight: 19,
+    paddingTop: Platform.OS === "web" ? 3 : 2,
+    paddingBottom: Platform.OS === "web" ? 3 : 2,
     paddingHorizontal: 8,
     maxHeight: 100,
     outlineStyle: "none" as any,
     textAlignVertical: "center",
   },
   circularSendBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
