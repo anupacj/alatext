@@ -956,7 +956,13 @@ export default function ChatScreen() {
               <VoiceRecorder onSendAudio={handleSendVoiceMessage} onCancel={() => setIsRecordingVoice(false)} />
             ) : (
               <>
-                <View style={styles.inputWrapper}>
+                <View style={[
+                  styles.inputWrapper,
+                  showWallpaper && !isAmoled && {
+                    backgroundColor: "rgba(28,30,38,0.85)",
+                    borderColor: "rgba(255,255,255,0.12)"
+                  }
+                ]}>
                   <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                     {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#ffffff" : "#fff"} /> : <Plus size={18} color={isAmoled ? "#ffffff" : "#fff"} />}
                   </TouchableOpacity>
@@ -1282,7 +1288,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (showWallpaper ? "rgba(28,30,38,0.85)" : (theme.id === "light" ? "rgba(255,255,255,0.9)" : (theme.id === "pink" ? "rgba(252,231,243,0.9)" : "rgba(43,45,49,0.88)"))),
+    backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (theme.id === "light" ? "rgba(255,255,255,0.9)" : (theme.id === "pink" ? "rgba(252,231,243,0.9)" : "rgba(43,45,49,0.88)")),
     borderRadius: 28,
     paddingLeft: 8,
     paddingRight: 14,
@@ -1290,7 +1296,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     minHeight: 48,
     maxHeight: 120,
     borderWidth: 1,
-    borderColor: isAmoled ? "#222222" : (showWallpaper ? "rgba(255,255,255,0.12)" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(131,24,67,0.12)" : "rgba(255,255,255,0.08)"))),
+    borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(131,24,67,0.12)" : "rgba(255,255,255,0.08)")),
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
