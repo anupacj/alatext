@@ -960,20 +960,25 @@ export default function ChatScreen() {
                   styles.inputWrapper,
                   showWallpaper && !isAmoled && {
                     backgroundColor: "rgba(28,30,38,0.85)",
-                    borderColor: "rgba(255,255,255,0.12)"
+                    borderColor: theme.id === "pink" ? "rgba(244, 114, 182, 0.4)" : "rgba(255,255,255,0.15)"
                   }
                 ]}>
                   <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
-                    {uploadingImage ? <ActivityIndicator size="small" color={isAmoled ? "#ffffff" : "#fff"} /> : <Plus size={18} color={isAmoled ? "#ffffff" : "#fff"} />}
+                    {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
                   </TouchableOpacity>
                   {Platform.OS === "web" && (
                     <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
                   )}
+                  {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
+                    <TouchableOpacity style={styles.inputIconButton} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
+                      <Type size={20} color={fontPickerOpen ? (theme.accent || "#fff") : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} />
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
-                    <Sticker size={20} color={isAmoled ? "#888888" : theme.textMuted} />
+                    <Sticker size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
-                    <Smile size={20} color={isAmoled ? "#888888" : theme.textMuted} />
+                    <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                   </TouchableOpacity>
                   <TextInput 
                     style={[
@@ -981,7 +986,7 @@ export default function ChatScreen() {
                       messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
                     ]} 
                     placeholder={`Message #${name || "chat"}`} 
-                    placeholderTextColor={isAmoled ? "#888888" : theme.textMuted}
+                    placeholderTextColor={theme.id === "pink" ? "rgba(244, 114, 182, 0.6)" : (isAmoled ? "#888888" : theme.textMuted)}
                     value={inputText}
                     onChangeText={(text) => {
                       setInputText(text);
@@ -999,10 +1004,9 @@ export default function ChatScreen() {
                 <TouchableOpacity
                   style={[
                     styles.circularSendBtn,
-                    {
-                      backgroundColor: isAmoled
-                        ? (inputText.trim() ? "#ffffff" : "#222222")
-                        : (theme.accent || "#5865F2")
+                    showWallpaper && !isAmoled && {
+                      backgroundColor: "rgba(28,30,38,0.9)",
+                      borderColor: theme.id === "pink" ? "rgba(244, 114, 182, 0.3)" : "rgba(255,255,255,0.12)"
                     }
                   ]}
                   onPress={() => {
@@ -1012,28 +1016,19 @@ export default function ChatScreen() {
                       setIsRecordingVoice(true);
                     }
                   }}
-                  onLongPress={() => {
-                    if (isFeatureEnabled("custom_fonts", myProfile, publicFeatures)) {
-                      setFontPickerOpen(!fontPickerOpen);
-                    }
-                  }}
-                  delayLongPress={300}
                 >
                   {inputText.trim() ? (
                     chatSettings?.send_button_emoji ? (
                       <Text style={{ fontSize: 20 }}>{chatSettings.send_button_emoji}</Text>
                     ) : (
                       <Send
-                        size={18}
-                        color={isAmoled ? "#000000" : "#ffffff"}
+                        size={20}
+                        color={theme.accent || "#5865F2"}
                         style={{ marginLeft: 2 }}
                       />
                     )
                   ) : (
-                    <Mic size={20} color={isAmoled ? "#ffffff" : "#ffffff"} />
-                  )}
-                  {fontPickerOpen && (
-                    <View style={{ position: "absolute", top: -2, right: -2, backgroundColor: "#f43f5e", width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: "#fff" }} />
+                    <Mic size={20} color={theme.accent || "#5865F2"} />
                   )}
                 </TouchableOpacity>
               </>
@@ -1289,14 +1284,14 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (theme.id === "light" ? "rgba(255,255,255,0.9)" : (theme.id === "pink" ? "rgba(252,231,243,0.9)" : "rgba(43,45,49,0.88)")),
-    borderRadius: 28,
-    paddingLeft: 8,
+    borderRadius: 26,
+    paddingLeft: 6,
     paddingRight: 14,
-    paddingVertical: 4,
+    paddingVertical: 5,
     minHeight: 48,
     maxHeight: 120,
-    borderWidth: 1,
-    borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(131,24,67,0.12)" : "rgba(255,255,255,0.08)")),
+    borderWidth: 1.5,
+    borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.4)" : "rgba(255,255,255,0.08)")),
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -1305,29 +1300,29 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     backdropFilter: "blur(16px)",
   } as any,
   attachButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: isAmoled ? "#222" : (theme.id === "light" || theme.id === "pink" ? (theme.accent || "#ec4899") : "#5865F2"),
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: isAmoled ? "#222" : (theme.accent || "#5865F2"),
     justifyContent: "center",
     alignItems: "center",
     marginRight: 4,
   },
   inputIconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 2,
   },
   textInput: {
     flex: 1,
-    color: isAmoled ? "#ffffff" : theme.text,
+    color: isAmoled ? "#ffffff" : (theme.id === "pink" ? "#ffffff" : theme.text),
     fontSize: 15,
     lineHeight: 20,
-    paddingTop: Platform.OS === "web" ? 8 : 6,
-    paddingBottom: Platform.OS === "web" ? 8 : 6,
+    paddingTop: Platform.OS === "web" ? 3 : 2,
+    paddingBottom: Platform.OS === "web" ? 3 : 2,
     paddingHorizontal: 8,
     maxHeight: 100,
     outlineStyle: "none" as any,
@@ -1337,6 +1332,9 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     width: 48,
     height: 48,
     borderRadius: 24,
+    backgroundColor: isAmoled ? "#1a1a1a" : "rgba(35, 37, 45, 0.92)",
+    borderWidth: 1.5,
+    borderColor: isAmoled ? "#333" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.3)" : "rgba(255,255,255,0.08)"),
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
