@@ -1019,16 +1019,16 @@ export default function ChatScreen() {
                 >
                   {inputText.trim() ? (
                     chatSettings?.send_button_emoji ? (
-                      <Text style={{ fontSize: 20 }}>{chatSettings.send_button_emoji}</Text>
+                      <Text style={{ fontSize: 22 }}>{chatSettings.send_button_emoji}</Text>
                     ) : (
                       <Send
-                        size={20}
+                        size={22}
                         color={theme.accent || "#5865F2"}
                         style={{ marginLeft: 2 }}
                       />
                     )
                   ) : (
-                    <Mic size={20} color={theme.accent || "#5865F2"} />
+                    <Mic size={22} color={theme.accent || "#5865F2"} />
                   )}
                 </TouchableOpacity>
               </>
@@ -1277,18 +1277,18 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   inputAreaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
   inputWrapper: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (theme.id === "light" ? "rgba(255,255,255,0.9)" : (theme.id === "pink" ? "rgba(252,231,243,0.9)" : "rgba(43,45,49,0.88)")),
-    borderRadius: 22,
+    borderRadius: 24,
     paddingLeft: 9,
     paddingRight: 14,
-    paddingVertical: 2,
-    minHeight: 38,
+    paddingVertical: 3,
+    minHeight: 46,
     maxHeight: 120,
     borderWidth: 1.5,
     borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.4)" : "rgba(255,255,255,0.08)")),
@@ -1300,38 +1300,39 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     backdropFilter: "blur(16px)",
   } as any,
   attachButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: isAmoled ? "#222" : (theme.accent || "#5865F2"),
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 6,
+  },
+  inputIconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 4,
   },
-  inputIconButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 2,
-  },
   textInput: {
     flex: 1,
     color: isAmoled ? "#ffffff" : (theme.id === "pink" ? "#ffffff" : theme.text),
-    fontSize: 14.5,
-    lineHeight: 19,
-    paddingTop: Platform.OS === "web" ? 2 : 1,
-    paddingBottom: Platform.OS === "web" ? 2 : 1,
+    fontSize: 15,
+    lineHeight: 20,
+    alignSelf: "center",
+    paddingTop: Platform.OS === "web" ? 3 : 1,
+    paddingBottom: Platform.OS === "web" ? 3 : 1,
     paddingHorizontal: 6,
     maxHeight: 100,
     outlineStyle: "none" as any,
     textAlignVertical: "center",
   },
   circularSendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: isAmoled ? "#1a1a1a" : "rgba(35, 37, 45, 0.92)",
     borderWidth: 1.5,
     borderColor: isAmoled ? "#333" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.3)" : "rgba(255,255,255,0.08)"),
