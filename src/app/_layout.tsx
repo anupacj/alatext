@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { AuthProvider } from '../context/AuthContext';
-import { ThemeProvider } from '../context/ThemeContext';
+import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { Platform } from 'react-native';
