@@ -178,6 +178,7 @@ export default function ChatScreen() {
     setMessages([]); setHasMore(true); setEditingMsgId(null); setReplyingTo(null); setHoveredMsg(null);
     profileCache.current.clear();
 
+    const init = async () => {
       let initialSettings: any = {};
       try {
         const cachedSettings = await AsyncStorage.getItem(`chat_${id}_settings`);
