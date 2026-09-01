@@ -178,10 +178,13 @@ export default function ChatScreen() {
     setMessages([]); setHasMore(true); setEditingMsgId(null); setReplyingTo(null); setHoveredMsg(null);
     profileCache.current.clear();
 
-    const init = async () => {
+      let initialSettings: any = {};
       try {
         const cachedSettings = await AsyncStorage.getItem(`chat_${id}_settings`);
-        if (cachedSettings) setChatSettings(JSON.parse(cachedSettings));
+        if (cachedSettings) {
+          initialSettings = JSON.parse(cachedSettings);
+          setChatSettings(initialSettings);
+        }
         const cachedPin = await AsyncStorage.getItem(`chat_${id}_pinned`);
         if (cachedPin) setPinnedMessage(JSON.parse(cachedPin));
       } catch (e) {}
@@ -193,8 +196,12 @@ export default function ChatScreen() {
 
       const { data: mySettings } = await supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).single();
       if (mySettings) {
-        setChatSettings(mySettings);
-        AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(mySettings)).catch(() => {});
+        const mergedSettings = { ...initialSettings, ...mySettings };
+        if (!mySettings.send_button_emoji && initialSettings.send_button_emoji) {
+          mergedSettings.send_button_emoji = initialSettings.send_button_emoji;
+        }
+        setChatSettings(mergedSettings);
+        AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(mergedSettings)).catch(() => {});
       }
       const { data: chatData } = await supabase.from("chats").select("*").eq("id", id).single();
       if (chatData?.is_group) {
@@ -1119,7 +1126,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
-  container: { flex: 1, backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: border, overflow: "hidden" },
+  container: { flex: 1, backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: (Platform.OS === "web" && !isAmoled) ? 1 : 0, borderRightWidth: (Platform.OS === "web" && !isAmoled) ? 1 : 0, borderColor: isAmoled ? "#000000" : border, overflow: "hidden" },
   floatingHeaderWrapper: {
     position: "absolute",
     top: 0,

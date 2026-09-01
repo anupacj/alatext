@@ -377,7 +377,7 @@ export default function Home() {
 
 const createStyles = (theme: any) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.surface },
-  container: { flex: 1, backgroundColor: theme.surface, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: Platform.OS === "web" ? 1 : 0, borderRightWidth: Platform.OS === "web" ? 1 : 0, borderColor: theme.border },
+  container: { flex: 1, backgroundColor: theme.surface, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: (Platform.OS === "web" && theme.id !== "black") ? 1 : 0, borderRightWidth: (Platform.OS === "web" && theme.id !== "black") ? 1 : 0, borderColor: theme.id === "black" ? "#000000" : theme.border },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 16, backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.border },
   headerLeft: { flexDirection: "row", alignItems: "center" },
   userAvatarMini: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.accent, marginRight: 12, justifyContent: "center", alignItems: "center" },

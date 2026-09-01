@@ -511,7 +511,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1, backgroundColor: theme.background, maxWidth: Platform.OS === 'web' ? 800 : '100%',
     width: '100%', alignSelf: 'center',
-    borderLeftWidth: Platform.OS === 'web' ? 1 : 0, borderRightWidth: Platform.OS === 'web' ? 1 : 0, borderColor: theme.border,
+    borderLeftWidth: (Platform.OS === 'web' && theme.id !== 'black') ? 1 : 0, borderRightWidth: (Platform.OS === 'web' && theme.id !== 'black') ? 1 : 0, borderColor: theme.id === 'black' ? '#000000' : theme.border,
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

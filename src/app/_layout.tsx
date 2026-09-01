@@ -11,6 +11,17 @@ import AlaContextMenu from '../components/AlaContextMenu';
 
 SplashScreen.preventAutoHideAsync();
 
+function RootNavigator() {
+  const { theme } = useTheme();
+  return (
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="chat" options={{ headerShown: false, animation: 'fade' }} />
+      <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
+    </Stack>
+  );
+}
+
 export default function Layout() {
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -61,11 +72,7 @@ export default function Layout() {
     <AuthProvider>
       <ThemeProvider>
         <AlaPinProvider>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#313338' } }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="chat" options={{ headerShown: false, animation: 'fade' }} />
-            <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
-          </Stack>
+          <RootNavigator />
           <AlaPinLockScreen />
           <AlaContextMenu />
         </AlaPinProvider>

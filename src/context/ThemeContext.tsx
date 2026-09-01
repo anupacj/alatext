@@ -19,7 +19,7 @@ export const THEMES: Record<string, AppTheme> = {
   },
   black: {
     id: 'black', name: 'AMOLED Black',
-    background: '#000000', surface: '#0a0a0a', text: '#ffffff', textMuted: '#888888', accent: '#ffffff', border: '#222222'
+    background: '#000000', surface: '#000000', text: '#ffffff', textMuted: '#888888', accent: '#ffffff', border: '#000000'
   },
   light: {
     id: 'light', name: 'Clean Light',

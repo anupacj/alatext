@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform, TextInput } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as ImagePicker from "expo-image-picker";
-import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle } from "lucide-react-native";
+import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell } from "lucide-react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { uploadImageToR2, deleteFileFromR2ByUrl } from "../lib/r2";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "expo-router";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
+import { useTheme } from "../context/ThemeContext";
 
 const FONTS = [
   { name: "System", value: "system" },
@@ -112,11 +114,22 @@ interface ChatSettingsModalProps {
   userId: string;
   currentSettings: any;
   onSettingsSaved: (newSettings: any) => void;
-  onSendAlert?: (alert: { title: string, message: string, actionText: string, cancelText: string }) => void;
+  onSendAlert?: (alert: { title: string; message: string; actionText: string; cancelText: string }) => void;
 }
 
-export default function ChatSettingsModal({ visible, onClose, chatId, userId, currentSettings, onSettingsSaved, onSendAlert }: ChatSettingsModalProps) {
+export default function ChatSettingsModal({
+  visible,
+  onClose,
+  chatId,
+  userId,
+  currentSettings,
+  onSettingsSaved,
+  onSendAlert,
+}: ChatSettingsModalProps) {
   const router = useRouter();
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [loading, setLoading] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState(currentSettings?.wallpaper_url || null);
   const [dim, setDim] = useState(currentSettings?.wallpaper_dim || 0);
@@ -132,22 +145,22 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
   const [anniversaryDate, setAnniversaryDate] = useState(currentSettings?.anniversary_date || null);
   const [sendButtonEmoji, setSendButtonEmoji] = useState(currentSettings?.send_button_emoji || "");
 
-  const [alertTitle, setAlertTitle] = useState("LEAVE 'STUDY TOGETHER!'");
-  const [alertMessage, setAlertMessage] = useState("Are you sure you want to leave Study Together!? You won't be able to rejoin this server unless you are re-invited.");
-  const [alertActionText, setAlertActionText] = useState("Leave Server");
-  const [alertCancelText, setAlertCancelText] = useState("Cancel");
+  // Custom Alert Popup Modal State
+  const [alertModalVisible, setAlertModalVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState("");
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertActionText, setAlertActionText] = useState("");
+  const [alertCancelText, setAlertCancelText] = useState("");
   const [lastSentTime, setLastSentTime] = useState(0);
 
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
 
   useEffect(() => {
-    if (visible) {
-      if (userId) {
-        supabase.from("profiles").select("*").eq("id", userId).single().then(({ data }) => {
-          if (data) setMyProfile(data);
-        });
-      }
+    if (visible && userId) {
+      supabase.from("profiles").select("*").eq("id", userId).single().then(({ data }) => {
+        if (data) setMyProfile(data);
+      });
       supabase.from("app_settings").select("value").eq("key", "public_features").single().then(({ data }) => {
         if (data?.value && Array.isArray(data.value)) setPublicFeatures(data.value);
       });
@@ -172,9 +185,9 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
     }
   }, [visible, currentSettings]);
 
-  const applyTheme = useCallback((theme: typeof THEMES[0]) => {
-    setBubbleColorSent(theme.sent);
-    setBubbleColorReceived(theme.received);
+  const applyTheme = useCallback((selectedTheme: typeof THEMES[0]) => {
+    setBubbleColorSent(selectedTheme.sent);
+    setBubbleColorReceived(selectedTheme.received);
     setGradientEnabled(false);
   }, []);
 
@@ -212,7 +225,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
         bubble_gradient_color2: gradientColor2,
         wallpaper_doodle: wallpaperDoodle,
         anniversary_date: anniversaryDate,
-        send_button_emoji: sendButtonEmoji || null,
+        send_button_emoji: sendButtonEmoji || "",
       };
 
       try {
@@ -248,7 +261,6 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
     
     setLoading(true);
     try {
-      // 1. Delete all images from Cloudflare R2
       const { data: images } = await supabase.from("messages").select("content").eq("chat_id", chatId).eq("type", "image");
       if (images && images.length > 0) {
         for (const msg of images) {
@@ -256,7 +268,6 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
         }
       }
 
-      // 2. Call the RPC to completely obliterate the chat
       const { error } = await supabase.rpc("delete_chat_completely", { p_chat_id: chatId });
       if (error) {
         console.error("RPC failed, falling back to manual delete", error);
@@ -265,7 +276,6 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
         await supabase.from("chats").delete().eq("id", chatId);
       }
 
-      // 3. Close and route away
       onClose();
       router.replace("/(tabs)");
     } catch (e) {
@@ -284,7 +294,9 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
         <View style={styles.container}>
           <View style={styles.header}>
             <Text style={styles.title}>Chat Customization</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}><X size={24} color="#b5bac1" /></TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <X size={24} color={theme.textMuted} />
+            </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -292,13 +304,13 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             {/* THEMES */}
             <Text style={styles.sectionTitle}>✨ Themes</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 24 }}>
-              {THEMES.map(theme => (
-                <TouchableOpacity key={theme.name} style={styles.themeCard} onPress={() => applyTheme(theme)}>
+              {THEMES.map((t) => (
+                <TouchableOpacity key={t.name} style={styles.themeCard} onPress={() => applyTheme(t)}>
                   <View style={styles.themePreview}>
-                    <View style={[styles.themeBubbleRight, { backgroundColor: theme.sent }]} />
-                    <View style={[styles.themeBubbleLeft, { backgroundColor: theme.received }]} />
+                    <View style={[styles.themeBubbleRight, { backgroundColor: t.sent }]} />
+                    <View style={[styles.themeBubbleLeft, { backgroundColor: t.received }]} />
                   </View>
-                  <Text style={styles.themeLabel}>{theme.label}</Text>
+                  <Text style={styles.themeLabel}>{t.label}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -306,22 +318,33 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             {/* BUBBLE COLORS */}
             <Text style={styles.sectionTitle}>💬 Sent Bubble Color</Text>
             <View style={styles.colorGrid}>
-              {BUBBLE_COLORS.map(c => (
-                <TouchableOpacity key={c.color} onPress={() => setBubbleColorSent(c.color)} style={[styles.colorSwatch, { backgroundColor: c.color }, bubbleColorSent === c.color && styles.colorSwatchSelected]} />
+              {BUBBLE_COLORS.map((c) => (
+                <TouchableOpacity
+                  key={c.color}
+                  onPress={() => setBubbleColorSent(c.color)}
+                  style={[styles.colorSwatch, { backgroundColor: c.color }, bubbleColorSent === c.color && styles.colorSwatchSelected]}
+                />
               ))}
             </View>
 
             <Text style={[styles.sectionTitle, { marginTop: 16 }]}>📩 Received Bubble Color</Text>
             <View style={styles.colorGrid}>
-              {RECEIVED_COLORS.map(c => (
-                <TouchableOpacity key={c.color} onPress={() => setBubbleColorReceived(c.color)} style={[styles.colorSwatch, { backgroundColor: c.color }, bubbleColorReceived === c.color && styles.colorSwatchSelected]} />
+              {RECEIVED_COLORS.map((c) => (
+                <TouchableOpacity
+                  key={c.color}
+                  onPress={() => setBubbleColorReceived(c.color)}
+                  style={[styles.colorSwatch, { backgroundColor: c.color }, bubbleColorReceived === c.color && styles.colorSwatchSelected]}
+                />
               ))}
             </View>
 
             {/* GRADIENT */}
             <View style={styles.toggleRow}>
               <Text style={styles.toggleLabel}>Gradient Bubbles</Text>
-              <TouchableOpacity style={[styles.toggle, gradientEnabled && styles.toggleOn]} onPress={() => setGradientEnabled(!gradientEnabled)}>
+              <TouchableOpacity
+                style={[styles.toggle, gradientEnabled && styles.toggleOn]}
+                onPress={() => setGradientEnabled(!gradientEnabled)}
+              >
                 <View style={[styles.toggleThumb, gradientEnabled && styles.toggleThumbOn]} />
               </TouchableOpacity>
             </View>
@@ -329,8 +352,12 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
               <>
                 <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Gradient End Color</Text>
                 <View style={styles.colorGrid}>
-                  {BUBBLE_COLORS.map(c => (
-                    <TouchableOpacity key={c.color} onPress={() => setGradientColor2(c.color)} style={[styles.colorSwatch, { backgroundColor: c.color }, gradientColor2 === c.color && styles.colorSwatchSelected]} />
+                  {BUBBLE_COLORS.map((c) => (
+                    <TouchableOpacity
+                      key={c.color}
+                      onPress={() => setGradientColor2(c.color)}
+                      style={[styles.colorSwatch, { backgroundColor: c.color }, gradientColor2 === c.color && styles.colorSwatchSelected]}
+                    />
                   ))}
                 </View>
                 <View style={[styles.gradientPreview, { borderRadius: shapeRadius }]}>
@@ -342,10 +369,14 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             {/* BUBBLE SHAPE */}
             <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🫧 Bubble Shape</Text>
             <View style={styles.shapeRow}>
-              {BUBBLE_SHAPES.map(s => (
-                <TouchableOpacity key={s.value} style={[styles.shapeOption, bubbleShape === s.value && styles.shapeOptionSelected]} onPress={() => setBubbleShape(s.value)}>
+              {BUBBLE_SHAPES.map((s) => (
+                <TouchableOpacity
+                  key={s.value}
+                  style={[styles.shapeOption, bubbleShape === s.value && styles.shapeOptionSelected]}
+                  onPress={() => setBubbleShape(s.value)}
+                >
                   <View style={[styles.shapeSampleBubble, { borderRadius: s.radius, backgroundColor: bubbleColorSent }]} />
-                  <Text style={[styles.shapeLabel, bubbleShape === s.value && { color: "#f2f3f5" }]}>{s.label}</Text>
+                  <Text style={[styles.shapeLabel, bubbleShape === s.value && { color: theme.text }]}>{s.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -353,9 +384,21 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             {/* FONTS */}
             <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Font Style</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-              {FONT_OPTIONS.map(opt => (
-                <TouchableOpacity key={opt.value} style={[styles.shapeOption, { width: 100, marginRight: 8, paddingVertical: 10 }, fontFamily === opt.value && styles.shapeOptionSelected]} onPress={() => setFontFamily(opt.value)}>
-                  <Text style={[styles.shapeLabel, { fontFamily: opt.value === 'system' ? undefined : opt.value }, fontFamily === opt.value && { color: "#f2f3f5" }]}>{opt.label}</Text>
+              {FONT_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.shapeOption, { width: 100, marginRight: 8, paddingVertical: 10 }, fontFamily === opt.value && styles.shapeOptionSelected]}
+                  onPress={() => setFontFamily(opt.value)}
+                >
+                  <Text
+                    style={[
+                      styles.shapeLabel,
+                      { fontFamily: opt.value === "system" ? undefined : opt.value },
+                      fontFamily === opt.value && { color: theme.text },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -365,9 +408,13 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             
             <Text style={[styles.sliderLabel, { marginBottom: 12 }]}>Doodle Overlay</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-              {DOODLE_OPTIONS.map(opt => (
-                <TouchableOpacity key={opt.value} style={[styles.shapeOption, { width: 80, marginRight: 8, paddingVertical: 10 }, wallpaperDoodle === opt.value && styles.shapeOptionSelected]} onPress={() => setWallpaperDoodle(opt.value)}>
-                  <Text style={[styles.shapeLabel, wallpaperDoodle === opt.value && { color: "#f2f3f5" }]}>{opt.label}</Text>
+              {DOODLE_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.shapeOption, { width: 80, marginRight: 8, paddingVertical: 10 }, wallpaperDoodle === opt.value && styles.shapeOptionSelected]}
+                  onPress={() => setWallpaperDoodle(opt.value)}
+                >
+                  <Text style={[styles.shapeLabel, wallpaperDoodle === opt.value && { color: theme.text }]}>{opt.label}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -380,7 +427,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
                 </View>
               ) : (
                 <View style={styles.emptyPreviewBox}>
-                  <ImageIcon size={48} color="#4e5058" />
+                  <ImageIcon size={48} color={theme.textMuted} />
                   <Text style={styles.emptyText}>No Wallpaper</Text>
                 </View>
               )}
@@ -401,36 +448,22 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
               <View style={styles.slidersContainer}>
                 <View style={styles.sliderRow}>
                   <Text style={styles.sliderLabel}>Dim ({Math.round(dim * 100)}%)</Text>
-                  <Slider style={styles.slider} minimumValue={0} maximumValue={0.9} value={dim} onValueChange={setDim} minimumTrackTintColor="#5865F2" maximumTrackTintColor="#4e5058" />
+                  <Slider style={styles.slider} minimumValue={0} maximumValue={0.9} value={dim} onValueChange={setDim} minimumTrackTintColor={theme.accent} maximumTrackTintColor={theme.border} />
                 </View>
                 <View style={styles.sliderRow}>
                   <Text style={styles.sliderLabel}>Blur ({Math.round(blur * 100)}%)</Text>
-                  <Slider style={styles.slider} minimumValue={0} maximumValue={1} value={blur} onValueChange={setBlur} minimumTrackTintColor="#5865F2" maximumTrackTintColor="#4e5058" />
+                  <Slider style={styles.slider} minimumValue={0} maximumValue={1} value={blur} onValueChange={setBlur} minimumTrackTintColor={theme.accent} maximumTrackTintColor={theme.border} />
                 </View>
                 <View style={styles.sliderRow}>
                   <Text style={styles.sliderLabel}>Zoom ({zoom.toFixed(1)}x)</Text>
-                  <Slider style={styles.slider} minimumValue={1} maximumValue={3} value={zoom} onValueChange={setZoom} minimumTrackTintColor="#5865F2" maximumTrackTintColor="#4e5058" />
+                  <Slider style={styles.slider} minimumValue={1} maximumValue={3} value={zoom} onValueChange={setZoom} minimumTrackTintColor={theme.accent} maximumTrackTintColor={theme.border} />
                 </View>
               </View>
             )}
 
-            {/* FONT */}
-            {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
-              <>
-                <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Chat Font</Text>
-                <View style={styles.fontOptions}>
-                  {FONTS.map(f => (
-                    <TouchableOpacity key={f.value} style={[styles.fontOption, fontFamily === f.value && styles.fontOptionSelected]} onPress={() => setFontFamily(f.value)}>
-                      <Text style={[styles.fontOptionText, fontFamily === f.value && styles.fontOptionTextSelected, { fontFamily: f.value === "system" ? undefined : f.value }]}>{f.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            )}
-
             {/* SEND BUTTON ICON / EMOJI */}
             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚀 Send Button Icon</Text>
-            <Text style={{ color: "#949ba4", fontSize: 13, marginBottom: 12 }}>
+            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
               Replace your send arrow button with a custom emoji icon for this chat.
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
@@ -449,7 +482,7 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
                     style={[
                       styles.shapeLabel,
                       { fontSize: 11, marginTop: 4 },
-                      sendButtonEmoji === item.emoji && { color: "#f23f43", fontWeight: "bold" },
+                      sendButtonEmoji === item.emoji && { color: theme.accent, fontWeight: "bold" },
                     ]}
                   >
                     {item.label}
@@ -459,13 +492,13 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
             </ScrollView>
             
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
-              <Text style={{ color: "#dbdee1", fontSize: 13 }}>Or type custom emoji:</Text>
+              <Text style={{ color: theme.text, fontSize: 13 }}>Or type custom emoji:</Text>
               <TextInput
                 style={[styles.alertInput, { width: 70, textAlign: "center", fontSize: 18, paddingVertical: 6 }]}
                 value={sendButtonEmoji}
                 onChangeText={setSendButtonEmoji}
                 placeholder="🛸"
-                placeholderTextColor="#949ba4"
+                placeholderTextColor={theme.textMuted}
                 maxLength={4}
               />
               {sendButtonEmoji ? (
@@ -475,49 +508,21 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
               ) : null}
             </View>
 
-            {/* CUSTOM ALERT */}
+            {/* CUSTOM ALERT TRIGGER BUTTON */}
             {isFeatureEnabled("custom_alerts", myProfile, publicFeatures) && (
               <>
-                <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚨 Send Custom Alert</Text>
-                <Text style={{ color: "#949ba4", fontSize: 13, marginBottom: 12 }}>Instantly pops up on their screen if they are online. Limit 1 per minute.</Text>
-                
-                <View style={{ backgroundColor: "#2b2d31", padding: 16, borderRadius: 12, marginBottom: 24, gap: 12 }}>
-                  <View>
-                    <Text style={styles.sliderLabel}>Alert Title</Text>
-                    <TextInput style={styles.alertInput} value={alertTitle} onChangeText={setAlertTitle} placeholderTextColor="#949ba4" />
-                  </View>
-                  <View>
-                    <Text style={styles.sliderLabel}>Message</Text>
-                    <TextInput style={[styles.alertInput, { height: 80, textAlignVertical: 'top' }]} multiline value={alertMessage} onChangeText={setAlertMessage} placeholderTextColor="#949ba4" />
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 12 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.sliderLabel}>Action Button</Text>
-                      <TextInput style={styles.alertInput} value={alertActionText} onChangeText={setAlertActionText} placeholderTextColor="#949ba4" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.sliderLabel}>Cancel Button</Text>
-                      <TextInput style={styles.alertInput} value={alertCancelText} onChangeText={setAlertCancelText} placeholderTextColor="#949ba4" />
-                    </View>
-                  </View>
-
-                  <TouchableOpacity 
-                    style={[styles.saveBtn, { backgroundColor: "#f23f43", marginTop: 8 }, Date.now() - lastSentTime < 60000 && { opacity: 0.5 }]} 
-                    onPress={() => {
-                      if (Date.now() - lastSentTime < 60000) {
-                        alert(`Wait ${Math.ceil((60000 - (Date.now() - lastSentTime)) / 1000)}s before sending another.`);
-                        return;
-                      }
-                      if (onSendAlert) {
-                        onSendAlert({ title: alertTitle, message: alertMessage, actionText: alertActionText, cancelText: alertCancelText });
-                        setLastSentTime(Date.now());
-                        alert("Alert broadcasted!");
-                      }
-                    }}
-                  >
-                    <Text style={styles.saveBtnText}>Broadcast Alert Now</Text>
-                  </TouchableOpacity>
-                </View>
+                <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚨 Custom Alerts</Text>
+                <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
+                  Send an instant alert pop-up to online members of this chat.
+                </Text>
+                <TouchableOpacity
+                  style={styles.alertTriggerBtn}
+                  onPress={() => setAlertModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Bell size={18} color="#ffffff" />
+                  <Text style={styles.alertTriggerBtnText}>Create Custom Alert...</Text>
+                </TouchableOpacity>
               </>
             )}
 
@@ -536,64 +541,254 @@ export default function ChatSettingsModal({ visible, onClose, chatId, userId, cu
           </View>
         </View>
       </View>
+
+      {/* CUSTOM ALERT MODAL POPUP */}
+      <Modal visible={alertModalVisible} animationType="fade" transparent onRequestClose={() => setAlertModalVisible(false)}>
+        <View style={styles.modalSubOverlay}>
+          <View style={styles.modalSubContainer}>
+            <View style={styles.header}>
+              <Text style={styles.title}>🚨 Send Custom Alert</Text>
+              <TouchableOpacity onPress={() => setAlertModalVisible(false)} style={styles.closeBtn}>
+                <X size={22} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 16 }}>
+              Pops up immediately on their screen if online. Limit 1 per minute.
+            </Text>
+
+            <View style={{ gap: 12, marginBottom: 20 }}>
+              <View>
+                <Text style={styles.sliderLabel}>Alert Title</Text>
+                <TextInput
+                  style={styles.alertInput}
+                  value={alertTitle}
+                  onChangeText={setAlertTitle}
+                  placeholder="Alert Title (e.g. Important Notice)"
+                  placeholderTextColor={theme.textMuted}
+                />
+              </View>
+              <View>
+                <Text style={styles.sliderLabel}>Alert Message</Text>
+                <TextInput
+                  style={[styles.alertInput, { height: 74, textAlignVertical: "top" }]}
+                  multiline
+                  value={alertMessage}
+                  onChangeText={setAlertMessage}
+                  placeholder="Alert Message (e.g. Server maintenance in 5 minutes)"
+                  placeholderTextColor={theme.textMuted}
+                />
+              </View>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sliderLabel}>Action Button</Text>
+                  <TextInput
+                    style={styles.alertInput}
+                    value={alertActionText}
+                    onChangeText={setAlertActionText}
+                    placeholder="e.g. OK"
+                    placeholderTextColor={theme.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sliderLabel}>Cancel Button</Text>
+                  <TextInput
+                    style={styles.alertInput}
+                    value={alertCancelText}
+                    onChangeText={setAlertCancelText}
+                    placeholder="e.g. Dismiss"
+                    placeholderTextColor={theme.textMuted}
+                  />
+                </View>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10, justifyContent: "flex-end" }}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setAlertModalVisible(false)}>
+                <Text style={{ color: theme.text, fontWeight: "600" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.saveBtn,
+                  { backgroundColor: "#f23f43", paddingHorizontal: 20 },
+                  Date.now() - lastSentTime < 60000 && { opacity: 0.5 },
+                ]}
+                onPress={() => {
+                  if (Date.now() - lastSentTime < 60000) {
+                    alert(`Wait ${Math.ceil((60000 - (Date.now() - lastSentTime)) / 1000)}s before sending another.`);
+                    return;
+                  }
+                  if (!alertTitle.trim() && !alertMessage.trim()) {
+                    alert("Please enter a title or message for the alert.");
+                    return;
+                  }
+                  if (onSendAlert) {
+                    onSendAlert({
+                      title: alertTitle.trim() || "ALERT",
+                      message: alertMessage.trim(),
+                      actionText: alertActionText.trim() || "OK",
+                      cancelText: alertCancelText.trim() || "Dismiss",
+                    });
+                    setLastSentTime(Date.now());
+                    alert("Alert broadcasted!");
+                    setAlertModalVisible(false);
+                  }
+                }}
+              >
+                <Text style={styles.saveBtnText}>Broadcast Now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
-  container: { backgroundColor: "#313338", borderTopLeftRadius: 16, borderTopRightRadius: 16, height: "90%", maxWidth: Platform.OS === "web" ? 600 : ("100%" as any), width: "100%", alignSelf: "center" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: "#1e1f22" },
-  title: { color: "#f2f3f5", fontSize: 20, fontWeight: "bold" },
-  closeBtn: { padding: 4 },
-  content: { padding: 20 },
-  alertInput: { backgroundColor: "#1e1f22", color: "#dbdee1", padding: 12, borderRadius: 8, fontSize: 14,  },
-  sectionTitle: { color: "#b5bac1", fontSize: 13, fontWeight: "700", textTransform: "uppercase", marginBottom: 14, letterSpacing: 0.5 },
-  themeCard: { alignItems: "center", marginRight: 16, width: 80 },
-  themePreview: { width: 80, height: 56, backgroundColor: "#1e1f22", borderRadius: 12, justifyContent: "center", alignItems: "center", padding: 8, gap: 4, marginBottom: 6 },
-  themeBubbleRight: { alignSelf: "flex-end", width: 48, height: 14, borderRadius: 8 },
-  themeBubbleLeft: { alignSelf: "flex-start", width: 36, height: 14, borderRadius: 8 },
-  themeLabel: { color: "#b5bac1", fontSize: 11, textAlign: "center" },
-  colorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 4 },
-  colorSwatch: { width: 36, height: 36, borderRadius: 18 },
-  colorSwatchSelected: { borderWidth: 3, borderColor: "#fff" },
-  toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginVertical: 16 },
-  toggleLabel: { color: "#dbdee1", fontSize: 15, fontWeight: "600" },
-  toggle: { width: 48, height: 28, borderRadius: 14, backgroundColor: "#4e5058", justifyContent: "center", paddingHorizontal: 3 },
-  toggleOn: { backgroundColor: "#5865F2" },
-  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff" },
-  toggleThumbOn: { alignSelf: "flex-end" },
-  gradientPreview: { height: 40, marginBottom: 16, backgroundColor: "#5865F2", justifyContent: "center", alignItems: "center" },
-  gradientPreviewText: { color: "#fff", fontSize: 13, fontWeight: "600" },
-  shapeRow: { flexDirection: "row", gap: 12, marginBottom: 4 },
-  shapeOption: { flex: 1, alignItems: "center", paddingVertical: 14, backgroundColor: "#2b2d31", borderRadius: 10, borderWidth: 2, borderColor: "transparent" },
-  shapeOptionSelected: { borderColor: "#5865F2", backgroundColor: "rgba(88,101,242,0.1)" },
-  shapeSampleBubble: { width: 48, height: 20, marginBottom: 8 },
-  shapeLabel: { color: "#b5bac1", fontSize: 13 },
-  wallpaperPreviewContainer: { height: 160, borderRadius: 8, overflow: "hidden", backgroundColor: "#1e1f22", marginBottom: 16 },
-  previewBox: { flex: 1, width: "100%", height: "100%" },
-  previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  dimOverlay: {
-    ...StyleSheet.absoluteFill,
-  },
-  emptyPreviewBox: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyText: { color: "#80848e", marginTop: 8, fontSize: 14 },
-  wallpaperActions: { flexDirection: "row", gap: 12, marginBottom: 20 },
-  actionBtn: { flex: 1, backgroundColor: "#5865F2", flexDirection: "row", justifyContent: "center", alignItems: "center", paddingVertical: 12, borderRadius: 6, gap: 8 },
-  removeBtn: { backgroundColor: "transparent", borderWidth: 1, borderColor: "#f23f43" },
-  actionBtnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
-  slidersContainer: { backgroundColor: "#2b2d31", borderRadius: 8, padding: 16, marginBottom: 20 },
-  sliderRow: { marginBottom: 16 },
-  sliderLabel: { color: "#dbdee1", fontSize: 14, marginBottom: 8 },
-  slider: { width: "100%", height: 40 },
-  fontOptions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  fontOption: { backgroundColor: "#2b2d31", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, borderWidth: 2, borderColor: "transparent" },
-  fontOptionSelected: { borderColor: "#5865F2", backgroundColor: "rgba(88,101,242,0.1)" },
-  fontOptionText: { color: "#b5bac1", fontSize: 16 },
-  fontOptionTextSelected: { color: "#f2f3f5", fontWeight: "bold" },
-  footer: { padding: 20, borderTopWidth: 1, borderTopColor: "#1e1f22", backgroundColor: "#313338" },
-  saveBtn: { backgroundColor: "#23a559", paddingVertical: 14, borderRadius: 6, alignItems: "center" },
-  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  deleteBtn: { marginTop: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", paddingVertical: 12, backgroundColor: "rgba(244, 63, 94, 0.1)", borderRadius: 6, borderWidth: 1, borderColor: "rgba(244, 63, 94, 0.2)" },
-  deleteBtnText: { color: "#f43f5e", fontSize: 14, fontWeight: "600" },
-});
+const createStyles = (theme: any) =>
+  StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" },
+    container: {
+      backgroundColor: theme.surface,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      height: "90%",
+      maxWidth: Platform.OS === "web" ? 600 : ("100%" as any),
+      width: "100%",
+      alignSelf: "center",
+      borderWidth: theme.id === "black" ? 0 : 1,
+      borderColor: theme.border,
+    },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    title: { color: theme.text, fontSize: 20, fontWeight: "bold" },
+    closeBtn: { padding: 4 },
+    content: { padding: 20 },
+    alertInput: {
+      backgroundColor: theme.background,
+      color: theme.text,
+      padding: 12,
+      borderRadius: 8,
+      fontSize: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    sectionTitle: {
+      color: theme.textMuted,
+      fontSize: 13,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      marginBottom: 14,
+      letterSpacing: 0.5,
+    },
+    themeCard: { alignItems: "center", marginRight: 16, width: 80 },
+    themePreview: {
+      width: 80,
+      height: 56,
+      backgroundColor: theme.background,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 8,
+      gap: 4,
+      marginBottom: 6,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    themeBubbleRight: { alignSelf: "flex-end", width: 48, height: 14, borderRadius: 8 },
+    themeBubbleLeft: { alignSelf: "flex-start", width: 36, height: 14, borderRadius: 8 },
+    themeLabel: { color: theme.textMuted, fontSize: 11, textAlign: "center" },
+    colorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 4 },
+    colorSwatch: { width: 36, height: 36, borderRadius: 18 },
+    colorSwatchSelected: { borderWidth: 3, borderColor: theme.text },
+    toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginVertical: 16 },
+    toggleLabel: { color: theme.text, fontSize: 15, fontWeight: "600" },
+    toggle: { width: 48, height: 28, borderRadius: 14, backgroundColor: theme.border, justifyContent: "center", paddingHorizontal: 3 },
+    toggleOn: { backgroundColor: theme.accent },
+    toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff" },
+    toggleThumbOn: { alignSelf: "flex-end" },
+    gradientPreview: { height: 40, marginBottom: 16, backgroundColor: theme.accent, justifyContent: "center", alignItems: "center" },
+    gradientPreviewText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+    shapeRow: { flexDirection: "row", gap: 12, marginBottom: 4 },
+    shapeOption: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 14,
+      backgroundColor: theme.background,
+      borderRadius: 10,
+      borderWidth: 2,
+      borderColor: theme.border,
+    },
+    shapeOptionSelected: { borderColor: theme.accent, backgroundColor: theme.border },
+    shapeSampleBubble: { width: 48, height: 20, marginBottom: 8 },
+    shapeLabel: { color: theme.textMuted, fontSize: 13 },
+    wallpaperPreviewContainer: { height: 160, borderRadius: 8, overflow: "hidden", backgroundColor: theme.background, marginBottom: 16, borderWidth: 1, borderColor: theme.border },
+    previewBox: { flex: 1, width: "100%", height: "100%" },
+    previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
+    dimOverlay: { ...StyleSheet.absoluteFillObject },
+    emptyPreviewBox: { flex: 1, justifyContent: "center", alignItems: "center" },
+    emptyText: { color: theme.textMuted, marginTop: 8, fontSize: 14 },
+    wallpaperActions: { flexDirection: "row", gap: 12, marginBottom: 20 },
+    actionBtn: {
+      flex: 1,
+      backgroundColor: theme.accent,
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingVertical: 12,
+      borderRadius: 6,
+      gap: 8,
+    },
+    removeBtn: { backgroundColor: "transparent", borderWidth: 1, borderColor: "#f23f43" },
+    actionBtnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+    slidersContainer: { backgroundColor: theme.background, borderRadius: 8, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: theme.border },
+    sliderRow: { marginBottom: 16 },
+    sliderLabel: { color: theme.text, fontSize: 14, marginBottom: 8 },
+    slider: { width: "100%", height: 40 },
+    fontOptions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+    fontOption: { backgroundColor: theme.background, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, borderWidth: 2, borderColor: theme.border },
+    fontOptionSelected: { borderColor: theme.accent, backgroundColor: theme.border },
+    fontOptionText: { color: theme.textMuted, fontSize: 16 },
+    fontOptionTextSelected: { color: theme.text, fontWeight: "bold" },
+    alertTriggerBtn: {
+      backgroundColor: "#f23f43",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 14,
+      borderRadius: 8,
+    },
+    alertTriggerBtnText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
+    modalSubOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center", padding: 20 },
+    modalSubContainer: {
+      width: "100%",
+      maxWidth: 440,
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 20,
+      borderWidth: theme.id === "black" ? 0 : 1,
+      borderColor: theme.border,
+    },
+    modalCancelBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 6, justifyContent: "center", alignItems: "center" },
+    footer: { padding: 20, borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.surface },
+    saveBtn: { backgroundColor: "#23a559", paddingVertical: 14, borderRadius: 6, alignItems: "center" },
+    saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+    deleteBtn: {
+      marginTop: 12,
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingVertical: 12,
+      backgroundColor: "rgba(244, 63, 94, 0.1)",
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: "rgba(244, 63, 94, 0.2)",
+    },
+    deleteBtnText: { color: "#f43f5e", fontSize: 14, fontWeight: "600" },
+  });
