@@ -1043,7 +1043,8 @@ export default function ChatScreen() {
                   showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
                   theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
                   theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
-                  { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+                  { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
+                  inputText.includes("\n") ? { height: undefined, minHeight: 46, maxHeight: 120 } : { height: 46 }
                 ]}>
                   <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                     {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
@@ -1066,7 +1067,8 @@ export default function ChatScreen() {
                     ref={textInputRef}
                     style={[
                       styles.textInput, 
-                      messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
+                      messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {},
+                      inputText.includes("\n") ? { height: undefined, minHeight: 24, maxHeight: 100 } : { height: 24 }
                     ]} 
                     placeholder={`Message #${name || "chat"}`} 
                     placeholderTextColor={theme.id === "pink" ? "rgba(244, 114, 182, 0.6)" : (isAmoled ? "#888888" : theme.textMuted)}
@@ -1374,6 +1376,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     paddingLeft: 7,
     paddingRight: 12,
     paddingVertical: 0,
+    height: 46,
     minHeight: 46,
     maxHeight: 120,
     borderWidth: 1,
@@ -1408,11 +1411,11 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     color: isAmoled ? "#ffffff" : (theme.id === "pink" ? "#ffffff" : theme.text),
     fontSize: 15,
     lineHeight: 20,
+    height: 24,
     alignSelf: "center",
-    paddingTop: Platform.OS === "web" ? 12 : 7,
-    paddingBottom: Platform.OS === "web" ? 12 : 7,
+    paddingTop: 0,
+    paddingBottom: 0,
     paddingHorizontal: 8,
-    maxHeight: 100,
     outlineStyle: "none" as any,
     textAlignVertical: "center",
   },
