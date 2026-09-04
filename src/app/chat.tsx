@@ -259,7 +259,7 @@ export default function ChatScreen() {
           } catch (e) {}
         }
         
-        const filtered = data.filter(m => m.type !== "alert");
+        const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted");
         const formatted = filtered.map(formatMsg);
         setMessages(formatted); 
         setHasMore(data.length === PAGE_SIZE); 
@@ -298,6 +298,14 @@ export default function ChatScreen() {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setMessages(prev => {
             if (prev.some(m => m.id === nm.id)) return prev;
+            if (nm.sender_id === user?.id) {
+              const tempIndex = prev.findIndex(m => m.id.startsWith("temp-") && m.text === nm.text);
+              if (tempIndex !== -1) {
+                const updated = [...prev];
+                updated[tempIndex] = { ...nm, status: "sent" };
+                return updated;
+              }
+            }
             return [nm, ...prev];
           });
         } else if (payload.eventType === "DELETE") {
@@ -307,7 +315,12 @@ export default function ChatScreen() {
             setMessages(prev => prev.filter(m => m.id !== delId));
           }
         } else if (payload.eventType === "UPDATE") {
-          setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, text: payload.new.content } : m));
+          if (payload.new.type === "deleted") {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setMessages(prev => prev.filter(m => m.id !== payload.new.id));
+          } else {
+            setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, text: payload.new.content } : m));
+          }
         }
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
@@ -458,7 +471,12 @@ export default function ChatScreen() {
         console.error("Send failed", error);
         setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "failed" } : m));
       } else if (data) {
-        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.id, status: "sent" } : m));
+        setMessages(prev => {
+          if (prev.some(m => m.id === data.id)) {
+            return prev.filter(m => m.id !== tempId);
+          }
+          return prev.map(m => m.id === tempId ? { ...m, id: data.id, status: "sent" } : m);
+        });
       }
     }
   }, [inputText, user, id, editingMsgId, replyingTo, messageFont]);
@@ -487,12 +505,13 @@ export default function ChatScreen() {
       }
     }).catch(() => {});
 
-    // 4. Delete from Supabase database
+    // 4. Delete from Supabase database (both hard DELETE and soft UPDATE to guarantee DB persistence across refreshes)
     try {
       let { error } = await supabase.from("messages").delete().eq("id", msgId);
       if (error && user?.id) {
         await supabase.from("messages").delete().eq("id", msgId).eq("sender_id", user.id);
       }
+      await supabase.from("messages").update({ type: "deleted", content: "" }).eq("id", msgId);
     } catch (e) {
       console.error("Delete DB error:", e);
     }
