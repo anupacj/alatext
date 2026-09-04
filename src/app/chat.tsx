@@ -151,6 +151,16 @@ export default function ChatScreen() {
   const typingChannelRef = useRef<any>(null);
   const profileCache = useRef<Map<string, any>>(new Map());
   const fileInputRef = useRef<any>(null);
+  const textInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (replyingTo || editingMsgId) {
+      const timer = setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [replyingTo, editingMsgId]);
 
   const formatMsg = useCallback((msg: any): Message => {
     const ts = new Date(msg.created_at).getTime();
@@ -1053,6 +1063,7 @@ export default function ChatScreen() {
                     <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                   </TouchableOpacity>
                   <TextInput 
+                    ref={textInputRef}
                     style={[
                       styles.textInput, 
                       messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
@@ -1364,7 +1375,6 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     paddingRight: 12,
     paddingVertical: 0,
     minHeight: 46,
-    height: 46,
     maxHeight: 120,
     borderWidth: 1,
     borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(131,24,67,0.12)" : "rgba(255,255,255,0.08)")),
@@ -1399,8 +1409,8 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     fontSize: 15,
     lineHeight: 20,
     alignSelf: "center",
-    paddingTop: Platform.OS === "web" ? 3 : 1,
-    paddingBottom: Platform.OS === "web" ? 3 : 1,
+    paddingTop: Platform.OS === "web" ? 12 : 7,
+    paddingBottom: Platform.OS === "web" ? 12 : 7,
     paddingHorizontal: 8,
     maxHeight: 100,
     outlineStyle: "none" as any,
