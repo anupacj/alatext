@@ -82,6 +82,7 @@ export default function Home() {
             id, name, is_group, avatar_url,
             chat_participants (
               user_id,
+              nickname,
               profiles ( username, display_name, avatar_url )
             )
           )
@@ -96,8 +97,9 @@ export default function Home() {
         let chatName = chat.name || "Chat";
         let chatAvatar = chat.avatar_url;
         if (!chat.is_group && chat.chat_participants) {
-          const other = chat.chat_participants.find((p: any) => p.user_id !== user.id)?.profiles;
-          if (other) { chatName = other.display_name || other.username; chatAvatar = other.avatar_url; }
+          const otherPart = chat.chat_participants.find((p: any) => p.user_id !== user.id);
+          const other = otherPart?.profiles;
+          if (other) { chatName = otherPart?.nickname || other.display_name || other.username; chatAvatar = other.avatar_url; }
         }
         const { data: lastMsgData } = await supabase
           .from("messages")

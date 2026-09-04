@@ -529,7 +529,12 @@ export default function ChatInfoModal({
                   source={{ uri: targetUser?.avatar_url || "https://ui-avatars.com/api/?name=U" }}
                   style={styles.hugeAvatar}
                 />
-                <Text style={styles.hugeUsername}>{targetUser?.display_name || targetUser?.username}</Text>
+                <Text style={styles.hugeUsername}>{targetUser?.nickname || targetUser?.display_name || targetUser?.username}</Text>
+                {targetUser?.nickname && (
+                  <Text style={{ color: theme.accent || "#5865F2", fontSize: 13, fontWeight: "600", marginTop: 2 }}>
+                    Nickname: "{targetUser.nickname}"
+                  </Text>
+                )}
                 <Text style={styles.hugeHandle}>@{targetUser?.username}</Text>
 
                 {targetUser?.bio ? (

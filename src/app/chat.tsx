@@ -123,6 +123,7 @@ export default function ChatScreen() {
   const [pingVisible, setPingVisible] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [pinnedMessage, setPinnedMessage] = useState<{ id: string; text: string; sender: string } | null>(null);
+  const [myNicknameFromPartner, setMyNicknameFromPartner] = useState<string | null>(null);
 
   const handlePinMessage = useCallback(async (msg: Message | null) => {
     const pinData = msg ? { id: msg.id, text: msg.text, sender: msg.sender } : null;
@@ -178,13 +179,15 @@ export default function ChatScreen() {
     const handleViewport = () => {
       resetScroll();
       if (window.visualViewport) {
-        const keyboardHeight = Math.max(
-          0,
-          window.innerHeight - (window.visualViewport.height + (window.visualViewport.offsetTop || 0))
-        );
-        const newBottom = keyboardHeight > 40 ? keyboardHeight : 0;
-        setViewportBottom(newBottom);
-        if (newBottom > 0) {
+        const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
+        const visualHeight = window.visualViewport.height;
+        const offsetTop = window.visualViewport.offsetTop || 0;
+
+        let diff = layoutHeight - (visualHeight + offsetTop);
+        const keyboardHeight = (diff > 40 && diff < 450) ? Math.min(diff, 320) : 0;
+
+        setViewportBottom(keyboardHeight);
+        if (keyboardHeight > 0) {
           setTimeout(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           }, 100);
@@ -279,11 +282,13 @@ export default function ChatScreen() {
         const { count } = await supabase.from("chat_participants").select("*", { count: "exact", head: true }).eq("chat_id", id);
         if (count) setGroupMemberCount(count);
       }
-      const { data: parts } = await supabase.from("chat_participants").select("user_id, last_read_at").eq("chat_id", id).neq("user_id", user.id).limit(1);
+      const { data: parts } = await supabase.from("chat_participants").select("user_id, last_read_at, nickname").eq("chat_id", id).neq("user_id", user.id).limit(1);
       if (parts && parts.length > 0) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("id", parts[0].user_id).single();
-        if (profile) setTargetUser({ ...profile, last_read_at: parts[0].last_read_at });
+        if (profile) setTargetUser({ ...profile, last_read_at: parts[0].last_read_at, nickname: parts[0].nickname || null });
       }
+      const { data: myPart } = await supabase.from("chat_participants").select("nickname").eq("chat_id", id).eq("user_id", user.id).single();
+      if (myPart?.nickname) setMyNicknameFromPartner(myPart.nickname);
     };
     init();
 
@@ -913,7 +918,7 @@ export default function ChatScreen() {
                 ]} 
                 numberOfLines={1}
               >
-                {isGroup ? (groupChatData?.name || name || "Group Chat") : (name || "chat")}
+                {isGroup ? (groupChatData?.name || name || "Group Chat") : (targetUser?.nickname || name || targetUser?.username || "chat")}
               </Text>
               {isGroup ? (
                 <Text style={[styles.groupSubtitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>

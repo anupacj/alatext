@@ -155,6 +155,9 @@ export default function ChatSettingsModal({
 
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
+  const [partnerUser, setPartnerUser] = useState<any>(null);
+  const [partnerNickname, setPartnerNickname] = useState("");
+  const [myNicknameFromPartner, setMyNicknameFromPartner] = useState("");
 
   useEffect(() => {
     if (visible && userId) {
@@ -165,7 +168,30 @@ export default function ChatSettingsModal({
         if (data?.value && Array.isArray(data.value)) setPublicFeatures(data.value);
       });
     }
-  }, [visible, userId]);
+
+    if (visible && chatId && userId) {
+      supabase.from("chat_participants")
+        .select("user_id, nickname, profiles(id, username, avatar_url)")
+        .eq("chat_id", chatId)
+        .neq("user_id", userId)
+        .limit(1)
+        .then(({ data }) => {
+          if (data && data[0]) {
+            setPartnerUser(data[0]);
+            setPartnerNickname(data[0].nickname || "");
+          }
+        });
+
+      supabase.from("chat_participants")
+        .select("nickname")
+        .eq("chat_id", chatId)
+        .eq("user_id", userId)
+        .single()
+        .then(({ data }) => {
+          if (data?.nickname) setMyNicknameFromPartner(data.nickname);
+        });
+    }
+  }, [visible, userId, chatId]);
 
   useEffect(() => {
     if (visible && currentSettings) {
@@ -244,6 +270,18 @@ export default function ChatSettingsModal({
         console.error(e);
       }
 
+      if (partnerUser?.user_id) {
+        try {
+          await supabase.from("chat_participants")
+            .update({ nickname: partnerNickname.trim() || null })
+            .eq("chat_id", chatId)
+            .eq("user_id", partnerUser.user_id);
+          updates.partner_nickname = partnerNickname.trim() || null;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
       if (wallpaperUrl !== currentSettings?.wallpaper_url && wallpaperUrl) {
         await supabase.from("messages").insert({ chat_id: chatId, sender_id: userId, content: "updated their chat wallpaper. Tap here to apply it too!", type: "system" });
       }
@@ -301,7 +339,36 @@ export default function ChatSettingsModal({
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
 
-            {/* THEMES */}
+            {/* PARTNER NICKNAME SECTION */}
+            <Text style={styles.sectionTitle}>🏷️ Chat Partner Nickname</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 8 }}>
+              Set a custom nickname for {partnerUser?.profiles?.username ? `@${partnerUser.profiles.username}` : "your chat partner"}.
+            </Text>
+            <TextInput
+              style={{
+                backgroundColor: theme.surface,
+                color: theme.text,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                fontSize: 15,
+                marginBottom: 12,
+              }}
+              placeholder={`Nickname for ${partnerUser?.profiles?.username || "partner"}`}
+              placeholderTextColor={theme.textMuted}
+              value={partnerNickname}
+              onChangeText={setPartnerNickname}
+            />
+
+            {myNicknameFromPartner ? (
+              <View style={{ backgroundColor: "rgba(88,101,242,0.15)", borderRadius: 12, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: "rgba(88,101,242,0.3)" }}>
+                <Text style={{ color: theme.accent || "#5865F2", fontSize: 13, fontWeight: "600" }}>
+                  ✨ {partnerUser?.profiles?.username || "Partner"} set your nickname to: "{myNicknameFromPartner}"
+                </Text>
+              </View>
+            ) : <View style={{ marginBottom: 12 }} />}
             <Text style={styles.sectionTitle}>✨ Themes</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 24 }}>
               {THEMES.map((t) => (
