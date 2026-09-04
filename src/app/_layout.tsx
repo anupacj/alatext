@@ -31,6 +31,25 @@ export default function Layout() {
       link.rel = "stylesheet";
       document.head.appendChild(link);
 
+      // Global Web Viewport Fix for Fullscreen & Mobile
+      const globalStyle = document.createElement("style");
+      globalStyle.innerHTML = `
+        html, body, #root {
+          height: 100%;
+          height: 100dvh;
+          width: 100%;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+          position: fixed;
+        }
+        :fullscreen, ::backdrop {
+          height: 100%;
+          width: 100%;
+        }
+      `;
+      document.head.appendChild(globalStyle);
+
       // 2. PWA Manifest Link & Apple Touch Icon
       const manifestLink = document.createElement("link");
       manifestLink.rel = "manifest";
@@ -58,7 +77,7 @@ export default function Layout() {
       setMeta("apple-mobile-web-app-status-bar-style", "black-translucent");
       setMeta("apple-mobile-web-app-title", "AlaText");
       setMeta("theme-color", "#1e1f22");
-      setMeta("viewport", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover");
+      setMeta("viewport", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content");
 
       // 4. Register PWA Service Worker
       if ('serviceWorker' in navigator) {

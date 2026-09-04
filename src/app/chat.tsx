@@ -162,6 +162,52 @@ export default function ChatScreen() {
     }
   }, [replyingTo, editingMsgId]);
 
+  const [viewportBottom, setViewportBottom] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const handleViewport = () => {
+      if (window.visualViewport) {
+        const keyboardHeight = Math.max(
+          0,
+          window.innerHeight - (window.visualViewport.height + (window.visualViewport.offsetTop || 0))
+        );
+        const newBottom = keyboardHeight > 40 ? keyboardHeight : 0;
+        setViewportBottom(newBottom);
+        if (newBottom > 0) {
+          setTimeout(() => {
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+          }, 100);
+        }
+      } else {
+        setViewportBottom(0);
+      }
+    };
+
+    const handleFullscreen = () => {
+      window.scrollTo(0, 0);
+      handleViewport();
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleViewport);
+      window.visualViewport.addEventListener("scroll", handleViewport);
+    }
+    window.addEventListener("resize", handleViewport);
+    document.addEventListener("fullscreenchange", handleFullscreen);
+    document.addEventListener("webkitfullscreenchange", handleFullscreen);
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", handleViewport);
+        window.visualViewport.removeEventListener("scroll", handleViewport);
+      }
+      window.removeEventListener("resize", handleViewport);
+      document.removeEventListener("fullscreenchange", handleFullscreen);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreen);
+    };
+  }, []);
+
   const formatMsg = useCallback((msg: any): Message => {
     const ts = new Date(msg.created_at).getTime();
     return {
@@ -442,7 +488,10 @@ export default function ChatScreen() {
   const sendMessage = useCallback(async () => {
     if (!inputText.trim() || !user || !id) return;
     const content = inputText.trim();
-    const curEdit = editingMsgId; const curReply = replyingTo; const curFont = messageFont;
+    const curEdit = editingMsgId; const curReply = replyingTo; 
+    const curFont = (messageFont && messageFont !== "system") 
+      ? messageFont 
+      : (chatSettings?.font_family && chatSettings.font_family !== "system" ? chatSettings.font_family : null);
     setInputText(""); setEditingMsgId(null); setReplyingTo(null); setMessageFont(null); setFontPickerOpen(false);
     
     if (curEdit) {
@@ -489,7 +538,7 @@ export default function ChatScreen() {
         });
       }
     }
-  }, [inputText, user, id, editingMsgId, replyingTo, messageFont]);
+  }, [inputText, user, id, editingMsgId, replyingTo, messageFont, chatSettings?.font_family]);
 
   const deleteMessage = useCallback(async (msgId: string) => {
     // 1. Optimistically remove from state immediately
@@ -783,7 +832,7 @@ export default function ChatScreen() {
 
 
   return (
-    <View style={{ flex: 1, backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }}>
+    <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }}>
       {showWallpaper && (
         <View style={StyleSheet.absoluteFill}>
           <Image source={{ uri: chatSettings!.wallpaper_url }}
@@ -848,21 +897,21 @@ export default function ChatScreen() {
                 style={[
                   styles.headerTitle, 
                   { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") },
-                  messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
+                  chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
                 ]} 
                 numberOfLines={1}
               >
                 {isGroup ? (groupChatData?.name || name || "Group Chat") : (name || "chat")}
               </Text>
               {isGroup ? (
-                <Text style={[styles.groupSubtitle, messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}]}>
+                <Text style={[styles.groupSubtitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
                   {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
                 </Text>
               ) : targetUser ? (
                 <Text style={[
                   styles.lastSeenText, 
                   !isTargetOnline && styles.offlineText,
-                  messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}
+                  chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
                 ]}>
                   {formatLastSeenText(targetUser, isTargetOnline)}
                 </Text>
@@ -910,8 +959,8 @@ export default function ChatScreen() {
           {messages.length === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={styles.hashCircle}><Hash size={40} color="#ffffff" /></View>
-              <Text style={[styles.welcomeTitle, messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}]}>Welcome to #{name || "chat"}!</Text>
-              <Text style={[styles.welcomeSubtitle, messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {}]}>This is the start of this conversation.</Text>
+              <Text style={[styles.welcomeTitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>Welcome to #{name || "chat"}!</Text>
+              <Text style={[styles.welcomeSubtitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>This is the start of this conversation.</Text>
             </View>
           ) : (
             <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} renderItem={renderMessage}
@@ -920,7 +969,14 @@ export default function ChatScreen() {
               onEndReached={loadOlderMessages} onEndReachedThreshold={0.3}
               ListFooterComponent={loadingOlder ? <ActivityIndicator color={isAmoled ? "#ffffff" : "#5865F2"} style={{ paddingVertical: 12 }} /> : null} />
           )}
-          <View style={[styles.inputArea, showWallpaper && { backgroundColor: "transparent" }]}>
+          <View style={[
+            styles.inputArea, 
+            { 
+              bottom: viewportBottom, 
+              paddingBottom: viewportBottom > 0 ? 8 : (Platform.OS === "web" ? 22 : (Platform.OS === "ios" ? 28 : 16)) 
+            }, 
+            showWallpaper && { backgroundColor: "transparent" }
+          ]}>
             {pinnedMessage && (
               <View style={[
                 styles.replyBanner,
@@ -941,7 +997,7 @@ export default function ChatScreen() {
                 >
                   <Pin size={16} color={theme.accent} style={{ marginRight: 8 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.replyBannerSender, { color: theme.accent }]}>Pinned Message • {pinnedMessage.sender}</Text>
+                    <Text style={[styles.replyBannerSender, { color: theme.accent }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>Pinned Message • {pinnedMessage.sender}</Text>
                     <Text style={[styles.replyBannerText, { color: isAmoled ? "#aaaaaa" : theme.textMuted }]} numberOfLines={1}>
                       {pinnedMessage.text}
                     </Text>
@@ -977,7 +1033,7 @@ export default function ChatScreen() {
               ]}>
                 <Reply size={16} color={isAmoled ? "#ffffff" : theme.accent} style={{ marginRight: 8 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.replyBannerSender, { color: theme.accent }]}>{replyingTo.sender}</Text>
+                  <Text style={[styles.replyBannerSender, { color: theme.accent }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>{replyingTo.sender}</Text>
                   {replyingTo.text?.startsWith("http") ? (
                     <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
                   ) : (
@@ -1067,7 +1123,9 @@ export default function ChatScreen() {
                     ref={textInputRef}
                     style={[
                       styles.textInput, 
-                      messageFont && messageFont !== "system" ? { fontFamily: messageFont } : {},
+                      (messageFont && messageFont !== "system") 
+                        ? { fontFamily: messageFont } 
+                        : (chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}),
                       inputText.includes("\n") ? { height: undefined, minHeight: 24, maxHeight: 100 } : { height: 24 }
                     ]} 
                     placeholder={`Message #${name || "chat"}`} 
@@ -1205,7 +1263,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
-  container: { flex: 1, backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: (Platform.OS === "web" && !isAmoled) ? 1 : 0, borderRightWidth: (Platform.OS === "web" && !isAmoled) ? 1 : 0, borderColor: isAmoled ? "#000000" : border, overflow: "hidden" },
+  container: { flex: 1, height: "100%", backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: (Platform.OS === "web" && !isAmoled) ? 1 : 0, borderRightWidth: (Platform.OS === "web" && !isAmoled) ? 1 : 0, borderColor: isAmoled ? "#000000" : border, overflow: "hidden" },
   floatingHeaderWrapper: {
     position: "absolute",
     top: 0,
@@ -1358,7 +1416,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     right: 0,
     paddingHorizontal: 10,
     paddingVertical: 10,
-    paddingBottom: Platform.OS === "ios" ? 24 : 12,
+    paddingBottom: Platform.OS === "web" ? 22 : (Platform.OS === "ios" ? 28 : 16),
     backgroundColor: "transparent",
     zIndex: 50,
   },
@@ -1491,12 +1549,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         {isWallpaperMsg ? (
           <TouchableOpacity onPress={() => item.isMe ? setSettingsVisible(true) : handleApplyWallpaper()}>
             <Text style={[styles.systemMessageText, { color: "#5865F2" }]}>
-              <Text style={{ fontWeight: "bold", color: "#949ba4" }}>{item.sender}</Text> {item.text}
+              <Text style={[{ fontWeight: "bold", color: "#949ba4" }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>{item.sender}</Text> {item.text}
             </Text>
           </TouchableOpacity>
         ) : (
           <Text style={styles.systemMessageText}>
-            <Text style={{ fontWeight: "bold" }}>{item.sender}</Text> {item.text}
+            <Text style={[{ fontWeight: "bold" }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>{item.sender}</Text> {item.text}
           </Text>
         )}
       </View>
@@ -1593,10 +1651,22 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             onContextMenu: handleBubbleContextMenu,
           } as any)}
         >
-          {(!item.isMe && showMeta && !groupWithPrev) && <Text style={styles.messageSender}>{item.sender}</Text>}
+          {(!item.isMe && showMeta && !groupWithPrev) && (
+            <Text style={[
+              styles.messageSender,
+              chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+            ]}>
+              {item.sender}
+            </Text>
+          )}
           {item.reply_to_id && (
             <View style={[styles.replyQuote, item.isMe ? styles.replyQuoteRight : styles.replyQuoteLeft]}>
-              <Text style={styles.replyQuoteSender}>{item.reply_to_sender}</Text>
+              <Text style={[
+                styles.replyQuoteSender,
+                chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+              ]}>
+                {item.reply_to_sender}
+              </Text>
               {item.reply_to_content?.startsWith("http") ? (
                 <Image source={{ uri: item.reply_to_content }} style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2 }} resizeMode="cover" />
               ) : (
