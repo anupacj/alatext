@@ -166,7 +166,17 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const resetScroll = () => {
+      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0 || document.body.scrollTop !== 0) {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      }
+    };
+
     const handleViewport = () => {
+      resetScroll();
       if (window.visualViewport) {
         const keyboardHeight = Math.max(
           0,
@@ -185,7 +195,7 @@ export default function ChatScreen() {
     };
 
     const handleFullscreen = () => {
-      window.scrollTo(0, 0);
+      resetScroll();
       handleViewport();
     };
 
@@ -194,6 +204,7 @@ export default function ChatScreen() {
       window.visualViewport.addEventListener("scroll", handleViewport);
     }
     window.addEventListener("resize", handleViewport);
+    window.addEventListener("scroll", handleViewport);
     document.addEventListener("fullscreenchange", handleFullscreen);
     document.addEventListener("webkitfullscreenchange", handleFullscreen);
 
@@ -203,6 +214,7 @@ export default function ChatScreen() {
         window.visualViewport.removeEventListener("scroll", handleViewport);
       }
       window.removeEventListener("resize", handleViewport);
+      window.removeEventListener("scroll", handleViewport);
       document.removeEventListener("fullscreenchange", handleFullscreen);
       document.removeEventListener("webkitfullscreenchange", handleFullscreen);
     };
@@ -973,7 +985,7 @@ export default function ChatScreen() {
             styles.inputArea, 
             { 
               bottom: viewportBottom, 
-              paddingBottom: viewportBottom > 0 ? 8 : (Platform.OS === "web" ? 22 : (Platform.OS === "ios" ? 28 : 16)) 
+              paddingBottom: viewportBottom > 0 ? 6 : (Platform.OS === "web" ? 20 : (Platform.OS === "ios" ? 28 : 16)) 
             }, 
             showWallpaper && { backgroundColor: "transparent" }
           ]}>
@@ -1137,6 +1149,15 @@ export default function ChatScreen() {
                       if (typingChannelRef.current && user && now - lastTypingSentRef.current > 2000) {
                         lastTypingSentRef.current = now;
                         typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { user_id: user.id } });
+                      }
+                    }}
+                    onFocus={() => {
+                      if (Platform.OS === "web" && typeof window !== "undefined") {
+                        setTimeout(() => {
+                          window.scrollTo(0, 0);
+                          document.documentElement.scrollTop = 0;
+                          document.body.scrollTop = 0;
+                        }, 50);
                       }
                     }}
                     onKeyPress={(e: any) => {

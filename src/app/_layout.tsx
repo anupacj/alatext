@@ -42,10 +42,12 @@ export default function Layout() {
           padding: 0;
           overflow: hidden;
           position: fixed;
+          background-color: #000000;
         }
         :fullscreen, ::backdrop {
           height: 100%;
           width: 100%;
+          background-color: #000000;
         }
       `;
       document.head.appendChild(globalStyle);
