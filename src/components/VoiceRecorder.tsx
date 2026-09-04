@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     flex: 1,
     height: 46,
-    borderRadius: 23,
+    borderRadius: 9999,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",

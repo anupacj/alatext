@@ -472,6 +472,35 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS awarded_features TEXT[] DEF
               </Text>
             </TouchableOpacity>
           </View>
+
+          <View style={styles.sqlCard}>
+            <Text style={styles.sqlTitle}>3. Enable Realtime Message Deletion & Policies</Text>
+            <Text style={styles.sqlCode}>
+              {`ALTER TABLE public.messages REPLICA IDENTITY FULL;
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'messages' AND policyname = 'Users can delete their own messages'
+  ) THEN
+    CREATE POLICY "Users can delete their own messages" ON public.messages FOR DELETE USING (auth.uid() = sender_id);
+  END IF;
+END $$;`}
+            </Text>
+            <TouchableOpacity
+              style={styles.copyBtn}
+              onPress={() =>
+                copyToClipboard(
+                  `ALTER TABLE public.messages REPLICA IDENTITY FULL;\nDO $$ \nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_policies WHERE tablename = 'messages' AND policyname = 'Users can delete their own messages'\n  ) THEN\n    CREATE POLICY "Users can delete their own messages" ON public.messages FOR DELETE USING (auth.uid() = sender_id);\n  END IF;\nEND $$;`,
+                  "Delete SQL Copied!"
+                )
+              }
+            >
+              <Copy size={14} color="#10b981" style={{ marginRight: 4 }} />
+              <Text style={styles.copyBtnText}>
+                {copiedSql === "Delete SQL Copied!" ? "Copied!" : "Copy Delete SQL"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </View>

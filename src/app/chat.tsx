@@ -302,9 +302,18 @@ export default function ChatScreen() {
           });
         } else if (payload.eventType === "DELETE") {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setMessages(prev => prev.filter(m => m.id !== payload.old.id));
+          const delId = payload.old?.id;
+          if (delId) {
+            setMessages(prev => prev.filter(m => m.id !== delId));
+          }
         } else if (payload.eventType === "UPDATE") {
           setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, text: payload.new.content } : m));
+        }
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
+        if (payload.old?.id) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setMessages(prev => prev.filter(m => m.id !== payload.old.id));
         }
       }).subscribe();
 
@@ -329,6 +338,18 @@ export default function ChatScreen() {
       })
       .on("broadcast", { event: "ping" }, () => {
         setPingVisible(true);
+      })
+      .on("broadcast", { event: "message_deleted" }, (payload) => {
+        if (payload.payload?.id) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setMessages(prev => prev.filter(m => m.id !== payload.payload.id));
+          AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
+            if (cached) {
+              const list = JSON.parse(cached).filter((m: any) => m.id !== payload.payload.id);
+              AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(list));
+            }
+          }).catch(() => {});
+        }
       })
       .on("broadcast", { event: "custom_alert" }, (payload) => {
         setCustomAlert(payload.payload);
@@ -443,16 +464,39 @@ export default function ChatScreen() {
   }, [inputText, user, id, editingMsgId, replyingTo, messageFont]);
 
   const deleteMessage = useCallback(async (msgId: string) => {
-    const saved = messages.find(m => m.id === msgId);
-    setMessages(prev => prev.filter(m => m.id !== msgId)); setHoveredMsg(null);
-    const { error } = await supabase.from("messages").delete().eq("id", msgId).eq("sender_id", user?.id);
-    if (error && saved) {
-      setMessages(prev => {
-        const idx = prev.findIndex(m => m.created_at_ts < saved.created_at_ts);
-        const arr = [...prev]; arr.splice(idx === -1 ? 0 : idx, 0, saved); return arr;
-      });
+    // 1. Optimistically remove from state immediately
+    setMessages(prev => prev.filter(m => m.id !== msgId));
+    setHoveredMsg(null);
+
+    // 2. Broadcast deletion event immediately to all other participants
+    try {
+      if (typingChannelRef.current) {
+        typingChannelRef.current.send({
+          type: "broadcast",
+          event: "message_deleted",
+          payload: { id: msgId }
+        });
+      }
+    } catch (e) {}
+
+    // 3. Update local storage cache immediately
+    AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
+      if (cached) {
+        const list = JSON.parse(cached).filter((m: any) => m.id !== msgId);
+        AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(list));
+      }
+    }).catch(() => {});
+
+    // 4. Delete from Supabase database
+    try {
+      let { error } = await supabase.from("messages").delete().eq("id", msgId);
+      if (error && user?.id) {
+        await supabase.from("messages").delete().eq("id", msgId).eq("sender_id", user.id);
+      }
+    } catch (e) {
+      console.error("Delete DB error:", e);
     }
-  }, [messages, user?.id]);
+  }, [id, user?.id]);
 
   const handleUploadFile = useCallback(async (file: File) => {
     const isVideo = file.type.startsWith("video");
@@ -966,10 +1010,11 @@ export default function ChatScreen() {
               <>
                 <View style={[
                   styles.inputWrapper,
-                  showWallpaper && !isAmoled && {
-                    backgroundColor: "rgba(28,30,38,0.85)",
-                    borderColor: theme.id === "pink" ? "rgba(244, 114, 182, 0.4)" : "rgba(255,255,255,0.15)"
-                  }
+                  isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                  showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                  theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                  theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+                  { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
                 ]}>
                   <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                     {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
@@ -1012,10 +1057,11 @@ export default function ChatScreen() {
                 <TouchableOpacity
                   style={[
                     styles.circularSendBtn,
-                    showWallpaper && !isAmoled && {
-                      backgroundColor: "rgba(28,30,38,0.9)",
-                      borderColor: theme.id === "pink" ? "rgba(244, 114, 182, 0.3)" : "rgba(255,255,255,0.12)"
-                    }
+                    isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                    showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                    theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                    theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+                    { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
                   ]}
                   onPress={() => {
                     if (inputText.trim()) {
@@ -1144,7 +1190,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   headerPill: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 24,
+    borderRadius: 9999,
     borderWidth: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
@@ -1154,21 +1200,23 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     backdropFilter: "blur(20px)",
   } as any,
   headerBackPill: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: "center",
     alignItems: "center",
   },
   headerProfilePill: {
     flex: 1,
-    height: 44,
-    paddingLeft: 4,
-    paddingRight: 12,
+    height: 46,
+    borderRadius: 9999,
+    paddingLeft: 5,
+    paddingRight: 14,
   },
   headerActionsPill: {
-    height: 44,
-    paddingHorizontal: 4,
+    height: 46,
+    borderRadius: 9999,
+    paddingHorizontal: 6,
     gap: 2,
     justifyContent: "center",
     alignItems: "center",
@@ -1276,7 +1324,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingVertical: 10,
     paddingBottom: Platform.OS === "ios" ? 24 : 12,
     backgroundColor: "transparent",
@@ -1285,27 +1333,28 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   inputAreaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
   },
   inputWrapper: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (theme.id === "light" ? "rgba(255,255,255,0.9)" : (theme.id === "pink" ? "rgba(252,231,243,0.9)" : "rgba(43,45,49,0.88)")),
-    borderRadius: 24,
-    paddingLeft: 9,
-    paddingRight: 14,
-    paddingVertical: 3,
+    backgroundColor: isAmoled ? "rgba(0,0,0,0.85)" : (theme.id === "light" ? "rgba(255,255,255,0.88)" : (theme.id === "pink" ? "rgba(252,231,243,0.88)" : "rgba(43,45,49,0.88)")),
+    borderRadius: 9999,
+    paddingLeft: 7,
+    paddingRight: 12,
+    paddingVertical: 0,
     minHeight: 46,
+    height: 46,
     maxHeight: 120,
-    borderWidth: 1.5,
-    borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.4)" : "rgba(255,255,255,0.08)")),
+    borderWidth: 1,
+    borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(131,24,67,0.12)" : "rgba(255,255,255,0.08)")),
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-    backdropFilter: "blur(16px)",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 5,
+    backdropFilter: "blur(20px)",
   } as any,
   attachButton: {
     width: 32,
@@ -1314,12 +1363,13 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     backgroundColor: isAmoled ? "#222" : (theme.accent || "#5865F2"),
     justifyContent: "center",
     alignItems: "center",
+    marginLeft: 2,
     marginRight: 6,
   },
   inputIconButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 4,
@@ -1332,7 +1382,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     alignSelf: "center",
     paddingTop: Platform.OS === "web" ? 3 : 1,
     paddingBottom: Platform.OS === "web" ? 3 : 1,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     maxHeight: 100,
     outlineStyle: "none" as any,
     textAlignVertical: "center",
@@ -1341,17 +1391,18 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: isAmoled ? "#1a1a1a" : "rgba(35, 37, 45, 0.92)",
-    borderWidth: 1.5,
-    borderColor: isAmoled ? "#333" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.3)" : "rgba(255,255,255,0.08)"),
+    backgroundColor: isAmoled ? "rgba(0,0,0,0.85)" : (theme.id === "light" ? "rgba(255,255,255,0.88)" : (theme.id === "pink" ? "rgba(252,231,243,0.88)" : "rgba(43,45,49,0.88)")),
+    borderWidth: 1,
+    borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : (theme.id === "pink" ? "rgba(131,24,67,0.12)" : "rgba(255,255,255,0.08)")),
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
-  },
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 5,
+    backdropFilter: "blur(20px)",
+  } as any,
   systemMessageContainer: { paddingVertical: 12, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", marginVertical: 8 },
   systemMessageText: { color: textMuted, fontSize: 14, fontStyle: "italic", textAlign: "center" },
   imageViewerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" },
