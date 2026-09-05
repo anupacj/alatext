@@ -285,7 +285,8 @@ export default function ChatScreen() {
       const { data: parts } = await supabase.from("chat_participants").select("user_id, last_read_at, nickname").eq("chat_id", id).neq("user_id", user.id).limit(1);
       if (parts && parts.length > 0) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("id", parts[0].user_id).single();
-        if (profile) setTargetUser({ ...profile, last_read_at: parts[0].last_read_at, nickname: parts[0].nickname || null });
+        const savedNick = parts[0].nickname || mySettings?.partner_nickname || null;
+        if (profile) setTargetUser({ ...profile, last_read_at: parts[0].last_read_at, nickname: savedNick });
       }
       const { data: myPart } = await supabase.from("chat_participants").select("nickname").eq("chat_id", id).eq("user_id", user.id).single();
       if (myPart?.nickname) setMyNicknameFromPartner(myPart.nickname);
@@ -1232,8 +1233,22 @@ export default function ChatScreen() {
           onClose={() => setEmojiOpen(false)} 
         />
         {settingsVisible && (
-          <ChatSettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)}
-            chatId={id as string} userId={user.id} currentSettings={chatSettings} onSettingsSaved={setChatSettings} onSendAlert={handleSendAlert} />
+          <ChatSettingsModal 
+            visible={settingsVisible} 
+            onClose={() => setSettingsVisible(false)}
+            chatId={id as string} 
+            userId={user.id} 
+            targetUser={targetUser}
+            currentSettings={chatSettings} 
+            onSettingsSaved={(newSettings) => {
+              setChatSettings(newSettings);
+              if (newSettings.partner_nickname !== undefined || newSettings.nickname !== undefined) {
+                const newNick = newSettings.partner_nickname || newSettings.nickname || null;
+                setTargetUser((prev: any) => prev ? { ...prev, nickname: newNick } : prev);
+              }
+            }} 
+            onSendAlert={handleSendAlert} 
+          />
         )}
         {infoVisible && (
           <ChatInfoModal 

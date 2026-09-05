@@ -112,6 +112,7 @@ interface ChatSettingsModalProps {
   onClose: () => void;
   chatId: string;
   userId: string;
+  targetUser?: any;
   currentSettings: any;
   onSettingsSaved: (newSettings: any) => void;
   onSendAlert?: (alert: { title: string; message: string; actionText: string; cancelText: string }) => void;
@@ -122,6 +123,7 @@ export default function ChatSettingsModal({
   onClose,
   chatId,
   userId,
+  targetUser,
   currentSettings,
   onSettingsSaved,
   onSendAlert,
@@ -155,12 +157,14 @@ export default function ChatSettingsModal({
 
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
-  const [partnerUser, setPartnerUser] = useState<any>(null);
-  const [partnerNickname, setPartnerNickname] = useState("");
+  const [partnerUser, setPartnerUser] = useState<any>(targetUser || null);
+  const [partnerNickname, setPartnerNickname] = useState(targetUser?.nickname || currentSettings?.partner_nickname || "");
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState("");
 
   useEffect(() => {
-    if (visible && userId) {
+    if (!visible || !chatId || !userId) return;
+
+    if (userId) {
       supabase.from("profiles").select("*").eq("id", userId).single().then(({ data }) => {
         if (data) setMyProfile(data);
       });
@@ -169,29 +173,35 @@ export default function ChatSettingsModal({
       });
     }
 
-    if (visible && chatId && userId) {
-      supabase.from("chat_participants")
-        .select("user_id, nickname, profiles(id, username, avatar_url)")
-        .eq("chat_id", chatId)
-        .neq("user_id", userId)
-        .limit(1)
-        .then(({ data }) => {
-          if (data && data[0]) {
-            setPartnerUser(data[0]);
-            setPartnerNickname(data[0].nickname || "");
-          }
-        });
-
-      supabase.from("chat_participants")
-        .select("nickname")
-        .eq("chat_id", chatId)
-        .eq("user_id", userId)
-        .single()
-        .then(({ data }) => {
-          if (data?.nickname) setMyNicknameFromPartner(data.nickname);
-        });
+    if (targetUser) {
+      setPartnerUser(targetUser);
+      setPartnerNickname(targetUser.nickname || currentSettings?.partner_nickname || "");
     }
-  }, [visible, userId, chatId]);
+
+    supabase.from("chat_participants")
+      .select("user_id, nickname")
+      .eq("chat_id", chatId)
+      .neq("user_id", userId)
+      .limit(1)
+      .then(({ data }) => {
+        if (data && data[0]) {
+          setPartnerUser((prev: any) => ({ ...prev, ...data[0] }));
+          if (data[0].nickname) setPartnerNickname(data[0].nickname);
+        }
+      });
+
+    supabase.from("chat_participants")
+      .select("nickname, partner_nickname")
+      .eq("chat_id", chatId)
+      .eq("user_id", userId)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          const nick = data.nickname || data.partner_nickname;
+          if (nick) setMyNicknameFromPartner(nick);
+        }
+      });
+  }, [visible, userId, chatId, targetUser]);
 
   useEffect(() => {
     if (visible && currentSettings) {
@@ -208,6 +218,7 @@ export default function ChatSettingsModal({
       setWallpaperDoodle(currentSettings.wallpaper_doodle || "none");
       setAnniversaryDate(currentSettings.anniversary_date || null);
       setSendButtonEmoji(currentSettings.send_button_emoji || "");
+      if (currentSettings.partner_nickname) setPartnerNickname(currentSettings.partner_nickname);
     }
   }, [visible, currentSettings]);
 
@@ -238,6 +249,7 @@ export default function ChatSettingsModal({
   const saveSettings = async () => {
     setLoading(true);
     try {
+      const newNick = partnerNickname.trim() || null;
       const updates: any = {
         wallpaper_url: wallpaperUrl,
         wallpaper_dim: dim,
@@ -252,6 +264,8 @@ export default function ChatSettingsModal({
         wallpaper_doodle: wallpaperDoodle,
         anniversary_date: anniversaryDate,
         send_button_emoji: sendButtonEmoji || "",
+        partner_nickname: newNick,
+        nickname: newNick,
       };
 
       try {
@@ -263,23 +277,20 @@ export default function ChatSettingsModal({
       try {
         const { error } = await supabase.from("chat_participants").update(updates).eq("chat_id", chatId).eq("user_id", userId);
         if (error) {
-          const { send_button_emoji, ...restUpdates } = updates;
+          const { send_button_emoji, partner_nickname, ...restUpdates } = updates;
           await supabase.from("chat_participants").update(restUpdates).eq("chat_id", chatId).eq("user_id", userId);
+        }
+
+        const partnerId = partnerUser?.id || partnerUser?.user_id || targetUser?.id;
+        if (partnerId) {
+          await supabase.from("chat_participants")
+            .update({ nickname: newNick })
+            .eq("chat_id", chatId)
+            .eq("user_id", partnerId)
+            .catch(() => {});
         }
       } catch (e) {
         console.error(e);
-      }
-
-      if (partnerUser?.user_id) {
-        try {
-          await supabase.from("chat_participants")
-            .update({ nickname: partnerNickname.trim() || null })
-            .eq("chat_id", chatId)
-            .eq("user_id", partnerUser.user_id);
-          updates.partner_nickname = partnerNickname.trim() || null;
-        } catch (e) {
-          console.error(e);
-        }
       }
 
       if (wallpaperUrl !== currentSettings?.wallpaper_url && wallpaperUrl) {
