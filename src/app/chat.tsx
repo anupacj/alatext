@@ -593,20 +593,34 @@ export default function ChatScreen() {
     }
   }, [id, user?.id]);
 
-  const handleUploadFile = useCallback(async (file: File) => {
-    const isVideo = file.type.startsWith("video");
+  const handleUploadFiles = useCallback(async (files: (File | Blob)[]) => {
+    const selectedFiles = Array.from(files).slice(0, 10);
+    if (selectedFiles.length === 0) return;
     setUploadingImage(true);
     try {
-      const prefix = isVideo ? `chat-videos/${id}-${Date.now()}` : `chat-images/${id}-${Date.now()}`;
-      const url = await uploadBlobToR2(prefix, file);
-      await supabase.from("messages").insert({ 
-        chat_id: id, sender_id: user?.id, content: url, type: isVideo ? "video" : "image",
-        reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
-      });
-      setReplyingTo(null);
+      const msgs: any[] = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const isVideo = file.type?.startsWith("video");
+        const prefix = isVideo ? `chat-videos/${id}-${Date.now()}-${i}` : `chat-images/${id}-${Date.now()}-${i}`;
+        const url = await uploadBlobToR2(prefix, file);
+        msgs.push({
+          chat_id: id,
+          sender_id: user?.id,
+          content: url,
+          type: isVideo ? "video" : "image",
+          reply_to_id: replyingTo?.id || null,
+          reply_to_content: replyingTo?.text || null,
+          reply_to_sender: replyingTo?.sender || null,
+        });
+      }
+      if (msgs.length > 0) {
+        await supabase.from("messages").insert(msgs);
+        setReplyingTo(null);
+      }
     } catch (e: any) {
       console.error("Upload error:", e);
-      alert("Failed to upload file: " + (e.message || e));
+      alert("Failed to upload file(s): " + (e.message || e));
     } finally {
       setUploadingImage(false);
     }
@@ -617,38 +631,59 @@ export default function ChatScreen() {
       const handlePaste = (e: any) => {
         const items = e.clipboardData?.items;
         if (items) {
+          const files: File[] = [];
           for (let i = 0; i < items.length; i++) {
             if (items[i].type.indexOf("image") !== -1 || items[i].type.indexOf("video") !== -1) {
               const file = items[i].getAsFile();
-              if (file) handleUploadFile(file);
+              if (file) files.push(file);
             }
+          }
+          if (files.length > 0) {
+            handleUploadFiles(files);
           }
         }
       };
       document.addEventListener("paste", handlePaste);
       return () => document.removeEventListener("paste", handlePaste);
     }
-  }, [handleUploadFile]);
+  }, [handleUploadFiles]);
 
   const handlePickImage = useCallback(async () => {
     if (Platform.OS === "web") { if (fileInputRef.current) fileInputRef.current.click(); return; }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") return;
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.All });
-    if (!result.canceled && result.assets[0]) {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      quality: 0.8,
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+    });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const assets = result.assets.slice(0, 10);
       setUploadingImage(true);
       try {
-        const asset = result.assets[0];
-        const isVideo = asset.type === "video" || asset.mimeType?.startsWith("video");
-        const resp = await fetch(asset.uri);
-        const blob = await resp.blob();
-        const prefix = isVideo ? `chat-videos/${id}-${Date.now()}` : `chat-images/${id}-${Date.now()}`;
-        const url = await uploadBlobToR2(prefix, blob);
-        await supabase.from("messages").insert({ 
-          chat_id: id, sender_id: user?.id, content: url, type: isVideo ? "video" : "image",
-          reply_to_id: replyingTo?.id || null, reply_to_content: replyingTo?.text || null, reply_to_sender: replyingTo?.sender || null
-        });
-        setReplyingTo(null);
+        const msgs: any[] = [];
+        for (let i = 0; i < assets.length; i++) {
+          const asset = assets[i];
+          const isVideo = asset.type === "video" || asset.mimeType?.startsWith("video");
+          const resp = await fetch(asset.uri);
+          const blob = await resp.blob();
+          const prefix = isVideo ? `chat-videos/${id}-${Date.now()}-${i}` : `chat-images/${id}-${Date.now()}-${i}`;
+          const url = await uploadBlobToR2(prefix, blob);
+          msgs.push({
+            chat_id: id,
+            sender_id: user?.id,
+            content: url,
+            type: isVideo ? "video" : "image",
+            reply_to_id: replyingTo?.id || null,
+            reply_to_content: replyingTo?.text || null,
+            reply_to_sender: replyingTo?.sender || null,
+          });
+        }
+        if (msgs.length > 0) {
+          await supabase.from("messages").insert(msgs);
+          setReplyingTo(null);
+        }
       } catch (e: any) {
         console.error("Media pick upload error:", e);
         alert("Failed to upload media: " + (e.message || e));
@@ -659,10 +694,11 @@ export default function ChatScreen() {
   }, [id, user?.id, replyingTo]);
 
   const handleWebFileChange = useCallback((e: any) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    handleUploadFile(file);
+    const files = Array.from(e.target.files || []).slice(0, 10) as File[];
+    if (files.length === 0) return;
+    handleUploadFiles(files);
     e.target.value = "";
-  }, [handleUploadFile]);
+  }, [handleUploadFiles]);
 
   const getLastSeen = useCallback((d?: string) => {
     if (!d) return "Offline";
@@ -1123,7 +1159,7 @@ export default function ChatScreen() {
                     {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
                   </TouchableOpacity>
                   {Platform.OS === "web" && (
-                    <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                    <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
                   )}
                   {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
                     <TouchableOpacity style={styles.inputIconButton} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
