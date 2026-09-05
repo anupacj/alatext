@@ -158,7 +158,7 @@ export default function ChatSettingsModal({
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
   const [partnerUser, setPartnerUser] = useState<any>(targetUser || null);
-  const [partnerNickname, setPartnerNickname] = useState(targetUser?.nickname || currentSettings?.partner_nickname || "");
+  const [partnerNickname, setPartnerNickname] = useState(targetUser?.nickname || currentSettings?.nickname || "");
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState("");
 
   useEffect(() => {
@@ -175,9 +175,22 @@ export default function ChatSettingsModal({
 
     if (targetUser) {
       setPartnerUser(targetUser);
-      setPartnerNickname(targetUser.nickname || currentSettings?.partner_nickname || "");
+      setPartnerNickname(targetUser.nickname || currentSettings?.nickname || "");
     }
 
+    // Fetch nickname I set for my partner from my own participant row
+    supabase.from("chat_participants")
+      .select("nickname")
+      .eq("chat_id", chatId)
+      .eq("user_id", userId)
+      .single()
+      .then(({ data }) => {
+        if (data && data.nickname) {
+          setPartnerNickname(data.nickname);
+        }
+      });
+
+    // Fetch nickname my partner set for ME from partner's participant row
     supabase.from("chat_participants")
       .select("user_id, nickname")
       .eq("chat_id", chatId)
@@ -186,19 +199,9 @@ export default function ChatSettingsModal({
       .then(({ data }) => {
         if (data && data[0]) {
           setPartnerUser((prev: any) => ({ ...prev, ...data[0] }));
-          if (data[0].nickname) setPartnerNickname(data[0].nickname);
-        }
-      });
-
-    supabase.from("chat_participants")
-      .select("nickname, partner_nickname")
-      .eq("chat_id", chatId)
-      .eq("user_id", userId)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          const nick = data.nickname || data.partner_nickname;
-          if (nick) setMyNicknameFromPartner(nick);
+          if (data[0].nickname) {
+            setMyNicknameFromPartner(data[0].nickname);
+          }
         }
       });
   }, [visible, userId, chatId, targetUser]);
@@ -218,7 +221,9 @@ export default function ChatSettingsModal({
       setWallpaperDoodle(currentSettings.wallpaper_doodle || "none");
       setAnniversaryDate(currentSettings.anniversary_date || null);
       setSendButtonEmoji(currentSettings.send_button_emoji || "");
-      if (currentSettings.partner_nickname) setPartnerNickname(currentSettings.partner_nickname);
+      if (currentSettings.nickname || currentSettings.partner_nickname) {
+        setPartnerNickname(currentSettings.nickname || currentSettings.partner_nickname);
+      }
     }
   }, [visible, currentSettings]);
 
@@ -264,7 +269,6 @@ export default function ChatSettingsModal({
         wallpaper_doodle: wallpaperDoodle,
         anniversary_date: anniversaryDate,
         send_button_emoji: sendButtonEmoji || "",
-        partner_nickname: newNick,
         nickname: newNick,
       };
 
@@ -277,17 +281,8 @@ export default function ChatSettingsModal({
       try {
         const { error } = await supabase.from("chat_participants").update(updates).eq("chat_id", chatId).eq("user_id", userId);
         if (error) {
-          const { send_button_emoji, partner_nickname, ...restUpdates } = updates;
+          const { send_button_emoji, ...restUpdates } = updates;
           await supabase.from("chat_participants").update(restUpdates).eq("chat_id", chatId).eq("user_id", userId);
-        }
-
-        const partnerId = partnerUser?.id || partnerUser?.user_id || targetUser?.id;
-        if (partnerId) {
-          await supabase.from("chat_participants")
-            .update({ nickname: newNick })
-            .eq("chat_id", chatId)
-            .eq("user_id", partnerId)
-            .catch(() => {});
         }
       } catch (e) {
         console.error(e);
@@ -538,6 +533,27 @@ export default function ChatSettingsModal({
                 </View>
               </View>
             )}
+
+            {/* CHAT PARTNER NICKNAME */}
+            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🏷️ Chat Partner Nickname</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 10 }}>
+              Set a custom nickname for {partnerUser?.display_name || partnerUser?.username || "your chat partner"}. Only visible to you.
+            </Text>
+            <TextInput
+              style={[styles.alertInput, { fontSize: 15, paddingVertical: 10, paddingHorizontal: 14 }]}
+              value={partnerNickname}
+              onChangeText={setPartnerNickname}
+              placeholder={`Nickname for ${partnerUser?.display_name || partnerUser?.username || "partner"}`}
+              placeholderTextColor={theme.textMuted}
+              maxLength={30}
+            />
+            {myNicknameFromPartner ? (
+              <View style={{ marginTop: 8, padding: 10, backgroundColor: theme.surface, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}>
+                <Text style={{ color: theme.accent || "#5865F2", fontSize: 12, fontWeight: "600" }}>
+                  💡 {partnerUser?.display_name || partnerUser?.username || "Partner"} set your nickname to: "{myNicknameFromPartner}"
+                </Text>
+              </View>
+            ) : null}
 
             {/* SEND BUTTON ICON / EMOJI */}
             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚀 Send Button Icon</Text>

@@ -97,9 +97,10 @@ export default function Home() {
         let chatName = chat.name || "Chat";
         let chatAvatar = chat.avatar_url;
         if (!chat.is_group && chat.chat_participants) {
+          const myPart = chat.chat_participants.find((p: any) => p.user_id === user.id);
           const otherPart = chat.chat_participants.find((p: any) => p.user_id !== user.id);
           const other = otherPart?.profiles;
-          if (other) { chatName = otherPart?.nickname || other.display_name || other.username; chatAvatar = other.avatar_url; }
+          if (other) { chatName = myPart?.nickname || other.display_name || other.username; chatAvatar = other.avatar_url; }
         }
         const { data: lastMsgData } = await supabase
           .from("messages")
