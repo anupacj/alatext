@@ -38,7 +38,7 @@ interface Message {
   sender: string;
   sender_id: string;
   text: string;
-  type: "text" | "image" | "system";
+  type: "text" | "image" | "video" | "audio" | "sticker" | "alert" | "deleted" | "system";
   created_at: string;
   created_at_ts: number;
   time: string;
@@ -154,6 +154,26 @@ export default function ChatScreen() {
       }
     }
   }, [id]);
+
+  const triggerHeartPing = useCallback(async () => {
+    setPingVisible(true);
+    if (typingChannelRef.current) {
+      typingChannelRef.current.send({
+        type: "broadcast",
+        event: "ping",
+        payload: { sender_id: user?.id },
+      });
+    }
+    if (id && user) {
+      await supabase.from("messages").insert({
+        chat_id: id as string,
+        sender_id: user.id,
+        content: "❤️ Sent a heart ping! Thinking of you...",
+        type: "system",
+      });
+    }
+  }, [id, user]);
+
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
   const handledResponsesRef = useRef<Set<string>>(new Set());
@@ -1072,8 +1092,8 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {heartActive && <HeartPing onDone={() => setHeartActive(false)} />}
-        <DoodleOverlay type={chatSettings?.wallpaper_doodle} />
+        <HeartPing visible={pingVisible} onComplete={() => setPingVisible(false)} />
+        <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
 
         {messages.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -1087,6 +1107,7 @@ export default function ChatScreen() {
           </View>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={messages}
             renderItem={renderMessage}
             keyExtractor={item => item.id}
@@ -1101,7 +1122,14 @@ export default function ChatScreen() {
         )}
 
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={0}>
-          <View style={styles.inputArea}>
+          <View style={[
+            styles.inputArea,
+            {
+              bottom: viewportBottom,
+              paddingBottom: viewportBottom > 0 ? 6 : (Platform.OS === "web" ? 20 : (Platform.OS === "ios" ? 28 : 16))
+            },
+            showWallpaper && { backgroundColor: "transparent" }
+          ]}>
             {isTyping && targetUser && (
               <View style={[
                 styles.typingBanner,
@@ -1116,13 +1144,281 @@ export default function ChatScreen() {
                 </Text>
               </View>
             )}
-            
-            {/* Input logic continued... */}
+
+            {uploadProgress.active && (
+              <View style={[
+                styles.editingBanner,
+                {
+                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.92)' : 'rgba(43,45,49,0.88)',
+                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)',
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                }
+              ]}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <Text style={{ color: isAmoled ? "#ffffff" : theme.text, fontSize: 13, fontWeight: "600" }}>
+                    Uploading {uploadProgress.current} of {uploadProgress.total} media...
+                  </Text>
+                  <Text style={{ color: theme.accent || "#5865F2", fontSize: 13, fontWeight: "bold" }}>
+                    {uploadProgress.percent}%
+                  </Text>
+                </View>
+                <View style={{ height: 6, width: "100%", backgroundColor: isAmoled ? "#222222" : "rgba(0,0,0,0.15)", borderRadius: 3, overflow: "hidden" }}>
+                  <View style={{ height: "100%", width: `${uploadProgress.percent}%`, backgroundColor: theme.accent || "#5865F2", borderRadius: 3 }} />
+                </View>
+              </View>
+            )}
+
+            {replyingTo && (
+              <View style={[
+                styles.replyBanner,
+                {
+                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.9)' : theme.id === 'pink' ? 'rgba(252,231,243,0.9)' : 'rgba(43,45,49,0.88)',
+                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : theme.id === 'light' ? 'rgba(0,0,0,0.08)' : theme.id === 'pink' ? 'rgba(131,24,67,0.12)' : 'rgba(255,255,255,0.08)'
+                }
+              ]}>
+                <Reply size={16} color={isAmoled ? "#ffffff" : theme.accent} style={{ marginRight: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.replyBannerSender, { color: theme.accent }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>{replyingTo.sender}</Text>
+                  {replyingTo.text?.startsWith("http") ? (
+                    <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
+                  ) : (
+                    <Text style={[styles.replyBannerText, { color: isAmoled ? "#aaaaaa" : theme.textMuted }]} numberOfLines={1}>{replyingTo.text}</Text>
+                  )}
+                </View>
+                <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
+              </View>
+            )}
+
+            {editingMsgId && (
+              <View style={[
+                styles.editingBanner,
+                {
+                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.9)' : theme.id === 'pink' ? 'rgba(252,231,243,0.9)' : 'rgba(43,45,49,0.88)',
+                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : theme.id === 'light' ? 'rgba(0,0,0,0.08)' : theme.id === 'pink' ? 'rgba(131,24,67,0.12)' : 'rgba(255,255,255,0.08)'
+                }
+              ]}>
+                <Text style={[styles.editingBannerText, { color: isAmoled ? "#ffffff" : theme.text }]}>Editing Message</Text>
+                <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
+              </View>
+            )}
+
+            {fontPickerOpen && (
+              <View style={{ backgroundColor: isAmoled ? "#111" : theme.surface, padding: 12, borderRadius: 16, marginBottom: 8, elevation: 4, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+                <Text style={{ color: isAmoled ? "#aaa" : theme.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Select Font for this Message</Text>
+                <FlatList
+                  horizontal
+                  data={FONT_OPTIONS}
+                  keyExtractor={(item) => item.value}
+                  showsHorizontalScrollIndicator={false}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        backgroundColor: messageFont === item.value ? theme.accent : (isAmoled ? "#222" : "rgba(255,255,255,0.08)"),
+                        borderRadius: 16,
+                        marginRight: 8,
+                      }}
+                      onPress={() => setMessageFont(item.value)}
+                    >
+                      <Text style={{ 
+                        color: messageFont === item.value ? "#fff" : (isAmoled ? "#ddd" : theme.text), 
+                        fontFamily: item.value === "system" ? undefined : item.value 
+                      }}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            )}
+
+            <View style={styles.inputAreaRow}>
+              {isRecordingVoice ? (
+                <VoiceRecorder onSendAudio={handleSendVoiceMessage} onCancel={() => setIsRecordingVoice(false)} />
+              ) : (
+                <>
+                  <View style={[
+                    styles.inputWrapper,
+                    isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                    showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                    theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                    theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+                    { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
+                    inputText.includes("\n") ? { height: undefined, minHeight: 46, maxHeight: 120 } : { height: 46 }
+                  ]}>
+                    <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
+                      {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
+                    </TouchableOpacity>
+                    {Platform.OS === "web" && (
+                      <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                    )}
+                    {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
+                      <TouchableOpacity style={styles.inputIconButton} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
+                        <Type size={20} color={fontPickerOpen ? (theme.accent || "#fff") : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} />
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
+                      <Sticker size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
+                      <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
+                    </TouchableOpacity>
+                    <TextInput 
+                      ref={textInputRef}
+                      style={[
+                        styles.textInput, 
+                        (messageFont && messageFont !== "system") 
+                          ? { fontFamily: messageFont } 
+                          : (chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}),
+                        inputText.includes("\n") ? { height: undefined, minHeight: 24, maxHeight: 100 } : { height: 24 }
+                      ]} 
+                      placeholder={`Message #${name || "chat"}`} 
+                      placeholderTextColor={theme.id === "pink" ? "rgba(244, 114, 182, 0.6)" : (isAmoled ? "#888888" : theme.textMuted)}
+                      value={inputText}
+                      onChangeText={(text) => {
+                        setInputText(text);
+                        const now = Date.now();
+                        if (typingChannelRef.current && user && now - lastTypingSentRef.current > 2000) {
+                          lastTypingSentRef.current = now;
+                          typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { user_id: user.id } });
+                        }
+                      }}
+                      onFocus={() => {
+                        if (Platform.OS === "web" && typeof window !== "undefined") {
+                          setTimeout(() => {
+                            window.scrollTo(0, 0);
+                            document.documentElement.scrollTop = 0;
+                            document.body.scrollTop = 0;
+                          }, 50);
+                        }
+                      }}
+                      onKeyPress={(e: any) => {
+                        if (Platform.OS === "web" && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey) { e.preventDefault(); sendMessage(); }
+                      }}
+                      multiline />
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.circularSendBtn,
+                      isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                      showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                      theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                      theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+                      { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+                    ]}
+                    onPress={() => {
+                      if (inputText.trim()) {
+                        sendMessage();
+                      } else {
+                        setIsRecordingVoice(true);
+                      }
+                    }}
+                  >
+                    {inputText.trim() ? (
+                      chatSettings?.send_button_emoji ? (
+                        <Text style={{ fontSize: 22 }}>{chatSettings.send_button_emoji}</Text>
+                      ) : (
+                        <Send
+                          size={22}
+                          color={theme.accent || "#5865F2"}
+                          style={{ marginLeft: 2 }}
+                        />
+                      )
+                    ) : (
+                      <Mic size={22} color={theme.accent || "#5865F2"} />
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           </View>
         </KeyboardAvoidingView>
       </View>
-      
-      {/* Modals... */}
+
+      {stickerPickerOpen && user && (
+        <StickerPicker 
+          visible={true}
+          onClose={() => setStickerPickerOpen(false)} 
+          chatId={id as string} 
+          userId={user.id} 
+          onSelectSticker={(url) => {
+            supabase.from('messages').insert({
+              chat_id: id as string,
+              sender_id: user.id,
+              content: url,
+              type: 'sticker',
+              reply_to_id: replyingTo?.id || null,
+              reply_to_content: replyingTo?.text || null,
+              reply_to_sender: replyingTo?.sender || null
+            }).then();
+            setReplyingTo(null);
+          }} 
+        />
+      )}
+      <CustomEmojiPicker 
+        onEmojiSelected={(emoji) => setInputText(prev => prev + emoji.emoji)} 
+        open={emojiOpen} 
+        onClose={() => setEmojiOpen(false)} 
+      />
+      {settingsVisible && user && (
+        <ChatSettingsModal 
+          visible={settingsVisible} 
+          onClose={() => setSettingsVisible(false)} 
+          chatId={id as string} 
+          userId={user.id} 
+          targetUser={targetUser}
+          currentSettings={chatSettings} 
+          onSettingsSaved={(newSettings) => {
+            setChatSettings(newSettings);
+            if (newSettings.partner_nickname !== undefined || newSettings.nickname !== undefined) {
+              const newNick = newSettings.partner_nickname || newSettings.nickname || null;
+              setTargetUser((prev: any) => prev ? { ...prev, nickname: newNick } : prev);
+            }
+          }} 
+          onSendAlert={handleSendAlert} 
+        />
+      )}
+      {infoVisible && user && (
+        <ChatInfoModal 
+          visible={infoVisible} 
+          onClose={() => setInfoVisible(false)} 
+          chatId={id as string} 
+          isGroup={isGroup} 
+          targetUser={targetUser} 
+          currentUserId={user.id}
+          onGroupUpdated={(updated) => {
+            setGroupChatData((prev: any) => ({ ...prev, ...updated }));
+          }}
+        />
+      )}
+      <Modal visible={!!imageViewerUrl} transparent animationType="fade" onRequestClose={() => setImageViewerUrl(null)}>
+        <TouchableOpacity style={styles.imageViewerOverlay} activeOpacity={1} onPress={() => setImageViewerUrl(null)}>
+          {imageViewerUrl && <Image source={{ uri: imageViewerUrl }} style={styles.imageViewerImg} resizeMode="contain" />}
+          <TouchableOpacity style={styles.imageViewerClose} onPress={() => setImageViewerUrl(null)}><X size={28} color="#fff" /></TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+      <Modal visible={!!customAlert} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: '90%', maxWidth: 440, backgroundColor: '#313338', borderRadius: 8, overflow: 'hidden' }}>
+            <View style={{ padding: 24, paddingBottom: 16 }}>
+              <Text style={{ color: '#f2f3f5', fontSize: 20, fontWeight: '800', textTransform: 'uppercase', marginBottom: 12 }}>{customAlert?.title}</Text>
+              <Text style={{ color: '#dbdee1', fontSize: 16, lineHeight: 22 }}>{customAlert?.message}</Text>
+            </View>
+            <View style={{ backgroundColor: '#2b2d31', padding: 16, flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity onPress={() => handleRespondToAlert(customAlert?.cancelText || "Cancel")} style={{ paddingVertical: 10, paddingHorizontal: 16 }}>
+                <Text style={{ color: '#f2f3f5', fontSize: 15, fontWeight: '500' }}>{customAlert?.cancelText}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleRespondToAlert(customAlert?.actionText || "Action")} style={{ backgroundColor: '#f23f43', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}>
+                <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '600' }}>{customAlert?.actionText}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 

@@ -30,7 +30,7 @@ export default function Chat() {
     setInputText('');
   };
 
-  const renderMessage = ({ item }) => (
+  const renderMessage = ({ item }: { item: any }) => (
     <View style={styles.messageContainer}>
       <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
       <View style={styles.messageContent}>
