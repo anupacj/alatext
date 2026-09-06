@@ -86,6 +86,12 @@ export default function ChatScreen() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    active: boolean;
+    current: number;
+    total: number;
+    percent: number;
+  }>({ active: false, current: 0, total: 0, percent: 0 });
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
@@ -597,13 +603,26 @@ export default function ChatScreen() {
     const selectedFiles = Array.from(files).slice(0, 10);
     if (selectedFiles.length === 0) return;
     setUploadingImage(true);
+    const totalFiles = selectedFiles.length;
+    setUploadProgress({ active: true, current: 1, total: totalFiles, percent: 0 });
+
     try {
       const msgs: any[] = [];
+      const progressArray = new Array(totalFiles).fill(0);
+
+      const updateOverallProgress = (index: number, pct: number) => {
+        progressArray[index] = pct;
+        const totalPct = Math.round(progressArray.reduce((a, b) => a + b, 0) / totalFiles);
+        const currentFile = Math.min(totalFiles, progressArray.filter(p => p >= 100).length + 1);
+        setUploadProgress({ active: true, current: currentFile, total: totalFiles, percent: totalPct });
+      };
+
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         const isVideo = file.type?.startsWith("video");
         const prefix = isVideo ? `chat-videos/${id}-${Date.now()}-${i}` : `chat-images/${id}-${Date.now()}-${i}`;
-        const url = await uploadBlobToR2(prefix, file);
+        const url = await uploadBlobToR2(prefix, file, (pct) => updateOverallProgress(i, pct));
+        updateOverallProgress(i, 100);
         msgs.push({
           chat_id: id,
           sender_id: user?.id,
@@ -623,6 +642,7 @@ export default function ChatScreen() {
       alert("Failed to upload file(s): " + (e.message || e));
     } finally {
       setUploadingImage(false);
+      setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
     }
   }, [id, user?.id, replyingTo]);
 
@@ -661,15 +681,28 @@ export default function ChatScreen() {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const assets = result.assets.slice(0, 10);
       setUploadingImage(true);
+      const totalFiles = assets.length;
+      setUploadProgress({ active: true, current: 1, total: totalFiles, percent: 0 });
+
       try {
         const msgs: any[] = [];
+        const progressArray = new Array(totalFiles).fill(0);
+
+        const updateOverallProgress = (index: number, pct: number) => {
+          progressArray[index] = pct;
+          const totalPct = Math.round(progressArray.reduce((a, b) => a + b, 0) / totalFiles);
+          const currentFile = Math.min(totalFiles, progressArray.filter(p => p >= 100).length + 1);
+          setUploadProgress({ active: true, current: currentFile, total: totalFiles, percent: totalPct });
+        };
+
         for (let i = 0; i < assets.length; i++) {
           const asset = assets[i];
           const isVideo = asset.type === "video" || asset.mimeType?.startsWith("video");
           const resp = await fetch(asset.uri);
           const blob = await resp.blob();
           const prefix = isVideo ? `chat-videos/${id}-${Date.now()}-${i}` : `chat-images/${id}-${Date.now()}-${i}`;
-          const url = await uploadBlobToR2(prefix, blob);
+          const url = await uploadBlobToR2(prefix, blob, (pct) => updateOverallProgress(i, pct));
+          updateOverallProgress(i, 100);
           msgs.push({
             chat_id: id,
             sender_id: user?.id,
@@ -689,6 +722,7 @@ export default function ChatScreen() {
         alert("Failed to upload media: " + (e.message || e));
       } finally {
         setUploadingImage(false);
+        setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
       }
     }
   }, [id, user?.id, replyingTo]);
@@ -1073,6 +1107,32 @@ export default function ChatScreen() {
                 <Text style={[styles.typingText, { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") }]}>
                   {targetUser.username} is typing<SendingDots />
                 </Text>
+              </View>
+            )}
+
+            {uploadProgress.active && (
+              <View style={[
+                styles.editingBanner,
+                {
+                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.92)' : 'rgba(43,45,49,0.88)',
+                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)',
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                }
+              ]}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <Text style={{ color: isAmoled ? "#ffffff" : theme.text, fontSize: 13, fontWeight: "600" }}>
+                    Uploading {uploadProgress.current} of {uploadProgress.total} media...
+                  </Text>
+                  <Text style={{ color: theme.accent || "#5865F2", fontSize: 13, fontWeight: "bold" }}>
+                    {uploadProgress.percent}%
+                  </Text>
+                </View>
+                <View style={{ height: 6, width: "100%", backgroundColor: isAmoled ? "#222222" : "rgba(0,0,0,0.15)", borderRadius: 3, overflow: "hidden" }}>
+                  <View style={{ height: "100%", width: `${uploadProgress.percent}%`, backgroundColor: theme.accent || "#5865F2", borderRadius: 3 }} />
+                </View>
               </View>
             )}
 
@@ -1578,6 +1638,116 @@ const createStyles = (isAmoled: boolean, theme: any) => {
 };
 
 
+// --- Dynamic Image Sizing & WhatsApp-Style Clumped Media Grid Components ---
+const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress: () => void; style?: any }) => {
+  const [aspectRatio, setAspectRatio] = useState<number>(1.2);
+
+  useEffect(() => {
+    if (!uri) return;
+    Image.getSize(
+      uri,
+      (w, h) => {
+        if (w && h) {
+          const ratio = w / h;
+          setAspectRatio(Math.max(0.65, Math.min(1.75, ratio)));
+        }
+      },
+      () => {}
+    );
+  }, [uri]);
+
+  const maxW = 274;
+  const computedW = Math.min(maxW, Math.max(160, 220 * (aspectRatio >= 1 ? Math.min(1.35, aspectRatio) : 1)));
+  const computedH = Math.min(330, computedW / aspectRatio);
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
+      <Image
+        source={{ uri }}
+        style={[
+          {
+            width: computedW,
+            height: computedH,
+            borderRadius: 12,
+            resizeMode: "cover",
+          },
+          style,
+        ]}
+      />
+    </TouchableOpacity>
+  );
+});
+
+const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[]; setImageViewerUrl: (url: string) => void }) => {
+  const total = items.length;
+
+  if (total === 1) {
+    return <DynamicImage uri={items[0].text} onPress={() => setImageViewerUrl(items[0].text)} />;
+  }
+
+  if (total === 2) {
+    return (
+      <View style={{ flexDirection: "row", gap: 2, borderRadius: 12, overflow: "hidden", maxWidth: 274 }}>
+        {items.map((item) => (
+          <TouchableOpacity key={item.id} onPress={() => setImageViewerUrl(item.text)} style={{ width: 136, height: 180 }} activeOpacity={0.85}>
+            <Image source={{ uri: item.text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  }
+
+  if (total === 3) {
+    return (
+      <View style={{ flexDirection: "row", gap: 2, borderRadius: 12, overflow: "hidden", maxWidth: 274, height: 274 }}>
+        <TouchableOpacity onPress={() => setImageViewerUrl(items[0].text)} style={{ width: 136, height: 274 }} activeOpacity={0.85}>
+          <Image source={{ uri: items[0].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+        </TouchableOpacity>
+        <View style={{ width: 136, height: 274, gap: 2 }}>
+          <TouchableOpacity onPress={() => setImageViewerUrl(items[1].text)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
+            <Image source={{ uri: items[1].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setImageViewerUrl(items[2].text)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
+            <Image source={{ uri: items[2].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const displayItems = items.slice(0, 4);
+  const remainingCount = total - 3;
+
+  return (
+    <View style={{ width: 274, height: 274, flexDirection: "row", flexWrap: "wrap", gap: 2, borderRadius: 12, overflow: "hidden" }}>
+      {displayItems.map((item, idx) => {
+        const isFourth = idx === 3 && total > 4;
+        return (
+          <TouchableOpacity
+            key={item.id}
+            onPress={() => setImageViewerUrl(item.text)}
+            style={{ width: 136, height: 136, position: "relative" }}
+            activeOpacity={0.85}
+          >
+            <Image source={{ uri: item.text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+            {isFourth && (
+              <View style={{
+                position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: "rgba(0,0,0,0.55)",
+                justifyContent: "center", alignItems: "center"
+              }}>
+                <Text style={{ color: "#ffffff", fontSize: 24, fontWeight: "bold" }}>
+                  +{remainingCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+});
+
 // --- MessageRow Component for Animations & Gradients ---
 const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme }: any) => {
   const isNew = index === 0;
@@ -1618,6 +1788,44 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     opacity: opacity.value,
   }));
 
+  // Album Grouping logic for WhatsApp style multi-media clumps
+  const isMedia = item.type === "image" || item.type === "video";
+  const albumGroup: any[] = [];
+  let isAlbumLeader = false;
+
+  if (isMedia && !item.reply_to_id) {
+    let startIdx = index;
+    while (startIdx > 0) {
+      const prev = messages[startIdx - 1];
+      if (prev && (prev.type === "image" || prev.type === "video") && prev.sender_id === item.sender_id && !prev.reply_to_id && Math.abs(item.created_at_ts - prev.created_at_ts) <= 10000) {
+        startIdx--;
+      } else {
+        break;
+      }
+    }
+
+    let endIdx = index;
+    while (endIdx < messages.length - 1) {
+      const next = messages[endIdx + 1];
+      if (next && (next.type === "image" || next.type === "video") && next.sender_id === item.sender_id && !next.reply_to_id && Math.abs(item.created_at_ts - next.created_at_ts) <= 10000) {
+        endIdx++;
+      } else {
+        break;
+      }
+    }
+
+    if (endIdx - startIdx >= 1) {
+      if (index === startIdx) {
+        isAlbumLeader = true;
+        for (let i = startIdx; i <= endIdx; i++) {
+          albumGroup.push(messages[i]);
+        }
+      } else {
+        return null;
+      }
+    }
+  }
+
   if (item.type === "system") {
     const isWallpaperMsg = item.text.includes("Tap here");
     return (
@@ -1646,7 +1854,6 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   // Cosmetic overrides
   const sentColor = isAmoled ? "#000000" : (chatSettings?.bubble_color_sent || "#5865F2");
   const receivedColor = isAmoled ? "#000000" : (chatSettings?.bubble_color_received || "#2b2d31");
-  // In AMOLED mode, bubble text is always white regardless of bubble color
   const bubbleTextColor = isAmoled ? "#ffffff" : undefined;
   const gradientEnabled = chatSettings?.bubble_gradient_enabled || false;
   const gradientColor2 = chatSettings?.bubble_gradient_color2 || "#a78bfa";
@@ -1669,13 +1876,13 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
 
   const isRead = item.isMe && targetUser?.last_read_at && item.created_at_ts <= new Date(targetUser.last_read_at).getTime();
 
-  const renderBubbleContent = () => { if (item.type === "sticker") return <Image source={{ uri: item.text }} style={{ width: 140, height: 140 }} resizeMode="contain" />;
+  const renderBubbleContent = () => {
+    if (isAlbumLeader && albumGroup.length > 1) {
+      return <MediaAlbumGrid items={albumGroup} setImageViewerUrl={setImageViewerUrl} />;
+    }
+    if (item.type === "sticker") return <Image source={{ uri: item.text }} style={{ width: 140, height: 140 }} resizeMode="contain" />;
     if (item.type === "image") {
-      return (
-        <TouchableOpacity onPress={() => setImageViewerUrl(item.text)}>
-          <Image source={{ uri: item.text }} style={styles.inlineImage} resizeMode="cover" />
-        </TouchableOpacity>
-      );
+      return <DynamicImage uri={item.text} onPress={() => setImageViewerUrl(item.text)} />;
     }
     if (item.type === "audio") {
       return <AudioPlayerBubble audioUrl={item.text} isMe={item.isMe} />;
