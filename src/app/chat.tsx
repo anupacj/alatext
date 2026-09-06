@@ -233,20 +233,26 @@ export default function ChatScreen() {
   }, []);
 
   const formatMsg = useCallback((msg: any): Message => {
-    const ts = new Date(msg.created_at).getTime();
+    const rawTs = msg.created_at ? new Date(msg.created_at).getTime() : Date.now();
+    const ts = isNaN(rawTs) ? Date.now() : rawTs;
+    const dateObj = new Date(ts);
+    const timeStr = isNaN(dateObj.getTime()) ? "" : dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const contentText = typeof msg.content === "string" ? msg.content : (msg.content ? JSON.stringify(msg.content) : "");
+    const replyContentText = typeof msg.reply_to_content === "string" ? msg.reply_to_content : (msg.reply_to_content ? JSON.stringify(msg.reply_to_content) : null);
+
     return {
-      id: msg.id,
+      id: msg.id || `msg-${Math.random()}`,
       sender: msg.profiles?.username || "Unknown",
-      sender_id: msg.sender_id,
-      text: msg.content,
+      sender_id: msg.sender_id || "",
+      text: contentText,
       type: msg.type || "text",
-      created_at: msg.created_at,
+      created_at: msg.created_at || new Date().toISOString(),
       created_at_ts: ts,
-      time: new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: timeStr,
       avatar: msg.profiles?.avatar_url || null,
       isMe: msg.sender_id === user?.id,
       reply_to_id: msg.reply_to_id || null,
-      reply_to_content: msg.reply_to_content || null,
+      reply_to_content: replyContentText,
       reply_to_sender: msg.reply_to_sender || null,
       custom_font: msg.custom_font,
     };
@@ -259,6 +265,8 @@ export default function ChatScreen() {
     setTargetUser(null); setGroupChatData(null); setIsGroup(false); setGroupMemberCount(0);
     setChatSettings(null); setPinnedMessage(null); setMyNicknameFromPartner(null);
     profileCache.current.clear();
+
+    const sessionToken = `${id}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 
     const init = async () => {
       let initialSettings: any = {};
@@ -303,7 +311,7 @@ export default function ChatScreen() {
     };
     init();
 
-    const syncChannel = supabase.channel("app_settings_sync");
+    const syncChannel = supabase.channel(`sync_${sessionToken}`);
     syncChannel
       .on("broadcast", { event: "settings_updated" }, (payload: any) => {
         if (payload.payload?.publicFeatures) {
@@ -352,7 +360,7 @@ export default function ChatScreen() {
     };
     fetchMsgs();
 
-    const channel = supabase.channel(`chat_${id}`)
+    const channel = supabase.channel(`chat_${sessionToken}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `chat_id=eq.${id}` }, async (payload) => {
         if (payload.eventType === "INSERT") {
           if (payload.new.type === "alert") {
@@ -370,11 +378,16 @@ export default function ChatScreen() {
             const { data } = await supabase.from("profiles").select("username, avatar_url").eq("id", payload.new.sender_id).single();
             pd = data; if (data) profileCache.current.set(payload.new.sender_id, data);
           }
-          const ts = new Date(payload.new.created_at).getTime();
+          const rawTs = payload.new.created_at ? new Date(payload.new.created_at).getTime() : Date.now();
+          const validTs = isNaN(rawTs) ? Date.now() : rawTs;
+          const dateObj = new Date(validTs);
+          const timeStr = isNaN(dateObj.getTime()) ? "" : dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const contentText = typeof payload.new.content === "string" ? payload.new.content : (payload.new.content ? JSON.stringify(payload.new.content) : "");
+
           const nm: Message = {
             id: payload.new.id, sender: pd?.username || "Unknown", sender_id: payload.new.sender_id,
-            text: payload.new.content, type: payload.new.type || "text", created_at: payload.new.created_at,
-            created_at_ts: ts, time: new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            text: contentText, type: payload.new.type || "text", created_at: payload.new.created_at || new Date().toISOString(),
+            created_at_ts: validTs, time: timeStr,
             avatar: pd?.avatar_url || null, isMe: payload.new.sender_id === user?.id,
             reply_to_id: payload.new.reply_to_id, reply_to_content: payload.new.reply_to_content, reply_to_sender: payload.new.reply_to_sender,
             custom_font: payload.new.custom_font,
@@ -403,7 +416,7 @@ export default function ChatScreen() {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             setMessages(prev => prev.filter(m => m.id !== payload.new.id));
           } else {
-            setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, text: payload.new.content } : m));
+            setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, text: typeof payload.new.content === "string" ? payload.new.content : JSON.stringify(payload.new.content || "") } : m));
           }
         }
       })
@@ -414,12 +427,12 @@ export default function ChatScreen() {
         }
       }).subscribe();
 
-    const pChannel = supabase.channel(`participants_${id}`)
+    const pChannel = supabase.channel(`participants_${sessionToken}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chat_participants", filter: `chat_id=eq.${id}` }, (payload) => {
         if (payload.new.user_id !== user.id) setTargetUser((prev: any) => prev ? { ...prev, last_read_at: payload.new.last_read_at } : prev);
       }).subscribe();
 
-    const profChannel = supabase.channel(`profiles_${id}`)
+    const profChannel = supabase.channel(`profiles_${sessionToken}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
         setTargetUser((prev: any) => {
           if (prev && payload.new.id === prev.id) return { ...prev, updated_at: payload.new.updated_at };
@@ -427,7 +440,7 @@ export default function ChatScreen() {
         });
       }).subscribe();
 
-      const tChannel = supabase.channel(`typing_${id}`, { config: { broadcast: { self: false } } })
+    const tChannel = supabase.channel(`typing_${sessionToken}`, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, () => {
         setIsTyping(true);
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -466,16 +479,18 @@ export default function ChatScreen() {
       }).subscribe();
     typingChannelRef.current = tChannel;
 
-    // We are reverting presence back to heartbeat for stability as requested.
-    // The targetUser's updated_at field will serve as the online indicator.
-
-    const chatChannel = supabase.channel(`chats_${id}`)
+    const chatChannel = supabase.channel(`chats_${sessionToken}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chats", filter: `id=eq.${id}` }, (payload) => {
         setGroupChatData((prev: any) => ({ ...prev, ...payload.new }));
       }).subscribe();
 
     return () => {
-      supabase.removeChannel(channel); supabase.removeChannel(pChannel); supabase.removeChannel(tChannel); supabase.removeChannel(profChannel); supabase.removeChannel(chatChannel);
+      try { supabase.removeChannel(syncChannel); } catch (e) {}
+      try { supabase.removeChannel(channel); } catch (e) {}
+      try { supabase.removeChannel(pChannel); } catch (e) {}
+      try { supabase.removeChannel(tChannel); } catch (e) {}
+      try { supabase.removeChannel(profChannel); } catch (e) {}
+      try { supabase.removeChannel(chatChannel); } catch (e) {}
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [id, user?.id]);
@@ -1117,8 +1132,9 @@ export default function ChatScreen() {
         <View style={{ width: 380, height: "100%" }}>
           <ChatSidebar
             activeChatId={id as string}
-            onSelectChat={(selectedId, selectedName, selectedAvatar) => {
-              router.replace({ pathname: "/chat", params: { id: selectedId, name: selectedName, avatar: selectedAvatar } });
+            onSelectChat={(selectedId, selectedName) => {
+              if (selectedId === id) return;
+              router.replace({ pathname: "/chat", params: { id: selectedId, name: selectedName } });
             }}
           />
         </View>
@@ -1387,18 +1403,22 @@ const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress
   const [aspectRatio, setAspectRatio] = useState<number>(1.2);
 
   useEffect(() => {
-    if (!uri) return;
-    Image.getSize(
-      uri,
-      (w, h) => {
-        if (w && h) {
-          const ratio = w / h;
-          setAspectRatio(Math.max(0.65, Math.min(1.75, ratio)));
-        }
-      },
-      () => {}
-    );
+    if (!uri || typeof uri !== "string") return;
+    try {
+      Image.getSize(
+        uri,
+        (w, h) => {
+          if (w && h) {
+            const ratio = w / h;
+            setAspectRatio(Math.max(0.65, Math.min(1.75, ratio)));
+          }
+        },
+        () => {}
+      );
+    } catch (e) {}
   }, [uri]);
+
+  if (!uri || typeof uri !== "string") return null;
 
   const maxW = 274;
   const computedW = Math.min(maxW, Math.max(160, 220 * (aspectRatio >= 1 ? Math.min(1.35, aspectRatio) : 1)));
@@ -1571,7 +1591,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   }
 
   if (item.type === "system") {
-    const isWallpaperMsg = item.text.includes("Tap here");
+    const isWallpaperMsg = typeof item.text === "string" && item.text.includes("Tap here");
     return (
       <View style={styles.systemMessageContainer}>
         {isWallpaperMsg ? (
@@ -1639,7 +1659,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       <Text style={[styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft,
         activeFont && activeFont !== "system" ? { fontFamily: activeFont } : {},
         bubbleTextColor ? { color: bubbleTextColor } : {}]}>
-        {item.text}
+        {typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : "")}
       </Text>
     );
   };

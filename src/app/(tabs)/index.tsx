@@ -261,7 +261,7 @@ export default function Home() {
 
   const renderItem = useCallback(({ item }: { item: any }) => (
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
-      onPress={() => router.push({ pathname: "/chat", params: { id: item.id, name: item.name, avatar: item.avatar || "" } })}>
+      onPress={() => router.push({ pathname: "/chat", params: { id: item.id, name: item.name } })}>
       {item.avatar ? (
         <Image source={{ uri: item.avatar }} style={styles.avatar} />
       ) : (
@@ -287,8 +287,8 @@ export default function Home() {
       <View style={{ flex: 1, flexDirection: "row", backgroundColor: theme.background }}>
         <View style={{ width: 380, height: "100%" }}>
           <ChatSidebar
-            onSelectChat={(chatId, name, avatar) => {
-              router.push({ pathname: "/chat", params: { id: chatId, name, avatar } });
+            onSelectChat={(chatId, name) => {
+              router.push({ pathname: "/chat", params: { id: chatId, name } });
             }}
           />
         </View>

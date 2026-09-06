@@ -279,7 +279,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarP
     if (onSelectChat) {
       onSelectChat(item.id, item.name, item.avatar || "");
     } else {
-      router.push({ pathname: "/chat", params: { id: item.id, name: item.name, avatar: item.avatar || "" } });
+      router.push({ pathname: "/chat", params: { id: item.id, name: item.name } });
     }
   };
 
