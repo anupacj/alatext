@@ -256,6 +256,8 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!id || !user) return;
     setMessages([]); setHasMore(true); setEditingMsgId(null); setReplyingTo(null); setHoveredMsg(null);
+    setTargetUser(null); setGroupChatData(null); setIsGroup(false); setGroupMemberCount(0);
+    setChatSettings(null); setPinnedMessage(null); setMyNicknameFromPartner(null);
     profileCache.current.clear();
 
     const init = async () => {
@@ -1120,7 +1122,7 @@ export default function ChatScreen() {
             }}
           />
         </View>
-        <View style={{ flex: 1, height: "100%", position: "relative" }}>
+        <View key={id as string} style={{ flex: 1, height: "100%", position: "relative" }}>
           {chatViewContent}
         </View>
       </View>

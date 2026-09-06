@@ -70,11 +70,12 @@ export default function Home() {
 
   const fetchChats = useCallback(async () => {
     if (!user) return;
+    const cacheKey = `user_${user.id}_chats`;
     try {
-      const cacheKey = `user_${user.id}_chats`;
       const cached = await AsyncStorage.getItem(cacheKey);
       if (cached) {
-        setChats(prev => prev.length === 0 ? JSON.parse(cached) : prev);
+        setChats(JSON.parse(cached));
+        setLoading(false);
       }
     } catch (e) {}
 
@@ -96,8 +97,31 @@ export default function Home() {
         .eq("user_id", user.id);
       if (error) throw error;
 
-      // For each chat, fetch last message
-      const formatted = await Promise.all((data || []).map(async (item: any) => {
+      if (!data || data.length === 0) {
+        setChats([]);
+        AsyncStorage.setItem(cacheKey, JSON.stringify([])).catch(() => {});
+        setLoading(false);
+        return;
+      }
+
+      const chatIds = data.map((item: any) => item.chats?.id).filter(Boolean);
+
+      const { data: allLastMsgs } = await supabase
+        .from("messages")
+        .select("chat_id, content, type, created_at")
+        .in("chat_id", chatIds)
+        .order("created_at", { ascending: false });
+
+      const lastMsgMap: Record<string, any> = {};
+      if (allLastMsgs) {
+        for (const msg of allLastMsgs) {
+          if (!lastMsgMap[msg.chat_id]) {
+            lastMsgMap[msg.chat_id] = msg;
+          }
+        }
+      }
+
+      const formatted = data.map((item: any) => {
         const chat = item.chats;
         if (!chat) return null;
         let chatName = chat.name || "Chat";
@@ -108,13 +132,8 @@ export default function Home() {
           const other = otherPart?.profiles;
           if (other) { chatName = myPart?.nickname || other.display_name || other.username; chatAvatar = other.avatar_url; }
         }
-        const { data: lastMsgData } = await supabase
-          .from("messages")
-          .select("content, type, created_at")
-          .eq("chat_id", chat.id)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        const lastMsg = lastMsgData?.[0];
+
+        const lastMsg = lastMsgMap[chat.id];
         let lastMsgText = "Tap to view messages...";
         if (lastMsg) {
           if (lastMsg.type === "image") lastMsgText = "📷 Image";
@@ -126,7 +145,7 @@ export default function Home() {
         const lastMsgTime = lastMsg
           ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
           : "";
-          
+
         let unread = 0;
         if (lastMsg) {
           if (item.last_read_at) {
@@ -148,12 +167,12 @@ export default function Home() {
           isGroup: chat.is_group,
           timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0
         };
-      }));
-      const valid = formatted.filter(Boolean) as any[];
-      valid.sort((a, b) => b.timestamp - a.timestamp);
+      }).filter(Boolean) as any[];
+
+      formatted.sort((a, b) => b.timestamp - a.timestamp);
       
-      setChats(valid);
-      AsyncStorage.setItem(`user_${user.id}_chats`, JSON.stringify(valid)).catch(() => {});
+      setChats(formatted);
+      AsyncStorage.setItem(cacheKey, JSON.stringify(formatted)).catch(() => {});
     } catch (e) { console.error("Error fetching chats", e); }
     finally { setLoading(false); }
   }, [user]);
