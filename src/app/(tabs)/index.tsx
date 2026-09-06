@@ -11,7 +11,13 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useAlaPin } from "../../context/AlaPinContext";
 
+import { useWindowDimensions } from "react-native";
+import ChatSidebar from "../../components/ChatSidebar";
+import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholder";
+
 export default function Home() {
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
   const { theme } = useTheme();
   const { isDecoyMode, isPinEnabled, realPin, lockNow } = useAlaPin();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
@@ -256,6 +262,23 @@ export default function Home() {
       </View>
     </TouchableOpacity>
   ), [styles, theme]);
+
+  if (isDesktop) {
+    return (
+      <View style={{ flex: 1, flexDirection: "row", backgroundColor: theme.background }}>
+        <View style={{ width: 380, height: "100%" }}>
+          <ChatSidebar
+            onSelectChat={(chatId, name, avatar) => {
+              router.push({ pathname: "/chat", params: { id: chatId, name, avatar } });
+            }}
+          />
+        </View>
+        <View style={{ flex: 1, height: "100%" }}>
+          <DesktopLandingPlaceholder />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
