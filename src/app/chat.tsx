@@ -15,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import ChatSettingsModal, { FONT_OPTIONS } from '../components/ChatSettingsModal';
 import StickerPicker from '../components/StickerPicker';
 import { HeartPing } from "../components/HeartPing";
+import ShinyText from "../components/ShinyText";
 import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
@@ -131,6 +132,12 @@ export default function ChatScreen() {
   const [messageFont, setMessageFont] = useState<string | null>(null);
   const [customAlert, setCustomAlert] = useState<any>(null);
   const [pingVisible, setPingVisible] = useState(false);
+  const [isHeartGlowing, setIsHeartGlowing] = useState(false);
+  const [thinkingOfYou, setThinkingOfYou] = useState<{ text: string } | null>(null);
+  const heartAnim = useRef(new RNAnimated.Value(1)).current;
+  const thinkingAnim = useRef(new RNAnimated.Value(0)).current;
+  const heartTimerRef = useRef<any>(null);
+  const thinkingTimerRef = useRef<any>(null);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [pinnedMessage, setPinnedMessage] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState<string | null>(null);
@@ -158,13 +165,62 @@ export default function ChatScreen() {
     }
   }, [id]);
 
+  const activateHeartGlowAndBlink = useCallback(() => {
+    setIsHeartGlowing(true);
+    if (heartTimerRef.current) clearTimeout(heartTimerRef.current);
+
+    heartAnim.setValue(1);
+    const pulse = RNAnimated.sequence([
+      RNAnimated.timing(heartAnim, { toValue: 1.35, duration: 350, useNativeDriver: false }),
+      RNAnimated.timing(heartAnim, { toValue: 1, duration: 350, useNativeDriver: false }),
+    ]);
+    const loop = RNAnimated.loop(pulse, { iterations: 4 });
+    loop.start();
+
+    heartTimerRef.current = setTimeout(() => {
+      loop.stop();
+      RNAnimated.timing(heartAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
+      setIsHeartGlowing(false);
+    }, 3000);
+  }, [heartAnim]);
+
+  const showThinkingNotification = useCallback((text: string) => {
+    setThinkingOfYou({ text });
+    if (thinkingTimerRef.current) clearTimeout(thinkingTimerRef.current);
+
+    thinkingAnim.setValue(0);
+    RNAnimated.spring(thinkingAnim, {
+      toValue: 1,
+      useNativeDriver: false,
+      friction: 7,
+      tension: 70,
+    }).start();
+
+    thinkingTimerRef.current = setTimeout(() => {
+      RNAnimated.timing(thinkingAnim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: false,
+      }).start(() => {
+        setThinkingOfYou(null);
+      });
+    }, 3200);
+  }, [thinkingAnim]);
+
   const triggerHeartPing = useCallback(async () => {
-    setPingVisible(true);
+    activateHeartGlowAndBlink();
+    const partnerName = targetUser?.nickname || targetUser?.username || name;
+    showThinkingNotification(partnerName ? `Thinking of ${partnerName}...` : "Thinking of you...");
+
+    const senderName = user?.user_metadata?.username || myNicknameFromPartner || "Someone";
     if (typingChannelRef.current) {
       typingChannelRef.current.send({
         type: "broadcast",
         event: "ping",
-        payload: { sender_id: user?.id },
+        payload: {
+          sender_id: user?.id,
+          sender_name: senderName,
+        },
       });
     }
     if (id && user) {
@@ -175,7 +231,7 @@ export default function ChatScreen() {
         type: "system",
       });
     }
-  }, [id, user]);
+  }, [activateHeartGlowAndBlink, showThinkingNotification, targetUser, name, user, myNicknameFromPartner, id]);
 
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
@@ -543,8 +599,10 @@ export default function ChatScreen() {
           setTypingUsername(null);
         }, 3000);
       })
-      .on("broadcast", { event: "ping" }, () => {
-        setPingVisible(true);
+      .on("broadcast", { event: "ping" }, (payload: any) => {
+        const sName = payload?.payload?.sender_name || targetUser?.nickname || targetUser?.username || name || "Someone";
+        activateHeartGlowAndBlink();
+        showThinkingNotification(`${sName} is thinking of you`);
       })
       .on("broadcast", { event: "message_deleted" }, (payload) => {
         if (payload.payload?.id) {
@@ -589,6 +647,10 @@ export default function ChatScreen() {
       try { supabase.removeChannel(profChannel); } catch (e) {}
       try { supabase.removeChannel(chatChannel); } catch (e) {}
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (heartTimerRef.current) clearTimeout(heartTimerRef.current);
+      if (thinkingTimerRef.current) clearTimeout(thinkingTimerRef.current);
+      setIsHeartGlowing(false);
+      setThinkingOfYou(null);
     };
   }, [id, user?.id]);
 
@@ -1127,16 +1189,38 @@ export default function ChatScreen() {
             { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
           ]}>
             <TouchableOpacity
-              style={styles.floatingIconBtn}
-              onPress={() => {
-                if (chatSettings?.anniversary_date) {
-                  triggerHeartPing();
-                } else {
-                  setSettingsVisible(true);
+              style={[
+                styles.floatingIconBtn,
+                isHeartGlowing && {
+                  backgroundColor: "rgba(244, 63, 94, 0.25)",
+                  borderRadius: 9999,
+                  shadowColor: "#f43f5e",
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 1,
+                  shadowRadius: 16,
+                  elevation: 10,
+                  ...(Platform.OS === "web" ? {
+                    boxShadow: "0 0 16px #f43f5e, 0 0 30px rgba(244, 63, 94, 0.8)",
+                  } : {}),
                 }
-              }}
+              ]}
+              onPress={triggerHeartPing}
+              activeOpacity={0.7}
+              accessibilityLabel="Send heart ping"
             >
-              <Heart size={20} color={chatSettings?.anniversary_date ? "#f43f5e" : (isAmoled ? "#888888" : (theme.id === "pink" ? (theme.accent || "#f472b6") : theme.textMuted))} />
+              <RNAnimated.View style={{
+                transform: [{ scale: heartAnim }],
+                opacity: isHeartGlowing ? heartAnim.interpolate({
+                  inputRange: [1, 1.15, 1.35],
+                  outputRange: [1, 0.45, 1]
+                }) : 1
+              }}>
+                <Heart
+                  size={20}
+                  color="#f43f5e"
+                  fill={isHeartGlowing || chatSettings?.anniversary_date ? "#f43f5e" : (theme.id === "pink" ? "#f472b6" : "rgba(244, 63, 94, 0.35)")}
+                />
+              </RNAnimated.View>
             </TouchableOpacity>
             <TouchableOpacity style={styles.floatingIconBtn} onPress={() => setSettingsVisible(true)}>
               <MoreVertical size={20} color={isAmoled ? "#ffffff" : ((theme.id === "light" || theme.id === "pink") ? "#111111" : "#ffffff")} />
@@ -1177,7 +1261,50 @@ export default function ChatScreen() {
           </View>
         )}
 
-        <HeartPing visible={pingVisible} onComplete={() => setPingVisible(false)} />
+        {thinkingOfYou && (
+          <RNAnimated.View
+            pointerEvents="none"
+            style={[
+              styles.thinkingOfYouBanner,
+              isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: 'rgba(244,63,94,0.45)' } :
+              showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.7)', borderColor: 'rgba(244,63,94,0.4)' } :
+              theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.94)', borderColor: 'rgba(244,63,94,0.35)' } :
+              theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.94)', borderColor: 'rgba(244,63,94,0.45)' } :
+              { backgroundColor: 'rgba(35,37,42,0.92)', borderColor: 'rgba(244,63,94,0.4)' },
+              {
+                top: pinnedMessage ? 124 : (Platform.OS === 'web' ? 76 : 96),
+                opacity: thinkingAnim,
+                transform: [
+                  {
+                    translateY: thinkingAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-10, 0]
+                    })
+                  },
+                  {
+                    scale: thinkingAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.92, 1]
+                    })
+                  }
+                ]
+              }
+            ]}
+          >
+            <Heart size={16} color="#f43f5e" fill="#f43f5e" style={{ marginRight: 8 }} />
+            <ShinyText
+              text={thinkingOfYou.text}
+              speed={1.6}
+              color="#f43f5e"
+              shineColor="#ffffff"
+              spread={120}
+              style={[
+                styles.thinkingOfYouText,
+                chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+              ]}
+            />
+          </RNAnimated.View>
+        )}
         <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
 
         {messages.length === 0 ? (
@@ -1233,8 +1360,20 @@ export default function ChatScreen() {
                 theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
                 { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
               ]}>
+                <ShinyText
+                  text={`${typingUsername || targetUser?.nickname || targetUser?.username || name || "Someone"} is typing`}
+                  speed={2}
+                  color={isAmoled ? "#aaaaaa" : (theme.id === "light" ? "#4b5563" : "#d1d5db")}
+                  shineColor={isAmoled ? "#ffffff" : (theme.id === "light" ? "#111827" : "#ffffff")}
+                  spread={120}
+                  style={[
+                    styles.typingText,
+                    { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") },
+                    chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                  ]}
+                />
                 <Text style={[styles.typingText, { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") }]}>
-                  {typingUsername || targetUser?.nickname || targetUser?.username || name || "Someone"} is typing<SendingDots />
+                  <SendingDots />
                 </Text>
               </View>
             )}
@@ -1699,6 +1838,32 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     WebkitBackdropFilter: "blur(20px)",
   } as any,
   typingText: { fontSize: 13, fontStyle: "italic", fontWeight: "600" },
+  thinkingOfYouBanner: {
+    position: "absolute",
+    alignSelf: "center",
+    zIndex: 100,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 9999,
+    borderWidth: 1.5,
+    shadowColor: "#f43f5e",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    ...(Platform.OS === "web" ? {
+      boxShadow: "0 4px 20px rgba(244, 63, 94, 0.35)",
+    } : {}),
+  } as any,
+  thinkingOfYouText: {
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
   replyBanner: {
     flexDirection: "row",
     alignItems: "center",
