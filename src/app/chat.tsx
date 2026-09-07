@@ -85,6 +85,7 @@ export default function ChatScreen() {
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [typingUsername, setTypingUsername] = useState<string | null>(null);
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -526,11 +527,21 @@ export default function ChatScreen() {
         });
       }).subscribe();
 
-    const tChannel = supabase.channel(`typing_${sessionToken}`, { config: { broadcast: { self: false } } })
-      .on("broadcast", { event: "typing" }, () => {
+    const broadcastTopic = `chat_broadcast_${id}`;
+    const existingBChannel = supabase.getChannels().find(c => c.topic === `realtime:${broadcastTopic}` || c.topic === broadcastTopic);
+    if (existingBChannel) {
+      try { supabase.removeChannel(existingBChannel); } catch (e) {}
+    }
+    const tChannel = supabase.channel(broadcastTopic, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "typing" }, (payload: any) => {
+        const tUser = payload?.payload?.username || targetUser?.nickname || targetUser?.username || "Someone";
+        setTypingUsername(tUser);
         setIsTyping(true);
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
+        typingTimeoutRef.current = setTimeout(() => {
+          setIsTyping(false);
+          setTypingUsername(null);
+        }, 3000);
       })
       .on("broadcast", { event: "ping" }, () => {
         setPingVisible(true);
@@ -1213,17 +1224,17 @@ export default function ChatScreen() {
             },
             showWallpaper && { backgroundColor: "transparent" }
           ]}>
-            {isTyping && targetUser && (
+            {isTyping && (
               <View style={[
                 styles.typingBanner,
-                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: '#222' } :
-                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.75)', borderColor: 'rgba(255,255,255,0.12)' } :
-                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(0,0,0,0.08)' } :
-                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.9)', borderColor: 'rgba(131,24,67,0.12)' } :
+                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
                 { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
               ]}>
                 <Text style={[styles.typingText, { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") }]}>
-                  {targetUser.username} is typing<SendingDots />
+                  {typingUsername || targetUser?.nickname || targetUser?.username || name || "Someone"} is typing<SendingDots />
                 </Text>
               </View>
             )}
@@ -1231,9 +1242,12 @@ export default function ChatScreen() {
             {uploadProgress.active && (
               <View style={[
                 styles.editingBanner,
+                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
                 {
-                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.92)' : 'rgba(43,45,49,0.88)',
-                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)',
                   flexDirection: "column",
                   alignItems: "stretch",
                   paddingVertical: 10,
@@ -1257,10 +1271,11 @@ export default function ChatScreen() {
             {replyingTo && (
               <View style={[
                 styles.replyBanner,
-                {
-                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.9)' : theme.id === 'pink' ? 'rgba(252,231,243,0.9)' : 'rgba(43,45,49,0.88)',
-                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : theme.id === 'light' ? 'rgba(0,0,0,0.08)' : theme.id === 'pink' ? 'rgba(131,24,67,0.12)' : 'rgba(255,255,255,0.08)'
-                }
+                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
               ]}>
                 <TouchableOpacity
                   style={[{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }, Platform.OS === 'web' && ({ cursor: 'pointer' } as any)]}
@@ -1284,10 +1299,11 @@ export default function ChatScreen() {
             {editingMsgId && (
               <View style={[
                 styles.editingBanner,
-                {
-                  backgroundColor: isAmoled ? 'rgba(0,0,0,0.92)' : showWallpaper ? 'rgba(28,30,38,0.85)' : theme.id === 'light' ? 'rgba(255,255,255,0.9)' : theme.id === 'pink' ? 'rgba(252,231,243,0.9)' : 'rgba(43,45,49,0.88)',
-                  borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : theme.id === 'light' ? 'rgba(0,0,0,0.08)' : theme.id === 'pink' ? 'rgba(131,24,67,0.12)' : 'rgba(255,255,255,0.08)'
-                }
+                isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
               ]}>
                 <Text style={[styles.editingBannerText, { color: isAmoled ? "#ffffff" : theme.text }]}>Editing Message</Text>
                 <TouchableOpacity onPress={() => { setEditingMsgId(null); setInputText(""); }}><X size={16} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
@@ -1373,7 +1389,14 @@ export default function ChatScreen() {
                         const now = Date.now();
                         if (typingChannelRef.current && user && now - lastTypingSentRef.current > 2000) {
                           lastTypingSentRef.current = now;
-                          typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { user_id: user.id } });
+                          typingChannelRef.current.send({
+                            type: "broadcast",
+                            event: "typing",
+                            payload: {
+                              user_id: user.id,
+                              username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+                            },
+                          });
                         }
                       }}
                       onFocus={() => {
@@ -1640,7 +1663,17 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   timeText: { color: textMuted, fontSize: 12, fontWeight: "500" },
   checkIcon: { marginLeft: 4 },
   inlineImage: { maxWidth: 280, maxHeight: 320, minWidth: 140, minHeight: 100, width: "100%", height: "auto", borderRadius: 12, resizeMode: "cover" },
-  replyQuote: { borderRadius: 8, padding: 8, marginBottom: 4, borderLeftWidth: 3, borderLeftColor: accent, backgroundColor: "rgba(88,101,242,0.15)", maxWidth: 240 },
+  replyQuote: {
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: accent,
+    backgroundColor: isAmoled ? "rgba(255,255,255,0.08)" : (theme.id === "light" ? "rgba(0,0,0,0.06)" : "rgba(0,0,0,0.2)"),
+    maxWidth: 240,
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+  } as any,
   replyQuoteLeft: { alignSelf: "flex-start" },
   replyQuoteRight: { alignSelf: "flex-end" },
   replyQuoteSender: { color: text, fontSize: 12, fontWeight: "700", marginBottom: 2 },
@@ -1651,10 +1684,10 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginBottom: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 9999,
+    marginBottom: 8,
     marginLeft: 4,
     borderWidth: 1,
     shadowColor: "#000",
@@ -1662,9 +1695,10 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
-    backdropFilter: "blur(16px)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
   } as any,
-  typingText: { fontSize: 13, fontStyle: "italic", fontWeight: "500" },
+  typingText: { fontSize: 13, fontStyle: "italic", fontWeight: "600" },
   replyBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -1674,7 +1708,8 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     marginBottom: 6,
     borderLeftWidth: 3,
     borderWidth: 1,
-    backdropFilter: "blur(16px)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
   } as any,
   replyBannerSender: { fontSize: 12, fontWeight: "700" },
   replyBannerText: { fontSize: 13 },
@@ -1687,7 +1722,8 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     borderRadius: 16,
     marginBottom: 6,
     borderWidth: 1,
-    backdropFilter: "blur(16px)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
   } as any,
   editingBannerText: { fontSize: 14, fontWeight: "bold" },
   inputArea: {

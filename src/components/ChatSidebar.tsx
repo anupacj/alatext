@@ -17,7 +17,8 @@ interface ChatSidebarProps {
 }
 
 export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarProps) {
-  const { theme, isAmoled } = useTheme();
+  const { theme } = useTheme();
+  const isAmoled = theme.id === "black";
   const { isDecoyMode, isPinEnabled, realPin, lockNow } = useAlaPin();
   const styles = React.useMemo(() => createStyles(theme, isAmoled), [theme, isAmoled]);
   const router = useRouter();
@@ -329,12 +330,12 @@ export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarP
           ) : (
             <View style={styles.userAvatarMini}><User size={16} color="#fff" /></View>
           )}
-          <Text style={styles.headerTitle} numberOfLines={1}>ala chat</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>AlaThing</Text>
         </TouchableOpacity>
 
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
           {isPinEnabled && !!realPin && (
-            <TouchableOpacity style={styles.iconButton} onPress={lockNow} title="Lock App Now">
+            <TouchableOpacity style={styles.iconButton} onPress={lockNow} accessibilityLabel="Lock App Now">
               <Lock size={18} color="#f43f5e" />
             </TouchableOpacity>
           )}
@@ -342,7 +343,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarP
             <TouchableOpacity
               style={styles.iconButton}
               onPress={toggleFullscreen}
-              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Mode"}
+              accessibilityLabel={isFullscreen ? "Exit Fullscreen" : "Fullscreen Mode"}
             >
               {isFullscreen ? (
                 <Minimize2 size={18} color={theme.accent} />
@@ -500,8 +501,9 @@ const createStyles = (theme: any, isAmoled: boolean) =>
     },
     headerTitle: {
       color: isAmoled ? "#ffffff" : theme.text,
-      fontSize: 18,
+      fontSize: 20,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     iconButton: {
       width: 32,

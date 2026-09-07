@@ -305,11 +305,11 @@ export default function Home() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.userAvatarMini}><User size={16} color="#fff" /></View>
-            <Text style={styles.headerTitle}>ala chat</Text>
+            <Text style={styles.headerTitle}>AlaThing</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
             {isPinEnabled && !!realPin && (
-              <TouchableOpacity style={styles.iconButton} onPress={lockNow} title="Lock App Now">
+              <TouchableOpacity style={styles.iconButton} onPress={lockNow} accessibilityLabel="Lock App Now">
                 <Lock size={18} color="#f43f5e" />
               </TouchableOpacity>
             )}
@@ -317,7 +317,7 @@ export default function Home() {
               <TouchableOpacity
                 style={styles.iconButton}
                 onPress={toggleFullscreen}
-                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Mode"}
+                accessibilityLabel={isFullscreen ? "Exit Fullscreen" : "Fullscreen Mode"}
               >
                 {isFullscreen ? (
                   <Minimize2 size={18} color={theme.accent} />
@@ -426,7 +426,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 16, backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.border },
   headerLeft: { flexDirection: "row", alignItems: "center" },
   userAvatarMini: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.accent, marginRight: 12, justifyContent: "center", alignItems: "center" },
-  headerTitle: { color: theme.text, fontSize: 22, fontWeight: "800", letterSpacing: -0.5 },
+  headerTitle: { color: theme.text, fontSize: 24, fontWeight: "700", letterSpacing: -0.5, fontFamily: "Josefin Sans" },
   iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.border, justifyContent: "center", alignItems: "center" },
   listContainer: { paddingTop: 8, paddingBottom: 120 },
   centerContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingBottom: 100 },
