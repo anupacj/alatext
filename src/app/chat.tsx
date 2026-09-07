@@ -5,7 +5,7 @@ import {
   LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder,
   Animated as RNAnimated, Easing, Dimensions, useWindowDimensions,
 } from "react-native";
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay } from "react-native-reanimated";
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin } from "lucide-react-native";
@@ -133,6 +133,8 @@ export default function ChatScreen() {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [pinnedMessage, setPinnedMessage] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState<string | null>(null);
+  const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<any>(null);
 
   const handlePinMessage = useCallback(async (msg: Message | null) => {
     const pinData = msg ? { id: msg.id, text: msg.text, sender: msg.sender } : null;
@@ -278,6 +280,70 @@ export default function ChatScreen() {
     };
   }, [user?.id]);
 
+  const scrollToAndHighlightMessage = useCallback(async (targetMsgId: string) => {
+    if (!targetMsgId) return;
+
+    let targetIndex = messages.findIndex(m => m.id === targetMsgId);
+
+    // If message is not yet loaded in memory (e.g. it's further up in chat history)
+    if (targetIndex === -1 && id) {
+      try {
+        const { data: targetMsg } = await supabase
+          .from("messages")
+          .select("id, created_at")
+          .eq("id", targetMsgId)
+          .single();
+
+        if (targetMsg?.created_at) {
+          const oldest = messages[messages.length - 1];
+          if (oldest) {
+            const { data: gapMessages, error } = await supabase
+              .from("messages")
+              .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
+              .eq("chat_id", id)
+              .lt("created_at", oldest.created_at)
+              .gte("created_at", targetMsg.created_at)
+              .order("created_at", { ascending: false });
+
+            if (!error && gapMessages && gapMessages.length > 0) {
+              const formattedGap = gapMessages.map(formatMsg);
+              const updatedMessages = [...messages, ...formattedGap];
+              setMessages(updatedMessages);
+              targetIndex = updatedMessages.findIndex(m => m.id === targetMsgId);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Error fetching older messages for scroll target:", err);
+      }
+    }
+
+    // Set highlight state
+    setHighlightedMsgId(targetMsgId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedMsgId(null);
+    }, 2500);
+
+    // Scroll to the index
+    if (targetIndex !== -1 && flatListRef.current) {
+      try {
+        flatListRef.current.scrollToIndex({
+          index: targetIndex,
+          animated: true,
+          viewPosition: 0.5,
+        });
+      } catch (e) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index: targetIndex,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        }, 120);
+      }
+    }
+  }, [messages, id, formatMsg]);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -948,14 +1014,16 @@ export default function ChatScreen() {
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
       <MessageRow isAmoled={isAmoled} styles={styles} theme={theme}
-          item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
+        item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
         hoveredMsg={hoveredMsg} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
         setEditingMsgId={setEditingMsgId} setInputText={setInputText} deleteMessage={deleteMessage}
         handleApplyWallpaper={handleApplyWallpaper} setSettingsVisible={setSettingsVisible} setImageViewerUrl={setImageViewerUrl}
         handlePinMessage={handlePinMessage}
+        isHighlighted={highlightedMsgId === item.id}
+        onScrollToMessage={scrollToAndHighlightMessage}
       />
     );
-  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage]);
+  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage]);
 
   const chatViewContent = (
     <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }}>
@@ -1081,11 +1149,17 @@ export default function ChatScreen() {
             borderWidth: 1,
             borderColor: isAmoled ? "#222" : "rgba(255,255,255,0.1)",
           }}>
-            <Pin size={16} color={theme.accent || "#5865F2"} style={{ marginRight: 8 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 11, fontWeight: "700", color: theme.accent || "#5865F2" }}>Pinned Message</Text>
-              <Text style={{ fontSize: 13, color: isAmoled ? "#fff" : theme.text }} numberOfLines={1}>{pinnedMessage.text}</Text>
-            </View>
+            <TouchableOpacity
+              style={[{ flex: 1, flexDirection: "row", alignItems: "center" }, Platform.OS === "web" && ({ cursor: "pointer" } as any)]}
+              activeOpacity={0.7}
+              onPress={() => scrollToAndHighlightMessage(pinnedMessage.id)}
+            >
+              <Pin size={16} color={theme.accent || "#5865F2"} style={{ marginRight: 8 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: theme.accent || "#5865F2" }}>Pinned Message</Text>
+                <Text style={{ fontSize: 13, color: isAmoled ? "#fff" : theme.text }} numberOfLines={1}>{pinnedMessage.text}</Text>
+              </View>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => handlePinMessage(null)} style={{ padding: 4 }}>
               <X size={16} color={theme.textMuted} />
             </TouchableOpacity>
@@ -1117,7 +1191,16 @@ export default function ChatScreen() {
             ListFooterComponent={loadingOlder ? <ActivityIndicator size="small" color={theme.accent} style={{ marginVertical: 10 }} /> : null}
             contentContainerStyle={styles.listContainer}
             showsVerticalScrollIndicator={false}
-            extraData={targetUser?.last_read_at}
+            extraData={highlightedMsgId}
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => {
+                flatListRef.current?.scrollToIndex({
+                  index: info.index,
+                  animated: true,
+                  viewPosition: 0.5,
+                });
+              }, 100);
+            }}
           />
         )}
 
@@ -1179,15 +1262,21 @@ export default function ChatScreen() {
                   borderColor: isAmoled ? '#222222' : showWallpaper ? 'rgba(255,255,255,0.12)' : theme.id === 'light' ? 'rgba(0,0,0,0.08)' : theme.id === 'pink' ? 'rgba(131,24,67,0.12)' : 'rgba(255,255,255,0.08)'
                 }
               ]}>
-                <Reply size={16} color={isAmoled ? "#ffffff" : theme.accent} style={{ marginRight: 8 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.replyBannerSender, { color: theme.accent }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>{replyingTo.sender}</Text>
-                  {replyingTo.text?.startsWith("http") ? (
-                    <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
-                  ) : (
-                    <Text style={[styles.replyBannerText, { color: isAmoled ? "#aaaaaa" : theme.textMuted }]} numberOfLines={1}>{replyingTo.text}</Text>
-                  )}
-                </View>
+                <TouchableOpacity
+                  style={[{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }, Platform.OS === 'web' && ({ cursor: 'pointer' } as any)]}
+                  activeOpacity={0.7}
+                  onPress={() => scrollToAndHighlightMessage(replyingTo.id)}
+                >
+                  <Reply size={16} color={isAmoled ? "#ffffff" : theme.accent} style={{ marginRight: 8 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.replyBannerSender, { color: theme.accent }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>{replyingTo.sender}</Text>
+                    {replyingTo.text?.startsWith("http") ? (
+                      <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
+                    ) : (
+                      <Text style={[styles.replyBannerText, { color: isAmoled ? "#aaaaaa" : theme.textMuted }]} numberOfLines={1}>{replyingTo.text}</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => setReplyingTo(null)}><X size={20} color={isAmoled ? "#888888" : theme.textMuted} /></TouchableOpacity>
               </View>
             )}
@@ -1809,10 +1898,30 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
 });
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme }: any) => {
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage }: any) => {
   const isNew = index === 0;
   const scale = useSharedValue(isNew ? 0.8 : 1);
   const opacity = useSharedValue(isNew ? 0 : 1);
+  const highlightAnim = useSharedValue(0);
+
+  useEffect(() => {
+    if (isHighlighted) {
+      highlightAnim.value = withSequence(
+        withTiming(1, { duration: 250 }),
+        withDelay(1400, withTiming(0, { duration: 700 }))
+      );
+      scale.value = withSequence(
+        withTiming(1.04, { duration: 180 }),
+        withTiming(1, { duration: 180 })
+      );
+    } else {
+      highlightAnim.value = 0;
+    }
+  }, [isHighlighted]);
+
+  const highlightOverlayStyle = useAnimatedStyle(() => ({
+    opacity: highlightAnim.value,
+  }));
 
   const lastPressRef = useRef<number>(0);
   const handlePress = () => {
@@ -1994,6 +2103,23 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             onContextMenu: handleBubbleContextMenu,
           } as any)}
         >
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: isAmoled
+                  ? "rgba(255, 255, 255, 0.22)"
+                  : (theme.id === "pink" ? "rgba(244, 114, 182, 0.32)" : "rgba(88, 101, 242, 0.25)"),
+                borderRadius: 18,
+                borderWidth: 2,
+                borderColor: theme.accent || "#5865F2",
+                zIndex: 15,
+                margin: -4,
+              },
+              highlightOverlayStyle,
+            ]}
+          />
           {(!item.isMe && showMeta && !groupWithPrev) && (
             <Text style={[
               styles.messageSender,
@@ -2003,7 +2129,20 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             </Text>
           )}
           {item.reply_to_id && (
-            <View style={[styles.replyQuote, item.isMe ? styles.replyQuoteRight : styles.replyQuoteLeft]}>
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={(e: any) => {
+                e?.stopPropagation?.();
+                if (item.reply_to_id && onScrollToMessage) {
+                  onScrollToMessage(item.reply_to_id);
+                }
+              }}
+              style={[
+                styles.replyQuote, 
+                item.isMe ? styles.replyQuoteRight : styles.replyQuoteLeft,
+                Platform.OS === "web" && ({ cursor: "pointer" } as any)
+              ]}
+            >
               <Text style={[
                 styles.replyQuoteSender,
                 chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
@@ -2015,7 +2154,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
               ) : (
                 <Text style={styles.replyQuoteText} numberOfLines={1}>{item.reply_to_content}</Text>
               )}
-            </View>
+            </TouchableOpacity>
           )}
           
           {item.isMe && gradientEnabled && item.type !== "sticker" ? (
