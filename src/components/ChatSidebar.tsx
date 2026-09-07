@@ -10,6 +10,7 @@ import { supabase } from "../lib/supabase";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useAlaPin } from "../context/AlaPinContext";
+import ShinyText from "./ShinyText";
 
 interface ChatSidebarProps {
   activeChatId?: string;
@@ -377,7 +378,21 @@ export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarP
 
       {/* RECENT CHATS LIST */}
       {loading ? (
-        <View style={styles.centerContainer}><ActivityIndicator size="large" color={theme.accent} /></View>
+        <View style={styles.centerContainer}>
+          <ShinyText
+            text="Loading AlaThing..."
+            speed={1.8}
+            color={isAmoled ? "#777777" : (theme.id === "light" ? "#666666" : "#9ca3af")}
+            shineColor={isAmoled ? "#ffffff" : theme.accent || "#5865F2"}
+            spread={120}
+            style={{
+              fontSize: 18,
+              fontWeight: "700",
+              fontFamily: "Josefin Sans",
+              letterSpacing: 0.5,
+            }}
+          />
+        </View>
       ) : displayedChats.length === 0 ? (
         <View style={styles.centerContainer}>
           <MessageSquare size={48} color={theme.textMuted} />

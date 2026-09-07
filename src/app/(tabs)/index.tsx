@@ -14,11 +14,13 @@ import { useAlaPin } from "../../context/AlaPinContext";
 import { useWindowDimensions } from "react-native";
 import ChatSidebar from "../../components/ChatSidebar";
 import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholder";
+import ShinyText from "../../components/ShinyText";
 
 export default function Home() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
   const { theme } = useTheme();
+  const isAmoled = theme.id === "black";
   const { isDecoyMode, isPinEnabled, realPin, lockNow } = useAlaPin();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
@@ -330,7 +332,21 @@ export default function Home() {
           </View>
         </View>
         {loading ? (
-          <View style={styles.centerContainer}><ActivityIndicator size="large" color={theme.accent} /></View>
+          <View style={styles.centerContainer}>
+            <ShinyText
+              text="Loading AlaThing..."
+              speed={1.8}
+              color={isAmoled ? "#777777" : (theme.id === "light" ? "#666666" : "#9ca3af")}
+              shineColor={isAmoled ? "#ffffff" : theme.accent || "#5865F2"}
+              spread={120}
+              style={{
+                fontSize: 20,
+                fontWeight: "700",
+                fontFamily: "Josefin Sans",
+                letterSpacing: 0.5,
+              }}
+            />
+          </View>
         ) : displayedChats.length === 0 ? (
           <View style={styles.centerContainer}>
             <MessageSquare size={64} color={theme.textMuted} />

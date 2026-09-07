@@ -1231,7 +1231,7 @@ export default function ChatScreen() {
         {pinnedMessage && (
           <View style={{
             position: "absolute",
-            top: 72,
+            top: Platform.OS === "web" ? 80 : (Platform.OS === "ios" ? 104 : 96),
             left: 10,
             right: 10,
             zIndex: 40,
@@ -1272,7 +1272,9 @@ export default function ChatScreen() {
               theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.94)', borderColor: 'rgba(244,63,94,0.45)' } :
               { backgroundColor: 'rgba(35,37,42,0.92)', borderColor: 'rgba(244,63,94,0.4)' },
               {
-                top: pinnedMessage ? 124 : (Platform.OS === 'web' ? 76 : 96),
+                top: pinnedMessage
+                  ? (Platform.OS === "web" ? 134 : (Platform.OS === "ios" ? 158 : 150))
+                  : (Platform.OS === "web" ? 92 : (Platform.OS === "ios" ? 116 : 108)),
                 opacity: thinkingAnim,
                 transform: [
                   {
@@ -1715,7 +1717,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 10,
-    paddingTop: Platform.OS === "ios" ? 44 : 36,
+    paddingTop: Platform.OS === "ios" ? 52 : 44,
     paddingBottom: 6,
     zIndex: 50,
     gap: 8,
@@ -1774,7 +1776,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   hashCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: inputBg, justifyContent: "center", alignItems: "center", marginBottom: 16 },
   welcomeTitle: { color: text, fontSize: 24, fontWeight: "bold", marginBottom: 8 },
   welcomeSubtitle: { color: textMuted, fontSize: 16 },
-  listContainer: { paddingHorizontal: 16, paddingTop: 72, paddingBottom: 110 },
+  listContainer: { paddingHorizontal: 16, paddingTop: Platform.OS === "web" ? 82 : 98, paddingBottom: 110 },
   messageContainer: { flexDirection: "row", marginBottom: 18 },
   messageContainerLeft: { justifyContent: "flex-start" },
   messageContainerRight: { justifyContent: "flex-end" },
