@@ -111,6 +111,7 @@ export const ShinyText: React.FC<ShinyTextProps> = ({
   }, [pauseOnHover]);
 
   const flatStyle = StyleSheet.flatten(style) || {};
+  const { color: _ignoredColor, ...safeFlatStyle } = flatStyle;
 
   // Cross-platform check: on mobile React Native native views, render animated RNText fallback
   if (Platform.OS !== 'web') {
@@ -127,14 +128,20 @@ export const ShinyText: React.FC<ShinyTextProps> = ({
     WebkitBackgroundClip: 'text',
     backgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
+    color: 'transparent',
     display: 'inline-block',
     verticalAlign: 'middle',
   };
 
   return (
     <motion.span
-      className={`shiny-text ${className}`}
-      style={{ ...gradientStyle, backgroundPosition, ...flatStyle }}
+      className={`shiny-text shiny-text-animated ${className}`}
+      style={{
+        ...safeFlatStyle,
+        ...gradientStyle,
+        backgroundPosition,
+        animationDuration: `${speed}s`,
+      }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >

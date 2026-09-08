@@ -378,18 +378,18 @@ export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarP
 
       {/* RECENT CHATS LIST */}
       {loading ? (
-        <View style={styles.centerContainer}>
+        <View style={[styles.centerContainer, { backgroundColor: "#000000" }]}>
           <ShinyText
             text="Loading AlaThing..."
             speed={1.8}
-            color={isAmoled ? "#777777" : (theme.id === "light" ? "#666666" : "#9ca3af")}
-            shineColor={isAmoled ? "#ffffff" : theme.accent || "#5865F2"}
+            color="#777777"
+            shineColor="#ffffff"
             spread={120}
             style={{
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: "700",
-              fontFamily: "Josefin Sans",
-              letterSpacing: 0.5,
+              fontFamily: "'Josefin Sans', sans-serif",
+              letterSpacing: 0.8,
             }}
           />
         </View>

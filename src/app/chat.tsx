@@ -1862,9 +1862,10 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     } : {}),
   } as any,
   thinkingOfYouText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
+    fontFamily: "'Josefin Sans', sans-serif",
   },
   replyBanner: {
     flexDirection: "row",

@@ -284,6 +284,33 @@ export default function Home() {
     </TouchableOpacity>
   ), [styles, theme]);
 
+  if (loading) {
+    return (
+      <View style={{
+        flex: 1,
+        width: "100%",
+        height: "100%",
+        backgroundColor: "#000000",
+        justifyContent: "center",
+        alignItems: "center",
+      }}>
+        <ShinyText
+          text="Loading AlaThing..."
+          speed={1.8}
+          color="#777777"
+          shineColor="#ffffff"
+          spread={120}
+          style={{
+            fontSize: 24,
+            fontWeight: "700",
+            fontFamily: "'Josefin Sans', sans-serif",
+            letterSpacing: 0.8,
+          }}
+        />
+      </View>
+    );
+  }
+
   if (isDesktop) {
     return (
       <View style={{ flex: 1, flexDirection: "row", backgroundColor: theme.background }}>
@@ -331,23 +358,7 @@ export default function Home() {
             <TouchableOpacity style={styles.iconButton}><Search size={20} color={theme.textMuted} /></TouchableOpacity>
           </View>
         </View>
-        {loading ? (
-          <View style={styles.centerContainer}>
-            <ShinyText
-              text="Loading AlaThing..."
-              speed={1.8}
-              color={isAmoled ? "#777777" : (theme.id === "light" ? "#666666" : "#9ca3af")}
-              shineColor={isAmoled ? "#ffffff" : theme.accent || "#5865F2"}
-              spread={120}
-              style={{
-                fontSize: 20,
-                fontWeight: "700",
-                fontFamily: "Josefin Sans",
-                letterSpacing: 0.5,
-              }}
-            />
-          </View>
-        ) : displayedChats.length === 0 ? (
+        {displayedChats.length === 0 ? (
           <View style={styles.centerContainer}>
             <MessageSquare size={64} color={theme.textMuted} />
             <Text style={styles.emptyText}>No chats yet</Text>

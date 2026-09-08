@@ -25,9 +25,20 @@ function RootNavigator() {
 export default function Layout() {
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      // 1. Google Fonts
+      // 1. Google Fonts Preconnect & Stylesheet
+      const preconnect1 = document.createElement("link");
+      preconnect1.rel = "preconnect";
+      preconnect1.href = "https://fonts.googleapis.com";
+      document.head.appendChild(preconnect1);
+
+      const preconnect2 = document.createElement("link");
+      preconnect2.rel = "preconnect";
+      preconnect2.href = "https://fonts.gstatic.com";
+      preconnect2.crossOrigin = "anonymous";
+      document.head.appendChild(preconnect2);
+
       const link = document.createElement("link");
-      link.href = "https://fonts.googleapis.com/css2?family=BenchNine&family=Caveat&family=Changa+One&family=Cinzel&family=Elsie&family=Handjet&family=Josefin+Sans&family=Lobster+Two&family=Montserrat&family=Outfit&family=Playwrite+BR&family=Playwrite+DE+LA&family=Raleway&family=Rum+Raisin&family=Concert+One&family=Nothing+You+Could+Do&family=Chewy&family=La+Belle+Aurore&family=Balsamiq+Sans&display=swap";
+      link.href = "https://fonts.googleapis.com/css2?family=BenchNine&family=Caveat&family=Changa+One&family=Cinzel&family=Elsie&family=Handjet&family=Josefin+Sans:wght@300;400;600;700&family=Lobster+Two&family=Montserrat&family=Outfit&family=Playwrite+BR&family=Playwrite+DE+LA&family=Raleway&family=Rum+Raisin&family=Concert+One&family=Nothing+You+Could+Do&family=Chewy&family=La+Belle+Aurore&family=Balsamiq+Sans&display=swap";
       link.rel = "stylesheet";
       document.head.appendChild(link);
 
