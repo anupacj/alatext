@@ -13,7 +13,7 @@ const CHATS = [
 export default function Home() {
   const router = useRouter();
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }: { item: any }) => (
     <TouchableOpacity 
       style={styles.chatItem} 
       onPress={() => router.push({ pathname: '/chat', params: { id: item.id, name: item.name, avatar: item.avatar } })}

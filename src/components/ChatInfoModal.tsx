@@ -166,7 +166,7 @@ export default function ChatInfoModal({
         setUploadingAvatar(true);
         const asset = result.assets[0];
         const mimeType = asset.mimeType || "image/jpeg";
-        const publicUrl = await uploadImageToR2(`group-avatars/${chatId}-${Date.now()}`, asset.base64, mimeType);
+        const publicUrl = await uploadImageToR2(`group-avatars/${chatId}-${Date.now()}`, asset.base64!, mimeType);
 
         // Update chats table
         const { error } = await supabase.from("chats").update({ avatar_url: publicUrl }).eq("id", chatId);
@@ -478,7 +478,7 @@ export default function ChatInfoModal({
                           <TouchableOpacity
                             style={styles.kickBtn}
                             onPress={() => handleRemoveMember(item.user_id, item.username)}
-                            title="Remove Member"
+                            accessibilityLabel="Remove Member"
                           >
                             <UserMinus size={18} color="#f43f5e" />
                           </TouchableOpacity>

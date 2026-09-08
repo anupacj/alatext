@@ -378,12 +378,12 @@ export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarP
 
       {/* RECENT CHATS LIST */}
       {loading ? (
-        <View style={[styles.centerContainer, { backgroundColor: "#000000" }]}>
+        <View style={[styles.centerContainer, { backgroundColor: isAmoled ? "#000000" : theme.background }]}>
           <ShinyText
             text="Loading AlaThing..."
             speed={1.8}
-            color="#777777"
-            shineColor="#ffffff"
+            color={theme.id === "pink" ? "#be185d" : (theme.id === "light" ? "#888888" : "#777777")}
+            shineColor={theme.id === "pink" ? "#831843" : (theme.id === "light" ? "#111111" : "#ffffff")}
             spread={120}
             style={{
               fontSize: 20,
@@ -479,13 +479,15 @@ export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarP
   );
 }
 
-const createStyles = (theme: any, isAmoled: boolean) =>
-  StyleSheet.create({
+const createStyles = (theme: any, isAmoled: boolean) => {
+  const isPink = theme.id === "pink";
+  const isLight = theme.id === "light";
+  return StyleSheet.create({
     sidebarContainer: {
       flex: 1,
-      backgroundColor: isAmoled ? "#000000" : (theme.id === "light" ? "#ffffff" : "#111214"),
+      backgroundColor: isAmoled ? "#000000" : (isLight ? "#ffffff" : isPink ? "#fdf2f8" : "#111214"),
       borderRightWidth: 1,
-      borderRightColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.08)"),
+      borderRightColor: isAmoled ? "#222222" : (isLight ? "rgba(0,0,0,0.08)" : isPink ? "rgba(219,39,119,0.12)" : "rgba(255,255,255,0.08)"),
     },
     header: {
       flexDirection: "row",
@@ -494,7 +496,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       paddingHorizontal: 14,
       paddingVertical: 12,
       borderBottomWidth: 1,
-      borderBottomColor: isAmoled ? "#1a1a1a" : (theme.id === "light" ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.06)"),
+      borderBottomColor: isAmoled ? "#1a1a1a" : (isLight ? "rgba(0,0,0,0.06)" : isPink ? "rgba(219,39,119,0.1)" : "rgba(255,255,255,0.06)"),
     },
     headerLeft: {
       flexDirection: "row",
@@ -526,18 +528,18 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       borderRadius: 16,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: isAmoled ? "#1a1a1a" : (theme.id === "light" ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)"),
+      backgroundColor: isAmoled ? "#1a1a1a" : (isLight ? "rgba(0,0,0,0.04)" : isPink ? "rgba(219,39,119,0.08)" : "rgba(255,255,255,0.06)"),
     },
     searchBarContainer: {
       paddingHorizontal: 12,
       paddingVertical: 8,
       borderBottomWidth: 1,
-      borderBottomColor: isAmoled ? "#1a1a1a" : (theme.id === "light" ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.04)"),
+      borderBottomColor: isAmoled ? "#1a1a1a" : (isLight ? "rgba(0,0,0,0.04)" : isPink ? "rgba(219,39,119,0.08)" : "rgba(255,255,255,0.04)"),
     },
     searchBarInputBox: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: isAmoled ? "#111111" : (theme.id === "light" ? "#f0f2f5" : "rgba(255,255,255,0.06)"),
+      backgroundColor: isAmoled ? "#111111" : (isLight ? "#f0f2f5" : isPink ? "#fce7f3" : "rgba(255,255,255,0.06)"),
       borderRadius: 20,
       paddingHorizontal: 12,
       height: 36,
@@ -558,10 +560,10 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       paddingHorizontal: 14,
       paddingVertical: 12,
       borderBottomWidth: 1,
-      borderBottomColor: isAmoled ? "#111111" : (theme.id === "light" ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)"),
+      borderBottomColor: isAmoled ? "#111111" : (isLight ? "rgba(0,0,0,0.03)" : isPink ? "rgba(219,39,119,0.08)" : "rgba(255,255,255,0.03)"),
     },
     chatItemActive: {
-      backgroundColor: isAmoled ? "#1a1d24" : (theme.id === "light" ? "#e8f0fe" : "rgba(88,101,242,0.18)"),
+      backgroundColor: isAmoled ? "#1a1d24" : (isLight ? "#e8f0fe" : isPink ? "rgba(244,114,182,0.22)" : "rgba(88,101,242,0.18)"),
       borderLeftWidth: 3,
       borderLeftColor: theme.accent || "#5865F2",
     },
@@ -571,7 +573,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       borderRadius: 22,
     },
     avatarFallback: {
-      backgroundColor: isAmoled ? "#222" : (theme.id === "light" ? "#e4e6eb" : "rgba(255,255,255,0.08)"),
+      backgroundColor: isAmoled ? "#222" : (isLight ? "#e4e6eb" : isPink ? "#fce7f3" : "rgba(255,255,255,0.08)"),
       justifyContent: "center",
       alignItems: "center",
     },
@@ -654,11 +656,11 @@ const createStyles = (theme: any, isAmoled: boolean) =>
     modalView: {
       width: "100%",
       maxWidth: 400,
-      backgroundColor: isAmoled ? "#111111" : (theme.surface || "#1e1f22"),
+      backgroundColor: isAmoled ? "#111111" : (isLight ? "#ffffff" : isPink ? "#fdf2f8" : (theme.surface || "#1e1f22")),
       borderRadius: 20,
       padding: 20,
       borderWidth: 1,
-      borderColor: isAmoled ? "#222" : "rgba(255,255,255,0.1)",
+      borderColor: isAmoled ? "#222" : (isPink ? "rgba(219,39,119,0.2)" : "rgba(255,255,255,0.1)"),
     },
     modalTitle: {
       fontSize: 18,
@@ -669,7 +671,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
     },
     modeToggle: {
       flexDirection: "row",
-      backgroundColor: isAmoled ? "#222" : "rgba(255,255,255,0.06)",
+      backgroundColor: isAmoled ? "#222" : (isPink ? "#fce7f3" : isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)"),
       borderRadius: 12,
       padding: 3,
       marginBottom: 14,
@@ -709,7 +711,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       marginBottom: 10,
     },
     modalInput: {
-      backgroundColor: isAmoled ? "#1a1a1a" : (theme.id === "light" ? "#f0f2f5" : "rgba(255,255,255,0.06)"),
+      backgroundColor: isAmoled ? "#1a1a1a" : (isLight ? "#f0f2f5" : isPink ? "#fce7f3" : "rgba(255,255,255,0.06)"),
       borderRadius: 12,
       paddingHorizontal: 14,
       paddingVertical: 10,
@@ -747,7 +749,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       alignItems: "center",
     },
     cancelButton: {
-      backgroundColor: isAmoled ? "#222" : "rgba(255,255,255,0.08)",
+      backgroundColor: isAmoled ? "#222" : (isPink ? "#fce7f3" : isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)"),
     },
     cancelButtonText: {
       color: isAmoled ? "#ffffff" : theme.text,
@@ -765,3 +767,4 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       fontFamily: "Josefin Sans",
     },
   });
+};

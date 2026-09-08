@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, ActivityIndicator, Image, Modal, ScrollView, useWindowDimensions } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { Settings, User, Camera, LogOut, X, Bell, Palette, Check, Smartphone, Download, Maximize2, Minimize2, ShieldCheck, Lock, Eye, EyeOff, KeyRound } from 'lucide-react-native';
@@ -7,6 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadAvatarToR2 } from '../../lib/r2';
 import AlaPinSettingsModal from '../../components/AlaPinSettingsModal';
+import ChatSidebar from '../../components/ChatSidebar';
 import { isFeatureEnabled } from '../../lib/features';
 
 const THEME_OPTIONS = [
@@ -18,6 +20,9 @@ const THEME_OPTIONS = [
 ];
 
 export default function Profile() {
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const { user, signOut } = useAuth();
@@ -212,9 +217,295 @@ export default function Profile() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.container, { justifyContent: 'center' }]}>
-          <ActivityIndicator size="large" color="#5865F2" />
+          <ActivityIndicator size="large" color={theme.accent} />
         </View>
       </SafeAreaView>
+    );
+  }
+
+  // DESKTOP SPLIT VIEW
+  if (isDesktop) {
+    return (
+      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.background }}>
+        <View style={{ width: 380, height: '100%' }}>
+          <ChatSidebar
+            onSelectChat={(chatId, name) => {
+              router.push({ pathname: '/chat', params: { id: chatId, name } });
+            }}
+          />
+        </View>
+
+        <View style={{ flex: 1, height: '100%', backgroundColor: theme.background, borderLeftWidth: 1, borderLeftColor: theme.border }}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.desktopContentContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Header */}
+            <View style={{ marginBottom: 28 }}>
+              <Text style={styles.desktopPageTitle}>Profile & Settings</Text>
+              <Text style={styles.desktopPageSubtitle}>
+                Manage your profile, theme, notifications, and security
+              </Text>
+            </View>
+
+            {/* Profile Overview Card */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <User size={18} color={theme.accent} />
+                <Text style={styles.cardTitle}>My Profile</Text>
+              </View>
+
+              <View style={styles.desktopProfileRow}>
+                <TouchableOpacity style={styles.avatarContainer} onPress={handlePickImage} disabled={saving}>
+                  {profile?.avatar_url ? (
+                    <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+                  ) : (
+                    <View style={styles.avatarPlaceholder}>
+                      <User size={48} color="#ffffff" />
+                    </View>
+                  )}
+                  <View style={styles.editBadge}>
+                    <Camera size={16} color="#ffffff" />
+                  </View>
+                </TouchableOpacity>
+
+                <View style={{ flex: 1, marginLeft: 24, justifyContent: 'center' }}>
+                  <Text style={styles.desktopUsername}>@{profile?.username || 'user'}</Text>
+                  <Text style={styles.desktopEmail}>{user?.email}</Text>
+                  
+                  <View style={{ marginTop: 14 }}>
+                    <Text style={styles.label}>DISPLAY NAME</Text>
+                    <View style={[styles.inputRow, { maxWidth: 380 }]}>
+                      <TextInput
+                        style={styles.textInput}
+                        value={editName}
+                        onChangeText={setEditName}
+                        placeholder="Your Display Name"
+                        placeholderTextColor={theme.textMuted}
+                      />
+                      <TouchableOpacity style={styles.saveButton} onPress={handleSaveName} disabled={saving}>
+                        {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Save</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* App Theme */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Palette size={18} color={theme.accent} />
+                <Text style={styles.cardTitle}>App Theme</Text>
+              </View>
+              <View style={styles.themeGrid}>
+                {THEME_OPTIONS.map(t => {
+                  const isSelected = theme.id === t.id;
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      onPress={() => setTheme(t.id)}
+                      style={[
+                        styles.themeOptionCard,
+                        { backgroundColor: t.color, borderColor: isSelected ? theme.accent : (t.border || theme.border) },
+                        isSelected && styles.themeOptionSelected,
+                      ]}
+                    >
+                      <Text style={[styles.themeOptionLabel, { color: t.textColor }]}>{t.label}</Text>
+                      {isSelected && (
+                        <View style={[styles.checkCircle, { backgroundColor: theme.accent }]}>
+                          <Check size={12} color="#fff" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Notifications */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Bell size={18} color={theme.accent} />
+                <Text style={styles.cardTitle}>Notifications</Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.prefCard, notificationPref === "concealed_limited" && styles.prefCardActive]}
+                onPress={() => saveNotificationPref("concealed_limited")}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[styles.prefTitle, notificationPref === "concealed_limited" && { color: theme.text }]}>🥔 Concealed & Limited (1/hr)</Text>
+                  {notificationPref === "concealed_limited" && <Check size={16} color={theme.accent} />}
+                </View>
+                <Text style={[styles.prefSubtext, notificationPref === "concealed_limited" && { color: theme.textMuted }]}>Shows "Potato delivery". Max 1 notification per hour.</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.prefCard, notificationPref === "unconcealed_limitless" && styles.prefCardActive]}
+                onPress={() => saveNotificationPref("unconcealed_limitless")}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[styles.prefTitle, notificationPref === "unconcealed_limitless" && { color: theme.text }]}>💬 Unconcealed & Limitless</Text>
+                  {notificationPref === "unconcealed_limitless" && <Check size={16} color={theme.accent} />}
+                </View>
+                <Text style={[styles.prefSubtext, notificationPref === "unconcealed_limitless" && { color: theme.textMuted }]}>Shows the actual message text. No cooldown limit.</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.permissionBtn}
+                onPress={async () => {
+                  if (typeof window !== "undefined" && "Notification" in window) {
+                    if (Notification.permission === "denied") {
+                      alert("Your browser is blocking notifications! Click the padlock icon next to the URL, change Notifications to Allow, and refresh the page.");
+                    } else {
+                      const perm = await Notification.requestPermission();
+                      if (perm === "granted") alert("Notifications enabled!");
+                    }
+                  }
+                }}
+              >
+                <Text style={styles.permissionBtnText}>🔔 Request / Check Browser Permission</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Display & Fullscreen */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Smartphone size={18} color={theme.accent} />
+                <Text style={styles.cardTitle}>Display & Window Mode</Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.prefCard, isFullscreen && styles.prefCardActive]}
+                onPress={toggleFullscreen}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {isFullscreen ? <Minimize2 size={16} color={theme.accent} /> : <Maximize2 size={16} color={theme.text} />}
+                    <Text style={[styles.prefTitle, isFullscreen && { color: theme.text }]}>
+                      {isFullscreen ? "Exit Fullscreen Mode" : "Expand to Fullscreen"}
+                    </Text>
+                  </View>
+                  {isFullscreen && <Check size={16} color={theme.accent} />}
+                </View>
+                <Text style={[styles.prefSubtext, isFullscreen && { color: theme.textMuted }]}>
+                  Expands AlaThing to full screen with zero browser borders.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.prefCard, isInstalled && styles.prefCardActive]}
+                onPress={handleInstallApp}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Download size={16} color={theme.accent} />
+                    <Text style={[styles.prefTitle, isInstalled && { color: theme.text }]}>
+                      {isInstalled ? "App Installed (Standalone)" : "Install AlaThing Desktop App"}
+                    </Text>
+                  </View>
+                  {isInstalled && <Check size={16} color={theme.accent} />}
+                </View>
+                <Text style={[styles.prefSubtext, isInstalled && { color: theme.textMuted }]}>
+                  {isInstalled
+                    ? "Running in standalone desktop window."
+                    : "Install AlaThing as a desktop application with its own window and taskbar shortcut."}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Security & AlaPin */}
+            {isFeatureEnabled("alapin_decoy", profile, publicFeatures) && (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <ShieldCheck size={18} color={theme.accent} />
+                  <Text style={styles.cardTitle}>Security & Passcode</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.prefCard}
+                  onPress={() => setAlaPinModalVisible(true)}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={[styles.prefTitle, { color: theme.text }]}>🔒 AlaPin Security (Passcode & Decoy PIN)</Text>
+                    <ShieldCheck size={16} color={theme.accent} />
+                  </View>
+                  <Text style={[styles.prefSubtext, { color: theme.textMuted }]}>
+                    Configure 4-digit passcode protection and stealth Decoy PIN mode.
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Account Password */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <KeyRound size={18} color={theme.accent} />
+                <Text style={styles.cardTitle}>Account Password</Text>
+              </View>
+
+              <View style={[styles.prefCard, { gap: 10 }]}>
+                <Text style={[styles.prefTitle, { color: theme.text }]}>🔑 Change Account Password</Text>
+                <View style={styles.passwordInputRow}>
+                  <TextInput
+                    style={{ flex: 1, color: theme.text, fontSize: 14, fontFamily: 'Josefin Sans' }}
+                    placeholder="New Password (min 6 chars)"
+                    placeholderTextColor={theme.textMuted}
+                    secureTextEntry={!showPassword}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                  />
+                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                    {showPassword ? <EyeOff size={18} color={theme.textMuted} /> : <Eye size={18} color={theme.textMuted} />}
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.passwordInputRow}>
+                  <TextInput
+                    style={{ flex: 1, color: theme.text, fontSize: 14, fontFamily: 'Josefin Sans' }}
+                    placeholder="Confirm New Password"
+                    placeholderTextColor={theme.textMuted}
+                    secureTextEntry={!showPassword}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={{
+                    height: 42,
+                    borderRadius: 8,
+                    backgroundColor: passwordSuccess ? '#22c55e' : theme.accent,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginTop: 4,
+                  }}
+                  onPress={handleUpdatePassword}
+                  disabled={passwordUpdating}
+                >
+                  {passwordUpdating ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : passwordSuccess ? (
+                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Josefin Sans' }}>Password Updated!</Text>
+                  ) : (
+                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Josefin Sans' }}>Update Password</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Log Out */}
+            <TouchableOpacity style={styles.desktopLogoutButton} onPress={signOut}>
+              <LogOut size={20} color="#da373c" style={{ marginRight: 8 }} />
+              <Text style={styles.logoutText}>Log Out</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        <AlaPinSettingsModal visible={alaPinModalVisible} onClose={() => setAlaPinModalVisible(false)} />
+      </View>
     );
   }
 
@@ -509,64 +800,365 @@ export default function Profile() {
 const createStyles = (theme: any) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.background },
   container: {
-    flex: 1, backgroundColor: theme.background, maxWidth: Platform.OS === 'web' ? 800 : '100%',
-    width: '100%', alignSelf: 'center',
-    borderLeftWidth: (Platform.OS === 'web' && theme.id !== 'black') ? 1 : 0, borderRightWidth: (Platform.OS === 'web' && theme.id !== 'black') ? 1 : 0, borderColor: theme.id === 'black' ? '#000000' : theme.border,
+    flex: 1,
+    backgroundColor: theme.background,
+    width: '100%',
   },
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: theme.surface,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
-  headerTitle: { color: theme.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.5, fontFamily: "Josefin Sans" },
-  iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, justifyContent: 'center', alignItems: 'center' },
-  content: { flex: 1, alignItems: 'center', paddingTop: 32, paddingHorizontal: 16 },
-  avatarContainer: { position: 'relative', marginBottom: 8 },
-  avatarImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 6, borderColor: theme.background },
+  headerTitle: {
+    color: theme.text,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    fontFamily: "Josefin Sans",
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 8,
+  },
+  avatarImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: theme.border,
+  },
   avatarPlaceholder: {
-    width: 120, height: 120, borderRadius: 60, backgroundColor: theme.accent,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 6, borderColor: theme.background,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: theme.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: theme.border,
   },
   editBadge: {
-    position: 'absolute', bottom: 4, right: 4, width: 32, height: 32, borderRadius: 16,
-    backgroundColor: theme.border, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 3, borderColor: theme.background,
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: theme.background,
   },
-  username: { color: theme.textMuted, fontSize: 16, fontWeight: '600', marginBottom: 32, fontFamily: "Josefin Sans" },
-  editSection: { width: '100%', marginBottom: 24 },
-  label: { fontSize: 12, fontWeight: 'bold', color: theme.textMuted, marginBottom: 8, fontFamily: "Josefin Sans" },
-  inputRow: { flexDirection: 'row', gap: 8 },
+  username: {
+    color: theme.textMuted,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 28,
+    fontFamily: "Josefin Sans",
+  },
+  editSection: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: theme.textMuted,
+    marginBottom: 8,
+    fontFamily: "Josefin Sans",
+  },
+  inputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   textInput: {
-    flex: 1, backgroundColor: theme.border, color: theme.text, borderRadius: 4,
-    paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, fontFamily: "Josefin Sans",
+    flex: 1,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    color: theme.text,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontFamily: "Josefin Sans",
   },
-  saveButton: { backgroundColor: theme.accent, borderRadius: 4, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center' },
-  saveButtonText: { color: theme.text, fontWeight: 'bold', fontFamily: "Josefin Sans" },
-  settingsGroup: { width: '100%', backgroundColor: theme.surface, borderRadius: 8, padding: 16 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  infoLabel: { color: theme.textMuted, fontSize: 16, fontFamily: "Josefin Sans" },
-  infoValue: { color: theme.text, fontSize: 16, fontFamily: "Josefin Sans" },
+  saveButton: {
+    backgroundColor: theme.accent,
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontFamily: "Josefin Sans",
+  },
+  settingsGroup: {
+    width: '100%',
+    backgroundColor: theme.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 16,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  infoLabel: {
+    color: theme.textMuted,
+    fontSize: 15,
+    fontFamily: "Josefin Sans",
+  },
+  infoValue: {
+    color: theme.text,
+    fontSize: 15,
+    fontWeight: '600',
+    fontFamily: "Josefin Sans",
+  },
   logoutButton: {
-    flexDirection: 'row', backgroundColor: 'transparent', borderWidth: 1, borderColor: '#da373c',
-    paddingHorizontal: 24, paddingVertical: 12, borderRadius: 4, alignItems: 'center', marginBottom: 120, width: '100%', justifyContent: 'center'
+    flexDirection: 'row',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#da373c',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 100,
+    width: '100%',
+    justifyContent: 'center',
   },
-  logoutText: { color: '#da373c', fontSize: 16, fontWeight: '600', fontFamily: "Josefin Sans" },
-  
+  logoutText: {
+    color: '#da373c',
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: "Josefin Sans",
+  },
+
+  // Desktop specific styles
+  desktopContentContainer: {
+    paddingVertical: 36,
+    paddingHorizontal: 40,
+    maxWidth: 860,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  desktopPageTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: theme.text,
+    letterSpacing: -0.5,
+    fontFamily: "Josefin Sans",
+  },
+  desktopPageSubtitle: {
+    fontSize: 14,
+    color: theme.textMuted,
+    marginTop: 6,
+    fontFamily: "Josefin Sans",
+  },
+  card: {
+    backgroundColor: theme.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 22,
+    marginBottom: 24,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: theme.text,
+    fontFamily: "Josefin Sans",
+  },
+  desktopProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  desktopUsername: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.text,
+    fontFamily: "Josefin Sans",
+  },
+  desktopEmail: {
+    fontSize: 14,
+    color: theme.textMuted,
+    marginTop: 2,
+    fontFamily: "Josefin Sans",
+  },
+  desktopLogoutButton: {
+    flexDirection: 'row',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#da373c',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 60,
+    alignSelf: 'flex-start',
+    minWidth: 180,
+  },
+  passwordInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.background,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 42,
+  },
+
   // Modal styles
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 20 },
-  modalView: { width: "100%", maxWidth: 440, backgroundColor: theme.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: theme.border, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 12, maxHeight: '85%' },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
-  modalTitle: { color: theme.text, fontSize: 20, fontWeight: "bold", fontFamily: "Josefin Sans" },
-  modalSection: { marginBottom: 24 },
-  sectionHeader: { color: theme.text, fontSize: 16, fontWeight: "700", fontFamily: "Josefin Sans" },
-  themeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  themeOptionCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1.5, minWidth: '45%', flex: 1 },
-  themeOptionSelected: { borderWidth: 2 },
-  themeOptionLabel: { fontSize: 14, fontWeight: "700", fontFamily: "Josefin Sans" },
-  checkCircle: { width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  prefCard: { backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 14, marginBottom: 10 },
-  prefCardActive: { borderColor: theme.accent, backgroundColor: theme.border },
-  prefTitle: { color: theme.text, fontSize: 14, fontWeight: "700", marginBottom: 4, fontFamily: "Josefin Sans" },
-  prefSubtext: { color: theme.textMuted, fontSize: 12, lineHeight: 16, fontFamily: "Josefin Sans" },
-  permissionBtn: { backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, alignItems: 'center', marginTop: 4 },
-  permissionBtnText: { color: theme.text, fontSize: 13, fontWeight: "600", fontFamily: "Josefin Sans" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalView: {
+    width: "100%",
+    maxWidth: 460,
+    backgroundColor: theme.surface,
+    borderRadius: 18,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: theme.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  modalTitle: {
+    color: theme.text,
+    fontSize: 20,
+    fontWeight: "bold",
+    fontFamily: "Josefin Sans",
+  },
+  modalSection: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    color: theme.text,
+    fontSize: 16,
+    fontWeight: "700",
+    fontFamily: "Josefin Sans",
+  },
+  themeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  themeOptionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    minWidth: '45%',
+    flex: 1,
+  },
+  themeOptionSelected: {
+    borderWidth: 2,
+  },
+  themeOptionLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    fontFamily: "Josefin Sans",
+  },
+  checkCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  prefCard: {
+    backgroundColor: theme.background,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
+  },
+  prefCardActive: {
+    borderColor: theme.accent,
+    backgroundColor: theme.id === 'pink' ? 'rgba(251, 207, 232, 0.45)' : (theme.id === 'light' ? 'rgba(88, 101, 242, 0.08)' : theme.border),
+  },
+  prefTitle: {
+    color: theme.text,
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 4,
+    fontFamily: "Josefin Sans",
+  },
+  prefSubtext: {
+    color: theme.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: "Josefin Sans",
+  },
+  permissionBtn: {
+    backgroundColor: theme.background,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  permissionBtnText: {
+    color: theme.text,
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+  },
 });

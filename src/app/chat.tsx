@@ -8,7 +8,7 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -143,6 +143,79 @@ export default function ChatScreen() {
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState<string | null>(null);
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const highlightTimerRef = useRef<any>(null);
+
+  // More ⋮ Animated Dropdown Menu State
+  const [moreMenuVisible, setMoreMenuVisible] = useState(false);
+  const moreMenuAnim = useRef(new RNAnimated.Value(0)).current;
+
+  // In-Chat Search State
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatches, setSearchMatches] = useState<{ id: string; text: string }[]>([]);
+  const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
+  const searchHeaderAnim = useRef(new RNAnimated.Value(0)).current;
+  const searchInputRef = useRef<TextInput>(null);
+
+  const openMoreMenu = () => {
+    setMoreMenuVisible(true);
+    RNAnimated.spring(moreMenuAnim, {
+      toValue: 1,
+      tension: 110,
+      friction: 10,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeMoreMenu = () => {
+    RNAnimated.timing(moreMenuAnim, {
+      toValue: 0,
+      duration: 160,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => setMoreMenuVisible(false));
+  };
+
+  const openSearch = () => {
+    closeMoreMenu();
+    setIsSearchActive(true);
+    setSearchQuery("");
+    setSearchMatches([]);
+    setCurrentMatchIdx(0);
+    RNAnimated.timing(searchHeaderAnim, {
+      toValue: 1,
+      duration: 220,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => {
+      setTimeout(() => searchInputRef.current?.focus(), 80);
+    });
+  };
+
+  const closeSearch = () => {
+    RNAnimated.timing(searchHeaderAnim, {
+      toValue: 0,
+      duration: 200,
+      easing: Easing.in(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => {
+      setIsSearchActive(false);
+      setSearchQuery("");
+      setSearchMatches([]);
+      setCurrentMatchIdx(0);
+      setHighlightedMsgId(null);
+    });
+  };
+
+  const headerGlassStyle = React.useMemo(() => {
+    if (isAmoled) return { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' };
+    if (showWallpaper) return { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' };
+    if (theme.id === 'light') return { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' };
+    if (theme.id === 'pink') return { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' };
+    return { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' };
+  }, [isAmoled, showWallpaper, theme.id]);
+
+  const headerIconColor = isAmoled ? "#ffffff" : ((theme.id === "light" || theme.id === "pink") ? "#111111" : "#ffffff");
+  const headerTextColor = isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff");
 
   const handlePinMessage = useCallback(async (msg: Message | null) => {
     const pinData = msg ? { id: msg.id, text: msg.text, sender: msg.sender } : null;
@@ -401,6 +474,74 @@ export default function ChatScreen() {
       }
     }
   }, [messages, id, formatMsg]);
+
+  const handleSearchChange = useCallback(async (text: string) => {
+    setSearchQuery(text);
+    const q = text.trim().toLowerCase();
+    if (!q) {
+      setSearchMatches([]);
+      setCurrentMatchIdx(0);
+      return;
+    }
+
+    // 1. Instant local search across loaded messages
+    const local = messages
+      .filter(m => m.type !== "deleted" && m.text && m.text.toLowerCase().includes(q))
+      .map(m => ({ id: m.id, text: m.text }));
+
+    setSearchMatches(local);
+    setCurrentMatchIdx(0);
+
+    if (local.length > 0) {
+      scrollToAndHighlightMessage(local[0].id);
+    }
+
+    // 2. Query Supabase for any other matching messages in this conversation
+    if (id) {
+      try {
+        const { data } = await supabase
+          .from("messages")
+          .select("id, content, created_at, type")
+          .eq("chat_id", id)
+          .ilike("content", `%${q}%`)
+          .neq("type", "deleted")
+          .order("created_at", { ascending: false });
+
+        if (data && data.length > 0) {
+          const remoteList = data.map((d: any) => ({
+            id: d.id,
+            text: typeof d.content === "string" ? d.content : JSON.stringify(d.content || ""),
+          }));
+
+          const seen = new Set<string>();
+          const merged: { id: string; text: string }[] = [];
+          for (const item of [...local, ...remoteList]) {
+            if (!seen.has(item.id)) {
+              seen.add(item.id);
+              merged.push(item);
+            }
+          }
+          setSearchMatches(merged);
+        }
+      } catch (err) {
+        console.warn("Search query error:", err);
+      }
+    }
+  }, [messages, id, scrollToAndHighlightMessage]);
+
+  const handleNextMatch = useCallback(() => {
+    if (searchMatches.length === 0) return;
+    const next = currentMatchIdx < searchMatches.length - 1 ? currentMatchIdx + 1 : 0;
+    setCurrentMatchIdx(next);
+    scrollToAndHighlightMessage(searchMatches[next].id);
+  }, [searchMatches, currentMatchIdx, scrollToAndHighlightMessage]);
+
+  const handlePrevMatch = useCallback(() => {
+    if (searchMatches.length === 0) return;
+    const prev = currentMatchIdx > 0 ? currentMatchIdx - 1 : searchMatches.length - 1;
+    setCurrentMatchIdx(prev);
+    scrollToAndHighlightMessage(searchMatches[prev].id);
+  }, [searchMatches, currentMatchIdx, scrollToAndHighlightMessage]);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -1112,121 +1253,345 @@ export default function ChatScreen() {
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
         <View style={styles.floatingHeaderWrapper}>
-          <TouchableOpacity
-            onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
-            style={[
-              styles.headerPill,
-              styles.headerBackPill,
-              isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
-              showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
-              theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
-              theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
-              { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
-            ]}
-            activeOpacity={0.7}
-          >
-            <ChevronLeft size={24} color={isAmoled ? "#ffffff" : ((theme.id === "light" || theme.id === "pink") ? "#111111" : "#ffffff")} />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[
-              styles.headerPill,
-              styles.headerProfilePill,
-              isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
-              showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
-              theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
-              theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
-              { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
-            ]}
-            onPress={() => setInfoVisible(true)} 
-            activeOpacity={0.8}
-          >
-            {isGroup ? (
-              <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
-                <Users size={18} color="#fff" />
-              </View>
-            ) : targetUser?.avatar_url ? (
-              <Image source={{ uri: targetUser.avatar_url }} style={styles.floatingAvatar} />
-            ) : (
-              <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
-                <User size={18} color="#fff" />
-              </View>
-            )}
-            <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
-              <Text 
-                style={[
-                  styles.headerTitle, 
-                  { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") },
-                  chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-                ]} 
-                numberOfLines={1}
-              >
-                {isGroup ? (groupChatData?.name || name || "Group Chat") : (targetUser?.nickname || targetUser?.display_name || targetUser?.username || name || "chat")}
-              </Text>
-              {isGroup ? (
-                <Text style={[styles.groupSubtitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
-                  {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
-                </Text>
-              ) : targetUser ? (
-                <Text style={[
-                  styles.lastSeenText, 
-                  !isTargetOnline && styles.offlineText,
-                  chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-                ]}>
-                  {formatLastSeenText(targetUser, isTargetOnline)}
-                </Text>
-              ) : null}
-            </View>
-          </TouchableOpacity>
-
-          <View style={[
-            styles.headerPill,
-            styles.headerActionsPill,
-            isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
-            showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
-            theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
-            theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
-            { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
-          ]}>
-            <TouchableOpacity
-              style={[
-                styles.floatingIconBtn,
-                isHeartGlowing && {
-                  backgroundColor: "rgba(244, 63, 94, 0.25)",
-                  borderRadius: 9999,
-                  shadowColor: "#f43f5e",
-                  shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 1,
-                  shadowRadius: 16,
-                  elevation: 10,
-                  ...(Platform.OS === "web" ? {
-                    boxShadow: "0 0 16px #f43f5e, 0 0 30px rgba(244, 63, 94, 0.8)",
-                  } : {}),
-                }
-              ]}
-              onPress={triggerHeartPing}
-              activeOpacity={0.7}
-              accessibilityLabel="Send heart ping"
+          {!isSearchActive ? (
+            <RNAnimated.View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                flex: 1,
+                gap: 8,
+                opacity: searchHeaderAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+              }}
             >
-              <RNAnimated.View style={{
-                transform: [{ scale: heartAnim }],
-                opacity: isHeartGlowing ? heartAnim.interpolate({
-                  inputRange: [1, 1.15, 1.35],
-                  outputRange: [1, 0.45, 1]
-                }) : 1
-              }}>
-                <Heart
-                  size={20}
-                  color="#f43f5e"
-                  fill={isHeartGlowing || chatSettings?.anniversary_date ? "#f43f5e" : (theme.id === "pink" ? "#f472b6" : "rgba(244, 63, 94, 0.35)")}
-                />
-              </RNAnimated.View>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.floatingIconBtn} onPress={() => setSettingsVisible(true)}>
-              <MoreVertical size={20} color={isAmoled ? "#ffffff" : ((theme.id === "light" || theme.id === "pink") ? "#111111" : "#ffffff")} />
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
+                style={[
+                  styles.headerPill,
+                  styles.headerBackPill,
+                  headerGlassStyle,
+                ]}
+                activeOpacity={0.7}
+              >
+                <ChevronLeft size={24} color={headerIconColor} />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[
+                  styles.headerPill,
+                  styles.headerProfilePill,
+                  headerGlassStyle,
+                ]}
+                onPress={() => setInfoVisible(true)} 
+                activeOpacity={0.8}
+              >
+                {isGroup ? (
+                  <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
+                    <Users size={18} color="#fff" />
+                  </View>
+                ) : targetUser?.avatar_url ? (
+                  <Image source={{ uri: targetUser.avatar_url }} style={styles.floatingAvatar} />
+                ) : (
+                  <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
+                    <User size={18} color="#fff" />
+                  </View>
+                )}
+                <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
+                  <Text 
+                    style={[
+                      styles.headerTitle, 
+                      { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") },
+                      chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                    ]} 
+                    numberOfLines={1}
+                  >
+                    {isGroup ? (groupChatData?.name || name || "Group Chat") : (targetUser?.nickname || targetUser?.display_name || targetUser?.username || name || "chat")}
+                  </Text>
+                  {isGroup ? (
+                    <Text style={[styles.groupSubtitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
+                      {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
+                    </Text>
+                  ) : targetUser ? (
+                    <Text style={[
+                      styles.lastSeenText, 
+                      !isTargetOnline && styles.offlineText,
+                      chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                    ]}>
+                      {formatLastSeenText(targetUser, isTargetOnline)}
+                    </Text>
+                  ) : null}
+                </View>
+              </TouchableOpacity>
+
+              <View style={[
+                styles.headerPill,
+                styles.headerActionsPill,
+                headerGlassStyle,
+              ]}>
+                <TouchableOpacity
+                  style={[
+                    styles.floatingIconBtn,
+                    isHeartGlowing && {
+                      backgroundColor: "rgba(244, 63, 94, 0.25)",
+                      borderRadius: 9999,
+                      shadowColor: "#f43f5e",
+                      shadowOffset: { width: 0, height: 0 },
+                      shadowOpacity: 1,
+                      shadowRadius: 16,
+                      elevation: 10,
+                      ...(Platform.OS === "web" ? {
+                        boxShadow: "0 0 16px #f43f5e, 0 0 30px rgba(244, 63, 94, 0.8)",
+                      } : {}),
+                    }
+                  ]}
+                  onPress={triggerHeartPing}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Send heart ping"
+                >
+                  <RNAnimated.View style={{
+                    transform: [{ scale: heartAnim }],
+                    opacity: isHeartGlowing ? heartAnim.interpolate({
+                      inputRange: [1, 1.15, 1.35],
+                      outputRange: [1, 0.45, 1]
+                    }) : 1
+                  }}>
+                    <Heart
+                      size={20}
+                      color="#f43f5e"
+                      fill={isHeartGlowing || chatSettings?.anniversary_date ? "#f43f5e" : (theme.id === "pink" ? "#f472b6" : "rgba(244, 63, 94, 0.35)")}
+                    />
+                  </RNAnimated.View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.floatingIconBtn}
+                  onPress={() => (moreMenuVisible ? closeMoreMenu() : openMoreMenu())}
+                  activeOpacity={0.7}
+                  accessibilityLabel="More options"
+                >
+                  <MoreVertical size={20} color={headerIconColor} />
+                </TouchableOpacity>
+              </View>
+            </RNAnimated.View>
+          ) : (
+            <RNAnimated.View
+              style={[
+                styles.headerPill,
+                headerGlassStyle,
+                {
+                  flex: 1,
+                  height: 46,
+                  paddingHorizontal: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  opacity: searchHeaderAnim,
+                  transform: [
+                    {
+                      scale: searchHeaderAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.96, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <TouchableOpacity
+                onPress={closeSearch}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginRight: 4,
+                }}
+                activeOpacity={0.7}
+                accessibilityLabel="Close search"
+              >
+                <ChevronLeft size={22} color={headerIconColor} />
+              </TouchableOpacity>
+
+              <Search size={18} color={theme.textMuted} style={{ marginRight: 6 }} />
+
+              <TextInput
+                ref={searchInputRef}
+                style={{
+                  flex: 1,
+                  height: 40,
+                  color: headerTextColor,
+                  fontSize: 15,
+                  fontFamily: "Josefin Sans",
+                  paddingVertical: 0,
+                  paddingHorizontal: 0,
+                  outlineStyle: "none",
+                } as any}
+                placeholder="Search messages..."
+                placeholderTextColor={theme.textMuted}
+                value={searchQuery}
+                onChangeText={handleSearchChange}
+                autoFocus
+                returnKeyType="search"
+              />
+
+              {searchQuery.trim().length > 0 && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: "Josefin Sans",
+                      color: theme.textMuted,
+                      marginHorizontal: 4,
+                    }}
+                  >
+                    {searchMatches.length > 0
+                      ? `${currentMatchIdx + 1}/${searchMatches.length}`
+                      : "0 found"}
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={handlePrevMatch}
+                    disabled={searchMatches.length === 0}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      justifyContent: "center",
+                      alignItems: "center",
+                      opacity: searchMatches.length === 0 ? 0.3 : 1,
+                    }}
+                    accessibilityLabel="Previous match"
+                  >
+                    <ChevronUp size={18} color={headerIconColor} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={handleNextMatch}
+                    disabled={searchMatches.length === 0}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      justifyContent: "center",
+                      alignItems: "center",
+                      opacity: searchMatches.length === 0 ? 0.3 : 1,
+                    }}
+                    accessibilityLabel="Next match"
+                  >
+                    <ChevronDown size={18} color={headerIconColor} />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (searchQuery) {
+                    handleSearchChange("");
+                  } else {
+                    closeSearch();
+                  }
+                }}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginLeft: 2,
+                }}
+                activeOpacity={0.7}
+                accessibilityLabel="Clear query or close"
+              >
+                <X size={17} color={theme.textMuted} />
+              </TouchableOpacity>
+            </RNAnimated.View>
+          )}
         </View>
+
+        {/* ANIMATED ⋮ DROPDOWN MENU */}
+        {moreMenuVisible && (
+          <>
+            <Pressable
+              style={[StyleSheet.absoluteFill, { zIndex: 90 }]}
+              onPress={closeMoreMenu}
+            />
+
+            <RNAnimated.View
+              style={[
+                styles.moreDropdownMenu,
+                headerGlassStyle,
+                {
+                  opacity: moreMenuAnim,
+                  transform: [
+                    {
+                      translateY: moreMenuAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-12, 0],
+                      }),
+                    },
+                    {
+                      scale: moreMenuAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.94, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              {/* Item 1: Search in Chat */}
+              <TouchableOpacity
+                style={styles.moreDropdownItem}
+                onPress={openSearch}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.moreDropdownIconCircle, { backgroundColor: isAmoled ? '#222' : (theme.id === 'pink' ? '#fbcfe8' : 'rgba(88,101,242,0.12)') }]}>
+                  <Search size={16} color={theme.accent} />
+                </View>
+                <Text style={[styles.moreDropdownItemText, { color: theme.text }]}>
+                  Search in Chat
+                </Text>
+              </TouchableOpacity>
+
+              <View style={[styles.moreDropdownDivider, { backgroundColor: isAmoled ? '#222' : (theme.id === 'pink' ? 'rgba(219,39,119,0.12)' : theme.border) }]} />
+
+              {/* Item 2: Chat Settings & Wallpaper */}
+              <TouchableOpacity
+                style={styles.moreDropdownItem}
+                onPress={() => {
+                  closeMoreMenu();
+                  setSettingsVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.moreDropdownIconCircle, { backgroundColor: isAmoled ? '#222' : (theme.id === 'pink' ? '#fbcfe8' : 'rgba(88,101,242,0.12)') }]}>
+                  <Settings size={16} color={theme.accent} />
+                </View>
+                <Text style={[styles.moreDropdownItemText, { color: theme.text }]}>
+                  Chat Settings & Wallpaper
+                </Text>
+              </TouchableOpacity>
+
+              <View style={[styles.moreDropdownDivider, { backgroundColor: isAmoled ? '#222' : (theme.id === 'pink' ? 'rgba(219,39,119,0.12)' : theme.border) }]} />
+
+              {/* Item 3: Chat Info & Media */}
+              <TouchableOpacity
+                style={styles.moreDropdownItem}
+                onPress={() => {
+                  closeMoreMenu();
+                  setInfoVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.moreDropdownIconCircle, { backgroundColor: isAmoled ? '#222' : (theme.id === 'pink' ? '#fbcfe8' : 'rgba(88,101,242,0.12)') }]}>
+                  {isGroup ? <Users size={16} color={theme.accent} /> : <User size={16} color={theme.accent} />}
+                </View>
+                <Text style={[styles.moreDropdownItemText, { color: theme.text }]}>
+                  {isGroup ? "Group Info & Media" : "Chat Info & Media"}
+                </Text>
+              </TouchableOpacity>
+            </RNAnimated.View>
+          </>
+        )}
 
         {pinnedMessage && (
           <View style={{
@@ -1699,12 +2064,12 @@ export default function ChatScreen() {
 
 const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false) => {
   const bg = isAmoled ? '#000000' : theme.background;
-  const surface = isAmoled ? '#000000' : '#2b2d31';
-  const border = isAmoled ? '#222222' : '#1e1f22';
-  const text = isAmoled ? '#ffffff' : '#dbdee1';
-  const textMuted = isAmoled ? '#888888' : '#949ba4';
-  const accent = isAmoled ? '#ffffff' : '#5865F2';
-  const inputBg = isAmoled ? '#000000' : theme.surface;
+  const surface = isAmoled ? '#000000' : (theme.surface || '#2b2d31');
+  const border = isAmoled ? '#222222' : (theme.border || '#1e1f22');
+  const text = isAmoled ? '#ffffff' : (theme.text || '#dbdee1');
+  const textMuted = isAmoled ? '#888888' : (theme.textMuted || '#949ba4');
+  const accent = isAmoled ? '#ffffff' : (theme.accent || '#5865F2');
+  const inputBg = isAmoled ? '#000000' : (theme.surface || '#2b2d31');
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
@@ -1755,6 +2120,46 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     gap: 2,
     justifyContent: "center",
     alignItems: "center",
+  },
+  moreDropdownMenu: {
+    position: "absolute",
+    top: (Platform.OS === "ios" ? 52 : (isDesktop ? 16 : 44)) + 50,
+    right: isDesktop ? 20 : 10,
+    width: 240,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 6,
+    zIndex: 100,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 12,
+    backdropFilter: "blur(20px)",
+  } as any,
+  moreDropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  moreDropdownIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  moreDropdownItemText: {
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+  },
+  moreDropdownDivider: {
+    height: 1,
+    marginHorizontal: 12,
+    opacity: 0.5,
   },
   floatingAvatar: {
     width: 36,

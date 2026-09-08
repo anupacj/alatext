@@ -17,8 +17,15 @@ export default function DesktopLandingPlaceholder() {
             : theme.id === "light"
             ? "#f0f2f5"
             : theme.id === "pink"
-            ? "#fce7f3"
+            ? "#fdf2f8"
             : "#111214",
+          borderLeftColor: isAmoled
+            ? "#1a1a1a"
+            : theme.id === "pink"
+            ? "rgba(219,39,119,0.15)"
+            : theme.id === "light"
+            ? "rgba(0,0,0,0.06)"
+            : "rgba(255,255,255,0.08)",
         },
       ]}
     >
@@ -31,11 +38,15 @@ export default function DesktopLandingPlaceholder() {
                 ? "#111111"
                 : theme.id === "light"
                 ? "#ffffff"
+                : theme.id === "pink"
+                ? "#fce7f3"
                 : "rgba(255,255,255,0.06)",
               borderColor: isAmoled
                 ? "#222222"
                 : theme.id === "light"
                 ? "rgba(0,0,0,0.06)"
+                : theme.id === "pink"
+                ? "rgba(219,39,119,0.2)"
                 : "rgba(255,255,255,0.1)",
             },
           ]}
@@ -59,11 +70,15 @@ export default function DesktopLandingPlaceholder() {
                 ? "#111111"
                 : theme.id === "light"
                 ? "rgba(0,0,0,0.03)"
+                : theme.id === "pink"
+                ? "rgba(252,231,243,0.8)"
                 : "rgba(255,255,255,0.04)",
               borderColor: isAmoled
                 ? "#222222"
                 : theme.id === "light"
                 ? "rgba(0,0,0,0.06)"
+                : theme.id === "pink"
+                ? "rgba(219,39,119,0.15)"
                 : "rgba(255,255,255,0.08)",
             },
           ]}

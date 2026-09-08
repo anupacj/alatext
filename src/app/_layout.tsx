@@ -13,6 +13,15 @@ SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
   const { theme } = useTheme();
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.body.style.backgroundColor = theme.background;
+      const root = document.getElementById('root');
+      if (root) root.style.backgroundColor = theme.background;
+    }
+  }, [theme.background]);
+
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
