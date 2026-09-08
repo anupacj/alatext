@@ -1,10 +1,20 @@
 import { Tabs } from 'expo-router';
 import { MessageCircle, User } from 'lucide-react-native';
-import { Platform, View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Platform, View, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
+import { TabsLoadingProvider, useTabsLoading } from '../../context/TabsLoadingContext';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
+  const { isTabsLoading } = useTabsLoading();
+  const currentRoute = state.routes[state.index]?.name;
+
+  // Never show tab bar on web desktop, and hide during initial loading screen on mobile
+  if (isDesktop || (currentRoute === 'index' && isTabsLoading)) {
+    return null;
+  }
 
   return (
     <View style={styles.floatingWrapper} pointerEvents="box-none">
@@ -47,15 +57,17 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 
 export default function TabsLayout() {
   return (
-    <Tabs
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <Tabs.Screen name="index" />
-      <Tabs.Screen name="profile" />
-    </Tabs>
+    <TabsLoadingProvider>
+      <Tabs
+        tabBar={(props) => <CustomTabBar {...props} />}
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="profile" />
+      </Tabs>
+    </TabsLoadingProvider>
   );
 }
 

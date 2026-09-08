@@ -15,6 +15,7 @@ import { useWindowDimensions } from "react-native";
 import ChatSidebar from "../../components/ChatSidebar";
 import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholder";
 import ShinyText from "../../components/ShinyText";
+import { useTabsLoading } from "../../context/TabsLoadingContext";
 
 export default function Home() {
   const { width } = useWindowDimensions();
@@ -27,6 +28,12 @@ export default function Home() {
   const { user } = useAuth();
   const [chats, setChats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { setIsTabsLoading } = useTabsLoading();
+
+  useEffect(() => {
+    setIsTabsLoading(loading);
+  }, [loading, setIsTabsLoading]);
+
   const [modalVisible, setModalVisible] = useState(false);
 
   const displayedChats = isDecoyMode ? [] : chats;

@@ -133,11 +133,15 @@ export const ShinyText: React.FC<ShinyTextProps> = ({
     verticalAlign: 'middle',
   };
 
+  const isJosefin = typeof safeFlatStyle.fontFamily === 'string' && safeFlatStyle.fontFamily.toLowerCase().includes('josefin');
+  const customFontFamily = isJosefin ? "'Josefin Sans', sans-serif" : safeFlatStyle.fontFamily;
+
   return (
     <motion.span
-      className={`shiny-text shiny-text-animated ${className}`}
+      className={`shiny-text shiny-text-animated ${isJosefin ? 'shiny-text-josefin' : ''} ${className}`}
       style={{
         ...safeFlatStyle,
+        ...(customFontFamily ? { fontFamily: customFontFamily } : {}),
         ...gradientStyle,
         backgroundPosition,
         animationDuration: `${speed}s`,

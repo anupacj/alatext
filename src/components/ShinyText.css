@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
+
 .shiny-text {
   display: inline-block;
   background-size: 200% auto;
@@ -6,6 +8,10 @@
   -webkit-text-fill-color: transparent;
   color: transparent;
   vertical-align: middle;
+}
+
+.shiny-text-josefin {
+  font-family: 'Josefin Sans', sans-serif !important;
 }
 
 @keyframes shinySweep {
