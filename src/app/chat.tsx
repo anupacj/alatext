@@ -68,7 +68,7 @@ export default function ChatScreen() {
   const isDesktop = Platform.OS === 'web' && width >= 768;
   const { theme } = useTheme();
   const isAmoled = theme.id === "black";
-  const styles = React.useMemo(() => createStyles(isAmoled, theme), [isAmoled, theme]);
+  const styles = React.useMemo(() => createStyles(isAmoled, theme, isDesktop), [isAmoled, theme, isDesktop]);
   const { id, name, avatar } = useLocalSearchParams();
   const { user } = useAuth();
   const router = useRouter();
@@ -1099,9 +1099,9 @@ export default function ChatScreen() {
   }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage]);
 
   const chatViewContent = (
-    <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background) }}>
+    <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden" }}>
       {showWallpaper && (
-        <View style={StyleSheet.absoluteFill}>
+        <View style={[StyleSheet.absoluteFill, { overflow: "hidden" }]}>
           <Image source={{ uri: chatSettings!.wallpaper_url }}
             style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings?.wallpaper_zoom || 1 }] }]}
             blurRadius={(chatSettings?.wallpaper_blur || 0) * 20} />
@@ -1231,9 +1231,9 @@ export default function ChatScreen() {
         {pinnedMessage && (
           <View style={{
             position: "absolute",
-            top: Platform.OS === "web" ? 80 : (Platform.OS === "ios" ? 104 : 96),
-            left: 10,
-            right: 10,
+            top: Platform.OS === "web" ? (isDesktop ? 70 : 80) : (Platform.OS === "ios" ? 104 : 96),
+            left: isDesktop ? 20 : 10,
+            right: isDesktop ? 20 : 10,
             zIndex: 40,
             backgroundColor: isAmoled ? "rgba(0,0,0,0.92)" : (showWallpaper ? "rgba(20,20,30,0.85)" : (theme.id === "light" ? "rgba(255,255,255,0.92)" : "rgba(43,45,49,0.88)")),
             borderRadius: 14,
@@ -1251,8 +1251,8 @@ export default function ChatScreen() {
             >
               <Pin size={16} color={theme.accent || "#5865F2"} style={{ marginRight: 8 }} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: theme.accent || "#5865F2" }}>Pinned Message</Text>
-                <Text style={{ fontSize: 13, color: isAmoled ? "#fff" : theme.text }} numberOfLines={1}>{pinnedMessage.text}</Text>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: theme.accent || "#5865F2", fontFamily: "Josefin Sans" }}>Pinned Message</Text>
+                <Text style={{ fontSize: 13, color: isAmoled ? "#fff" : theme.text, fontFamily: "Josefin Sans" }} numberOfLines={1}>{pinnedMessage.text}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => handlePinMessage(null)} style={{ padding: 4 }}>
@@ -1273,8 +1273,8 @@ export default function ChatScreen() {
               { backgroundColor: 'rgba(35,37,42,0.92)', borderColor: 'rgba(244,63,94,0.4)' },
               {
                 top: pinnedMessage
-                  ? (Platform.OS === "web" ? 134 : (Platform.OS === "ios" ? 158 : 150))
-                  : (Platform.OS === "web" ? 92 : (Platform.OS === "ios" ? 116 : 108)),
+                  ? (Platform.OS === "web" ? (isDesktop ? 124 : 134) : (Platform.OS === "ios" ? 158 : 150))
+                  : (Platform.OS === "web" ? (isDesktop ? 70 : 92) : (Platform.OS === "ios" ? 116 : 108)),
                 opacity: thinkingAnim,
                 transform: [
                   {
@@ -1677,8 +1677,8 @@ export default function ChatScreen() {
 
   if (isDesktop) {
     return (
-      <View style={{ flex: 1, flexDirection: "row", backgroundColor: isAmoled ? "#000000" : theme.background }}>
-        <View style={{ width: 380, height: "100%" }}>
+      <View style={{ flex: 1, flexDirection: "row", backgroundColor: isAmoled ? "#000000" : theme.background, overflow: "hidden" }}>
+        <View style={{ width: 380, height: "100%", zIndex: 10, backgroundColor: isAmoled ? "#000000" : theme.background, overflow: "hidden" }}>
           <ChatSidebar
             activeChatId={id as string}
             onSelectChat={(selectedId, selectedName) => {
@@ -1687,7 +1687,7 @@ export default function ChatScreen() {
             }}
           />
         </View>
-        <View key={id as string} style={{ flex: 1, height: "100%", position: "relative" }}>
+        <View key={id as string} style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden" }}>
           {chatViewContent}
         </View>
       </View>
@@ -1697,7 +1697,7 @@ export default function ChatScreen() {
   return chatViewContent;
 }
 
-const createStyles = (isAmoled: boolean, theme: any) => {
+const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false) => {
   const bg = isAmoled ? '#000000' : theme.background;
   const surface = isAmoled ? '#000000' : '#2b2d31';
   const border = isAmoled ? '#222222' : '#1e1f22';
@@ -1708,7 +1708,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
-  container: { flex: 1, height: "100%", backgroundColor: bg, maxWidth: Platform.OS === "web" ? 800 : ("100%" as any), width: "100%", alignSelf: "center", borderLeftWidth: (Platform.OS === "web" && !isAmoled) ? 1 : 0, borderRightWidth: (Platform.OS === "web" && !isAmoled) ? 1 : 0, borderColor: isAmoled ? "#000000" : border, overflow: "hidden" },
+  container: { flex: 1, height: "100%", backgroundColor: bg, maxWidth: "100%" as any, width: "100%", borderLeftWidth: 0, borderRightWidth: 0, overflow: "hidden" },
   floatingHeaderWrapper: {
     position: "absolute",
     top: 0,
@@ -1716,8 +1716,8 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     right: 0,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingTop: Platform.OS === "ios" ? 52 : 44,
+    paddingHorizontal: isDesktop ? 20 : 10,
+    paddingTop: Platform.OS === "ios" ? 52 : (isDesktop ? 16 : 44),
     paddingBottom: 6,
     zIndex: 50,
     gap: 8,
@@ -1766,17 +1766,17 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     padding: 7,
     borderRadius: 18,
   },
-  headerTitle: { color: text, fontSize: 16, fontWeight: "700" },
+  headerTitle: { color: text, fontSize: 16, fontWeight: "700", fontFamily: "Josefin Sans" },
   hashIcon: { color: textMuted, fontSize: 18, fontWeight: "400" },
-  lastSeenText: { color: "#23a559", fontSize: 12, fontWeight: "600", marginTop: 2 },
-  groupSubtitle: { color: textMuted, fontSize: 12, fontWeight: "500", marginTop: 2 },
-  streakText: { color: "#f43f5e", fontSize: 12, fontWeight: "600", marginTop: 2 },
-  offlineText: { color: textMuted },
+  lastSeenText: { color: "#23a559", fontSize: 12, fontWeight: "600", marginTop: 2, fontFamily: "Josefin Sans" },
+  groupSubtitle: { color: textMuted, fontSize: 12, fontWeight: "500", marginTop: 2, fontFamily: "Josefin Sans" },
+  streakText: { color: "#f43f5e", fontSize: 12, fontWeight: "600", marginTop: 2, fontFamily: "Josefin Sans" },
+  offlineText: { color: textMuted, fontFamily: "Josefin Sans" },
   emptyContainer: { flex: 1, justifyContent: "flex-end", padding: 16, paddingBottom: 40 },
   hashCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: inputBg, justifyContent: "center", alignItems: "center", marginBottom: 16 },
-  welcomeTitle: { color: text, fontSize: 24, fontWeight: "bold", marginBottom: 8 },
-  welcomeSubtitle: { color: textMuted, fontSize: 16 },
-  listContainer: { paddingHorizontal: 16, paddingTop: Platform.OS === "web" ? 82 : 98, paddingBottom: 110 },
+  welcomeTitle: { color: text, fontSize: 24, fontWeight: "bold", marginBottom: 8, fontFamily: "Josefin Sans" },
+  welcomeSubtitle: { color: textMuted, fontSize: 16, fontFamily: "Josefin Sans" },
+  listContainer: { paddingHorizontal: isDesktop ? 20 : 16, paddingTop: Platform.OS === "web" ? (isDesktop ? 74 : 82) : 98, paddingBottom: 110 },
   messageContainer: { flexDirection: "row", marginBottom: 18 },
   messageContainerLeft: { justifyContent: "flex-start" },
   messageContainerRight: { justifyContent: "flex-end" },
@@ -1786,10 +1786,10 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   emptyPreviewBox: { flex: 1, justifyContent: "center", alignItems: "center" },
   messageAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: surface },
   avatarFallback: { justifyContent: "center", alignItems: "center" },
-  messageContent: { maxWidth: "80%" },
+  messageContent: { maxWidth: isDesktop ? "72%" : "80%" },
   messageContentLeft: { alignItems: "flex-start" },
   messageContentRight: { alignItems: "flex-end" },
-  messageSender: { color: text, fontSize: 14, fontWeight: "600", marginBottom: 4 },
+  messageSender: { color: text, fontSize: 14, fontWeight: "600", marginBottom: 4, fontFamily: "Josefin Sans" },
   messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
   messageBubbleLeft: { backgroundColor: surface, borderBottomLeftRadius: 4 },
   messageBubbleRight: { backgroundColor: accent, borderBottomRightRadius: 4 },
@@ -1797,11 +1797,11 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   bubbleFlatTopLeft: { borderTopLeftRadius: 4 },
   bubbleFlatBottom: { borderBottomLeftRadius: 4 },
   bubbleFlatBottomRight: { borderBottomRightRadius: 4 },
-  messageText: { fontSize: 16, lineHeight: 22 },
+  messageText: { fontSize: 16, lineHeight: 22, fontFamily: Platform.OS === "web" ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' : undefined },
   messageTextLeft: { color: text },
   messageTextRight: { color: text },
   msgMeta: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  timeText: { color: textMuted, fontSize: 12, fontWeight: "500" },
+  timeText: { color: textMuted, fontSize: 12, fontWeight: "500", fontFamily: "Josefin Sans" },
   checkIcon: { marginLeft: 4 },
   inlineImage: { maxWidth: 280, maxHeight: 320, minWidth: 140, minHeight: 100, width: "100%", height: "auto", borderRadius: 12, resizeMode: "cover" },
   replyQuote: {
@@ -1817,8 +1817,8 @@ const createStyles = (isAmoled: boolean, theme: any) => {
   } as any,
   replyQuoteLeft: { alignSelf: "flex-start" },
   replyQuoteRight: { alignSelf: "flex-end" },
-  replyQuoteSender: { color: text, fontSize: 12, fontWeight: "700", marginBottom: 2 },
-  replyQuoteText: { color: textMuted, fontSize: 13 },
+  replyQuoteSender: { color: text, fontSize: 12, fontWeight: "700", marginBottom: 2, fontFamily: "Josefin Sans" },
+  replyQuoteText: { color: textMuted, fontSize: 13, fontFamily: "Josefin Sans" },
   messageActions: { position: "absolute", top: -12, right: 10, backgroundColor: surface, borderRadius: 8, padding: 4, flexDirection: "row", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
   actionIcon: { padding: 6 },
   typingBanner: {
@@ -1839,7 +1839,7 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     backdropFilter: "blur(20px)",
     WebkitBackdropFilter: "blur(20px)",
   } as any,
-  typingText: { fontSize: 13, fontStyle: "italic", fontWeight: "600" },
+  typingText: { fontSize: 13, fontStyle: "italic", fontWeight: "600", fontFamily: "Josefin Sans" },
   thinkingOfYouBanner: {
     position: "absolute",
     alignSelf: "center",
@@ -1879,8 +1879,8 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     backdropFilter: "blur(20px)",
     WebkitBackdropFilter: "blur(20px)",
   } as any,
-  replyBannerSender: { fontSize: 12, fontWeight: "700" },
-  replyBannerText: { fontSize: 13 },
+  replyBannerSender: { fontSize: 12, fontWeight: "700", fontFamily: "Josefin Sans" },
+  replyBannerText: { fontSize: 13, fontFamily: "Josefin Sans" },
   editingBanner: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1893,15 +1893,15 @@ const createStyles = (isAmoled: boolean, theme: any) => {
     backdropFilter: "blur(20px)",
     WebkitBackdropFilter: "blur(20px)",
   } as any,
-  editingBannerText: { fontSize: 14, fontWeight: "bold" },
+  editingBannerText: { fontSize: 14, fontWeight: "bold", fontFamily: "Josefin Sans" },
   inputArea: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 10,
+    paddingHorizontal: isDesktop ? 20 : 10,
     paddingVertical: 10,
-    paddingBottom: Platform.OS === "web" ? 22 : (Platform.OS === "ios" ? 28 : 16),
+    paddingBottom: Platform.OS === "web" ? (isDesktop ? 16 : 22) : (Platform.OS === "ios" ? 28 : 16),
     backgroundColor: "transparent",
     zIndex: 50,
   },

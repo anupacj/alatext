@@ -4,7 +4,8 @@ import { MessageSquare, ShieldCheck, Lock } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
 
 export default function DesktopLandingPlaceholder() {
-  const { theme, isAmoled } = useTheme();
+  const { theme } = useTheme();
+  const isAmoled = theme.id === "black";
 
   return (
     <View
@@ -43,7 +44,7 @@ export default function DesktopLandingPlaceholder() {
         </View>
 
         <Text style={[styles.title, { color: isAmoled ? "#ffffff" : theme.text }]}>
-          AlaText Web
+          AlaThing Web
         </Text>
 
         <Text style={[styles.subtitle, { color: theme.textMuted }]}>
@@ -117,12 +118,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 12,
     letterSpacing: -0.5,
+    fontFamily: "Josefin Sans",
   },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center",
     marginBottom: 28,
+    fontFamily: "Josefin Sans",
   },
   badgeRow: {
     flexDirection: "row",
@@ -136,6 +139,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 13,
     fontWeight: "500",
+    fontFamily: "Josefin Sans",
   },
   footer: {
     position: "absolute",
@@ -145,5 +149,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
+    fontFamily: "Josefin Sans",
   },
 });

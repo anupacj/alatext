@@ -54,6 +54,10 @@ export default function Layout() {
           overflow: hidden;
           position: fixed;
           background-color: #000000;
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        input, button, textarea, select {
+          font-family: inherit;
         }
         :fullscreen, ::backdrop {
           height: 100%;

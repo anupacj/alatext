@@ -81,7 +81,7 @@ export default function VideoPlayerBubble({ videoUrl, isMe }: VideoPlayerBubbleP
           >
             <X size={28} color="#ffffff" />
           </TouchableOpacity>
-          {Platform.OS === "web" && (
+          {(Platform.OS as string) === "web" && (
             <video
               src={videoUrl}
               controls
@@ -109,9 +109,9 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "auto",
     borderRadius: 12,
-    display: "block",
-    objectFit: "contain",
-  },
+    display: "block" as any,
+    objectFit: "contain" as any,
+  } as any,
   thumbnailPlaceholder: {
     width: 240,
     height: 160,

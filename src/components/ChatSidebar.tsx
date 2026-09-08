@@ -546,6 +546,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       flex: 1,
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 13,
+      fontFamily: "Josefin Sans",
       outlineStyle: "none" as any,
     },
     listContainer: {
@@ -587,15 +588,18 @@ const createStyles = (theme: any, isAmoled: boolean) =>
     chatName: {
       fontSize: 15,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
       color: isAmoled ? "#ffffff" : theme.text,
       flex: 1,
       marginRight: 6,
     },
     chatNameUnread: {
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     chatTime: {
       fontSize: 11,
+      fontFamily: "Josefin Sans",
       color: theme.textMuted,
     },
     messageRow: {
@@ -605,12 +609,14 @@ const createStyles = (theme: any, isAmoled: boolean) =>
     },
     lastMessage: {
       fontSize: 13,
+      fontFamily: "Josefin Sans",
       color: theme.textMuted,
       flex: 1,
     },
     lastMessageUnread: {
       color: isAmoled ? "#ffffff" : theme.text,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     badge: {
       width: 9,
@@ -629,11 +635,13 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 16,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
       marginTop: 12,
     },
     emptySubtext: {
       color: theme.textMuted,
       fontSize: 13,
+      fontFamily: "Josefin Sans",
       marginTop: 4,
     },
     modalOverlay: {
@@ -655,6 +663,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
     modalTitle: {
       fontSize: 18,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
       color: isAmoled ? "#ffffff" : theme.text,
       marginBottom: 14,
     },
@@ -681,18 +690,22 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       fontSize: 13,
       color: theme.textMuted,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     modeBtnTextActive: {
       color: "#ffffff",
+      fontFamily: "Josefin Sans",
     },
     errorText: {
       color: "#f43f5e",
       fontSize: 13,
+      fontFamily: "Josefin Sans",
       marginBottom: 10,
     },
     modalSubtitle: {
       fontSize: 13,
       color: theme.textMuted,
+      fontFamily: "Josefin Sans",
       marginBottom: 10,
     },
     modalInput: {
@@ -701,6 +714,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       paddingHorizontal: 14,
       paddingVertical: 10,
       fontSize: 14,
+      fontFamily: "Josefin Sans",
       color: isAmoled ? "#ffffff" : theme.text,
       marginBottom: 14,
       outlineStyle: "none" as any,
@@ -739,6 +753,7 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 13,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     startButton: {
       backgroundColor: theme.accent || "#5865F2",
@@ -747,5 +762,6 @@ const createStyles = (theme: any, isAmoled: boolean) =>
       color: "#ffffff",
       fontSize: 13,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
   });
