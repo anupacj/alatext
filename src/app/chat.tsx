@@ -82,6 +82,8 @@ export default function ChatScreen() {
   const router = useRouter();
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
   const [inputText, setInputText] = useState("");
   const [targetUser, setTargetUser] = useState<any>(null);
   const [groupChatData, setGroupChatData] = useState<any>(null);
@@ -201,9 +203,9 @@ export default function ChatScreen() {
   const checkLiveByeTrigger = useCallback((newMsg: any, allMsgs: Message[]) => {
     if (!currentChatId) return;
 
-    // Must be a live message created within the last 45 seconds
+    // Must be a live message created within the last 2 minutes
     const msgTime = newMsg.created_at_ts || (newMsg.created_at ? new Date(newMsg.created_at).getTime() : Date.now());
-    if (Date.now() - msgTime > 45 * 1000) return;
+    if (Math.abs(Date.now() - msgTime) > 120 * 1000) return;
 
     // If currently active block is still running, do not re-trigger
     if (chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now()) return;
@@ -856,7 +858,7 @@ export default function ChatScreen() {
             }
             return [nm, ...prev];
           });
-          checkLiveByeTrigger(nm, messages);
+          checkLiveByeTrigger(nm, messagesRef.current);
         } else if (payload.eventType === "DELETE") {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           const delId = payload.old?.id;
@@ -1097,6 +1099,7 @@ export default function ChatScreen() {
       };
       
       setMessages(prev => [tempMsg, ...prev]);
+      checkLiveByeTrigger(tempMsg, messagesRef.current);
 
       const { data, error } = await supabase.from("messages").insert({
         chat_id: id, sender_id: user.id, content, type: "text",

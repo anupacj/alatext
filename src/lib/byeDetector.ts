@@ -81,10 +81,10 @@ export function detectEndlessByes(
     return tsB - tsA;
   });
 
-  // The newest message MUST be fresh (within the last 45 seconds) to trigger live
+  // The newest message must be fresh (within the last 2 minutes) to ensure this is an active live conversation
   const newest = sorted[0];
-  const newestTime = newest?.created_at_ts || (newest?.created_at ? new Date(newest.created_at).getTime() : 0);
-  if (!newestTime || (now - newestTime > 45 * 1000)) {
+  const newestTime = newest?.created_at_ts || (newest?.created_at ? new Date(newest.created_at).getTime() : now);
+  if (Math.abs(now - newestTime) > 2 * 60 * 1000) {
     return { shouldTrigger: false, totalByes: 0, recentMessagesCount: 0 };
   }
 
