@@ -8,7 +8,7 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -22,6 +22,8 @@ import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
+import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
+import { renderFormattedContent } from "../lib/formatText";
 import { supabase } from "../lib/supabase";
 import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
@@ -130,6 +132,8 @@ export default function ChatScreen() {
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [messageFont, setMessageFont] = useState<string | null>(null);
+  const [isShimmerActive, setIsShimmerActive] = useState(false);
+  const [viewerToast, setViewerToast] = useState<string | null>(null);
   const [customAlert, setCustomAlert] = useState<any>(null);
   const [pingVisible, setPingVisible] = useState(false);
   const [isHeartGlowing, setIsHeartGlowing] = useState(false);
@@ -918,14 +922,81 @@ export default function ChatScreen() {
     }
   }, [targetUser, user, id]);
 
+  const handleDownloadImage = useCallback(async (url: string | null) => {
+    if (!url) return;
+    try {
+      setViewerToast("Downloading photo...");
+      if (Platform.OS === "web") {
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `alatext_${Date.now()}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        setViewerToast("Photo downloaded!");
+      } else {
+        setViewerToast("Photo downloaded!");
+      }
+    } catch (e) {
+      if (Platform.OS === "web") window.open(url, "_blank");
+      setViewerToast("Opened photo!");
+    }
+    setTimeout(() => setViewerToast(null), 2200);
+  }, []);
+
+  const handleCopyImage = useCallback(async (url: string | null) => {
+    if (!url) return;
+    try {
+      if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        if (typeof ClipboardItem !== "undefined") {
+          await navigator.clipboard.write([
+            new ClipboardItem({ [blob.type || "image/jpeg"]: blob })
+          ]);
+          setViewerToast("Image copied to clipboard!");
+        } else {
+          await navigator.clipboard.writeText(url);
+          setViewerToast("Image link copied!");
+        }
+      } else {
+        await navigator.clipboard.writeText(url);
+        setViewerToast("Link copied!");
+      }
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(url);
+        setViewerToast("Link copied!");
+      } catch (err) {
+        setViewerToast("Could not copy");
+      }
+    }
+    setTimeout(() => setViewerToast(null), 2200);
+  }, []);
+
+  const applyTextFormat = useCallback((marker: string) => {
+    setInputText(prev => {
+      if (!prev || !prev.trim()) return `${marker}text${marker}`;
+      return `${prev} ${marker}text${marker}`;
+    });
+    setTimeout(() => textInputRef.current?.focus(), 50);
+  }, []);
+
   const sendMessage = useCallback(async () => {
     if (!inputText.trim() || !user || !id) return;
     const content = inputText.trim();
     const curEdit = editingMsgId; const curReply = replyingTo; 
-    const curFont = (messageFont && messageFont !== "system") 
+    const baseFont = (messageFont && messageFont !== "system") 
       ? messageFont 
       : (chatSettings?.font_family && chatSettings.font_family !== "system" ? chatSettings.font_family : null);
-    setInputText(""); setEditingMsgId(null); setReplyingTo(null); setMessageFont(null); setFontPickerOpen(false);
+    const curFont = isShimmerActive
+      ? (baseFont ? `${baseFont}:shimmer` : "system:shimmer")
+      : baseFont;
+    setInputText(""); setEditingMsgId(null); setReplyingTo(null); setMessageFont(null); setIsShimmerActive(false); setFontPickerOpen(false);
     
     if (curEdit) {
       setMessages(prev => prev.map(m => m.id === curEdit ? { ...m, text: content } : m));
@@ -971,7 +1042,7 @@ export default function ChatScreen() {
         });
       }
     }
-  }, [inputText, user, id, editingMsgId, replyingTo, messageFont, chatSettings?.font_family]);
+  }, [inputText, user, id, editingMsgId, replyingTo, messageFont, isShimmerActive, chatSettings?.font_family]);
 
   const deleteMessage = useCallback(async (msgId: string) => {
     // 1. Optimistically remove from state immediately
@@ -1355,6 +1426,7 @@ export default function ChatScreen() {
 
   const chatViewContent = (
     <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden" }}>
+      <AppleIntelligenceGlow visible={!!thinkingOfYou} />
       {showWallpaper && (
         <View style={[StyleSheet.absoluteFill, { overflow: "hidden" }]}>
           <Image source={{ uri: chatSettings!.wallpaper_url }}
@@ -1956,8 +2028,84 @@ export default function ChatScreen() {
             )}
 
             {fontPickerOpen && (
-              <View style={{ backgroundColor: isAmoled ? "#111" : theme.surface, padding: 12, borderRadius: 16, marginBottom: 8, elevation: 4, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
-                <Text style={{ color: isAmoled ? "#aaa" : theme.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Select Font for this Message</Text>
+              <View style={{
+                backgroundColor: isAmoled ? "#111" : theme.surface,
+                padding: 12,
+                borderRadius: 16,
+                marginBottom: 8,
+                elevation: 4,
+                borderWidth: 1,
+                borderColor: isShimmerActive ? (theme.id === "pink" ? "#f472b6" : "#c084fc") : "rgba(255,255,255,0.08)"
+              }}>
+                {/* Top Action Row: Shimmer Effect Toggle + Rich Text Format Helpers */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => setIsShimmerActive(prev => !prev)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 20,
+                      backgroundColor: isShimmerActive
+                        ? (theme.id === "pink" ? "rgba(244, 63, 94, 0.22)" : "rgba(192, 132, 252, 0.25)")
+                        : (isAmoled ? "#1c1c1c" : "rgba(255,255,255,0.06)"),
+                      borderWidth: 1,
+                      borderColor: isShimmerActive
+                        ? (theme.id === "pink" ? "#f43f5e" : "#c084fc")
+                        : "rgba(255,255,255,0.12)",
+                      gap: 6,
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Sparkles size={14} color={isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : theme.textMuted} />
+                    <Text style={{
+                      fontSize: 12,
+                      fontWeight: "700",
+                      fontFamily: "Josefin Sans",
+                      color: isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : theme.textMuted,
+                    }}>
+                      {isShimmerActive ? "✨ Shimmer: ON" : "✨ Shimmer: OFF"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Markdown Quick Format Helpers */}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={() => applyTextFormat("*")}
+                      style={styles.formatChip}
+                      accessibilityLabel="Bold"
+                    >
+                      <Bold size={13} color={theme.text} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => applyTextFormat("_")}
+                      style={styles.formatChip}
+                      accessibilityLabel="Italic"
+                    >
+                      <Italic size={13} color={theme.text} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => applyTextFormat("~")}
+                      style={styles.formatChip}
+                      accessibilityLabel="Strikethrough"
+                    >
+                      <Strikethrough size={13} color={theme.text} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => applyTextFormat("`")}
+                      style={styles.formatChip}
+                      accessibilityLabel="Monospace Code"
+                    >
+                      <Code size={13} color={theme.text} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <Text style={{ color: isAmoled ? "#aaa" : theme.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 8, fontFamily: "Josefin Sans" }}>Select Font for this Message</Text>
                 <FlatList
                   horizontal
                   data={FONT_OPTIONS}
@@ -1966,17 +2114,18 @@ export default function ChatScreen() {
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={{
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
+                        paddingHorizontal: 14,
+                        paddingVertical: 6,
                         backgroundColor: messageFont === item.value ? theme.accent : (isAmoled ? "#222" : "rgba(255,255,255,0.08)"),
-                        borderRadius: 16,
+                        borderRadius: 14,
                         marginRight: 8,
                       }}
                       onPress={() => setMessageFont(item.value)}
                     >
                       <Text style={{ 
                         color: messageFont === item.value ? "#fff" : (isAmoled ? "#ddd" : theme.text), 
-                        fontFamily: item.value === "system" ? undefined : item.value 
+                        fontFamily: item.value === "system" ? undefined : item.value,
+                        fontSize: 13,
                       }}>
                         {item.label}
                       </Text>
@@ -2008,7 +2157,7 @@ export default function ChatScreen() {
                     )}
                     {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
                       <TouchableOpacity style={styles.inputIconButton} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
-                        <Type size={20} color={fontPickerOpen ? (theme.accent || "#fff") : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} />
+                        <Type size={20} color={fontPickerOpen || isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} />
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
@@ -2155,7 +2304,61 @@ export default function ChatScreen() {
       <Modal visible={!!imageViewerUrl} transparent animationType="fade" onRequestClose={() => setImageViewerUrl(null)}>
         <TouchableOpacity style={styles.imageViewerOverlay} activeOpacity={1} onPress={() => setImageViewerUrl(null)}>
           {imageViewerUrl && <Image source={{ uri: imageViewerUrl }} style={styles.imageViewerImg} resizeMode="contain" />}
-          <TouchableOpacity style={styles.imageViewerClose} onPress={() => setImageViewerUrl(null)}><X size={28} color="#fff" /></TouchableOpacity>
+          
+          {/* Top Floating Frosted Action Bar */}
+          <View style={styles.imageViewerToolbar}>
+            <TouchableOpacity
+              style={styles.imageViewerToolBtn}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                handleDownloadImage(imageViewerUrl);
+              }}
+              accessibilityLabel="Download photo"
+            >
+              <Download size={18} color="#ffffff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.imageViewerToolBtn}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                handleCopyImage(imageViewerUrl);
+              }}
+              accessibilityLabel="Copy photo"
+            >
+              <Copy size={18} color="#ffffff" />
+            </TouchableOpacity>
+
+            {Platform.OS === "web" && (
+              <TouchableOpacity
+                style={styles.imageViewerToolBtn}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  if (imageViewerUrl) window.open(imageViewerUrl, "_blank");
+                }}
+                accessibilityLabel="Open original"
+              >
+                <ExternalLink size={18} color="#ffffff" />
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.imageViewerToolBtn, { backgroundColor: "rgba(255,255,255,0.18)" }]}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                setImageViewerUrl(null);
+              }}
+              accessibilityLabel="Close"
+            >
+              <X size={18} color="#ffffff" />
+            </TouchableOpacity>
+          </View>
+
+          {viewerToast && (
+            <View style={styles.imageViewerToast}>
+              <Text style={styles.imageViewerToastText}>{viewerToast}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </Modal>
       <Modal visible={!!customAlert} transparent animationType="fade" onRequestClose={() => {}}>
@@ -2527,9 +2730,56 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
   } as any,
   systemMessageContainer: { paddingVertical: 12, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", marginVertical: 8 },
   systemMessageText: { color: textMuted, fontSize: 14, fontStyle: "italic", textAlign: "center" },
-  imageViewerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" },
+  imageViewerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.94)", justifyContent: "center", alignItems: "center" },
   imageViewerImg: { width: "100%", height: "85%" } as any,
-  imageViewerClose: { position: "absolute", top: 48, right: 24, padding: 8, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 24 },
+  imageViewerToolbar: {
+    position: "absolute",
+    top: Platform.OS === "web" ? 24 : 52,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(20, 20, 24, 0.78)",
+    borderRadius: 24,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    zIndex: 100,
+  },
+  imageViewerToolBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageViewerToast: {
+    position: "absolute",
+    bottom: 48,
+    backgroundColor: "rgba(24, 24, 28, 0.92)",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    zIndex: 100,
+  },
+  imageViewerToastText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontFamily: "Josefin Sans",
+    fontWeight: "600",
+  },
+  formatChip: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: isAmoled ? "#222" : "rgba(255, 255, 255, 0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });
 };
 
@@ -2782,13 +3032,25 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   if (shape === "soft") radius = 10;
   if (shape === "sharp") radius = 4;
 
+  const isShimmer = item.custom_font?.includes(":shimmer") || item.custom_font === "shimmer";
+  const rawFont = item.custom_font?.replace(":shimmer", "");
+  const activeFont = (rawFont && rawFont !== "system" ? rawFont : null) || chatSettings?.font_family;
+
   const bubbleStyles: any[] = [
     styles.messageBubble, 
     { borderRadius: radius },
     item.isMe 
       ? { backgroundColor: item.type === "sticker" ? "transparent" : (gradientEnabled ? "transparent" : sentColor), borderBottomRightRadius: 4 } 
       : { backgroundColor: item.type === "sticker" ? "transparent" : receivedColor, borderBottomLeftRadius: 4 },
-    (item.type === "image" || item.type === "video") && { paddingHorizontal: 2, paddingVertical: 2 }, item.type === "sticker" && { paddingHorizontal: 0, paddingVertical: 0 }
+    (item.type === "image" || item.type === "video") && { paddingHorizontal: 2, paddingVertical: 2 }, item.type === "sticker" && { paddingHorizontal: 0, paddingVertical: 0 },
+    isShimmer && {
+      borderWidth: 1.5,
+      borderColor: "rgba(244, 114, 182, 0.45)",
+      shadowColor: "#f472b6",
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.35,
+      shadowRadius: 10,
+    },
   ];
   if (item.isMe) { if (groupWithPrev) bubbleStyles.push({ borderTopRightRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomRightRadius: 4 }); }
   else { if (groupWithPrev) bubbleStyles.push({ borderTopLeftRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomLeftRadius: 4 }); }
@@ -2809,13 +3071,15 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     if (item.type === "video") {
       return <VideoPlayerBubble videoUrl={item.text} isMe={item.isMe} />;
     }
-    const activeFont = item.custom_font || chatSettings?.font_family;
-    return (
-      <Text style={[styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft,
-        activeFont && activeFont !== "system" ? { fontFamily: activeFont } : {},
-        bubbleTextColor ? { color: bubbleTextColor } : {}]}>
-        {typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : "")}
-      </Text>
+    return renderFormattedContent(
+      typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : ""),
+      {
+        isShimmer,
+        baseStyle: [styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft],
+        textColor: bubbleTextColor,
+        isMe: item.isMe,
+        fontFamily: activeFont,
+      }
     );
   };
 
