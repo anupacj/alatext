@@ -24,7 +24,7 @@ import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
 import { SleepyByeBlocker } from "../components/SleepyByeBlocker";
-import { detectEndlessByes } from "../lib/byeDetector";
+import { detectEndlessByes, countByesInText } from "../lib/byeDetector";
 import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
 import { supabase } from "../lib/supabase";
@@ -171,10 +171,12 @@ export default function ChatScreen() {
   // Desktop sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Sleepy Bye Blocker Database-Driven State
+  // Sleepy Bye Blocker Database-Driven State & Cooldown Tracking
   const [chatBlockedUntil, setChatBlockedUntil] = useState<string | null>(null);
   const [chatBlockQuote, setChatBlockQuote] = useState<string | null>(null);
   const [chatBlockedByMsgId, setChatBlockedByMsgId] = useState<string | null>(null);
+  const lastBlockTimeRef = useRef<number>(0);
+  const cooldownUntilRef = useRef<number>(0);
   const currentChatId = (Array.isArray(id) ? id[0] : id) || "";
 
   // Realtime subscription and local persistence for chats table to keep both users in sync
@@ -204,6 +206,24 @@ export default function ChatScreen() {
             await AsyncStorage.removeItem(`@sleepy_bye_block_${currentChatId}`);
           }
         }
+
+        // Restore cooldown state
+        let cdRaw: string | null = null;
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          cdRaw = window.localStorage.getItem(`@sleepy_bye_cooldown_${currentChatId}`);
+        }
+        if (!cdRaw) {
+          cdRaw = await AsyncStorage.getItem(`@sleepy_bye_cooldown_${currentChatId}`);
+        }
+        if (cdRaw) {
+          const parsedCd = JSON.parse(cdRaw);
+          if (parsedCd?.cooldownUntil && parsedCd.cooldownUntil > Date.now()) {
+            cooldownUntilRef.current = parsedCd.cooldownUntil;
+          }
+          if (parsedCd?.lastBlockedAt) {
+            lastBlockTimeRef.current = parsedCd.lastBlockedAt;
+          }
+        }
       } catch {}
     };
     checkLocal();
@@ -211,17 +231,23 @@ export default function ChatScreen() {
     const chatChannel = supabase.channel(`chats_realtime_${currentChatId}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chats", filter: `id=eq.${currentChatId}` }, (payload: any) => {
         if (payload.new) {
-          setChatBlockedUntil(payload.new.blocked_until || null);
-          setChatBlockQuote(payload.new.block_quote || null);
+          const isStillBlocked = payload.new.blocked_until && new Date(payload.new.blocked_until).getTime() > Date.now();
+          setChatBlockedUntil(isStillBlocked ? payload.new.blocked_until : null);
+          setChatBlockQuote(isStillBlocked ? (payload.new.block_quote || null) : null);
           setChatBlockedByMsgId(payload.new.blocked_by_msg_id || null);
 
           // Sync with local storage
-          if (payload.new.blocked_until && new Date(payload.new.blocked_until).getTime() > Date.now()) {
+          if (isStillBlocked) {
             const record = { blockedUntil: payload.new.blocked_until, quote: payload.new.block_quote, triggeringId: payload.new.blocked_by_msg_id };
             if (Platform.OS === "web" && typeof window !== "undefined") {
               window.localStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(record));
             }
             AsyncStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(record)).catch(() => {});
+          } else {
+            if (Platform.OS === "web" && typeof window !== "undefined") {
+              window.localStorage.removeItem(`@sleepy_bye_block_${currentChatId}`);
+            }
+            AsyncStorage.removeItem(`@sleepy_bye_block_${currentChatId}`).catch(() => {});
           }
         }
       })
@@ -234,17 +260,29 @@ export default function ChatScreen() {
 
   // Trigger bye block ONLY on live, real-time message events (never on historical message loads)
   const checkLiveByeTrigger = useCallback((newMsg: any, allMsgs: Message[]) => {
-    if (!currentChatId) return;
+    if (!currentChatId || !newMsg) return;
 
-    // Must be a live message created within the last 2 minutes
+    // 1. Ignore non-text messages (e.g. system messages like heart ping, alerts, images, calls)
+    if (newMsg.type && newMsg.type !== "text") return;
+
+    // 2. CRITICAL: The newly sent/received message itself MUST contain at least one bye!
+    // Non-bye messages (heart ping, "hello", emoji, question) NEVER trigger or count!
+    const newMsgText = newMsg.text || newMsg.content;
+    const byeCountInNewMsg = countByesInText(newMsgText);
+    if (byeCountInNewMsg <= 0) return;
+
+    // 3. Must be a live message created within the last 2 minutes
     const msgTime = newMsg.created_at_ts || (newMsg.created_at ? new Date(newMsg.created_at).getTime() : Date.now());
     if (Math.abs(Date.now() - msgTime) > 120 * 1000) return;
 
-    // If currently active block is still running, do not re-trigger
+    // 4. If currently active block is running, do not re-trigger
     if (chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now()) return;
 
+    // 5. Cooldown shield: If chat was recently blocked or in cooldown, protect conversation from endless loops
+    if (cooldownUntilRef.current > Date.now()) return;
+
     const listToTest = [newMsg, ...allMsgs.filter(m => m.id !== newMsg.id)];
-    const detection = detectEndlessByes(listToTest, 5 * 60 * 1000, 3); // 5 minutes window
+    const detection = detectEndlessByes(listToTest, 5 * 60 * 1000, 3, lastBlockTimeRef.current);
     if (!detection.shouldTrigger || !detection.triggeringMsgId) return;
 
     // ANTI-LOOP SHIELD:
@@ -252,20 +290,28 @@ export default function ChatScreen() {
 
     Keyboard.dismiss();
 
-    const newBlockedUntil = new Date(Date.now() + 120_000).toISOString();
+    const now = Date.now();
+    const COOLDOWN_DURATION = 15 * 60 * 1000; // 15 minutes cooldown
+    const newBlockedUntil = new Date(now + 120_000).toISOString();
     const newQuote = getDailyByeQuote(targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead"));
     const triggeringId = detection.triggeringMsgId;
+
+    lastBlockTimeRef.current = now;
+    cooldownUntilRef.current = now + COOLDOWN_DURATION;
 
     setChatBlockedUntil(newBlockedUntil);
     setChatBlockQuote(newQuote);
     setChatBlockedByMsgId(triggeringId);
 
-    // Save to local storage so exiting and re-entering the chat preserves the remaining time
-    const record = { blockedUntil: newBlockedUntil, quote: newQuote, triggeringId };
+    // Save active block and cooldown to local storage
+    const blockRecord = { blockedUntil: newBlockedUntil, quote: newQuote, triggeringId };
+    const cdRecord = { cooldownUntil: now + COOLDOWN_DURATION, lastBlockedAt: now };
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.localStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(record));
+      window.localStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(blockRecord));
+      window.localStorage.setItem(`@sleepy_bye_cooldown_${currentChatId}`, JSON.stringify(cdRecord));
     }
-    AsyncStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(record)).catch(() => {});
+    AsyncStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(blockRecord)).catch(() => {});
+    AsyncStorage.setItem(`@sleepy_bye_cooldown_${currentChatId}`, JSON.stringify(cdRecord)).catch(() => {});
 
     supabase.from("chats").update({
       blocked_until: newBlockedUntil,
@@ -784,9 +830,19 @@ export default function ChatScreen() {
       }
       const { data: chatData } = await supabase.from("chats").select("*").eq("id", id).single();
       if (chatData) {
-        setChatBlockedUntil(chatData.blocked_until || null);
-        setChatBlockQuote(chatData.block_quote || null);
+        const isStillBlocked = chatData.blocked_until && new Date(chatData.blocked_until).getTime() > Date.now();
+        setChatBlockedUntil(isStillBlocked ? chatData.blocked_until : null);
+        setChatBlockQuote(isStillBlocked ? (chatData.block_quote || null) : null);
         setChatBlockedByMsgId(chatData.blocked_by_msg_id || null);
+
+        // If block is already expired in DB, clean it up so it never causes stale false triggers
+        if (chatData.blocked_until && !isStillBlocked) {
+          supabase.from("chats").update({ blocked_until: null }).eq("id", id).then(() => {}, () => {});
+          if (Platform.OS === "web" && typeof window !== "undefined") {
+            window.localStorage.removeItem(`@sleepy_bye_block_${id}`);
+          }
+          AsyncStorage.removeItem(`@sleepy_bye_block_${id}`).catch(() => {});
+        }
       }
       if (chatData?.is_group) {
         setIsGroup(true);
@@ -1554,10 +1610,20 @@ export default function ChatScreen() {
         targetUsername={targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead")}
         onUnlocked={() => {
           setChatBlockedUntil(null);
+          // Maintain cooldown so unlocking or dismissing doesn't immediately re-trap users
+          const now = Date.now();
+          const COOLDOWN_DURATION = 15 * 60 * 1000;
+          lastBlockTimeRef.current = now;
+          cooldownUntilRef.current = Math.max(cooldownUntilRef.current, now + COOLDOWN_DURATION);
+          const cdRecord = { cooldownUntil: cooldownUntilRef.current, lastBlockedAt: now };
+
           if (Platform.OS === "web" && typeof window !== "undefined") {
             window.localStorage.removeItem(`@sleepy_bye_block_${currentChatId}`);
+            window.localStorage.setItem(`@sleepy_bye_cooldown_${currentChatId}`, JSON.stringify(cdRecord));
           }
           AsyncStorage.removeItem(`@sleepy_bye_block_${currentChatId}`).catch(() => {});
+          AsyncStorage.setItem(`@sleepy_bye_cooldown_${currentChatId}`, JSON.stringify(cdRecord)).catch(() => {});
+
           supabase.from("chats").update({ blocked_until: null }).eq("id", currentChatId).then(() => {}, () => {});
         }}
       />
