@@ -1,10 +1,6 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
-import { Platform, Text as RNText, StyleSheet, View } from "react-native";
+import React, { useEffect, useState, useMemo } from "react";
+import { Platform, Text as RNText } from "react-native";
 import { motion } from "motion/react";
-
-// Module-level set: tracks which message/blocker ids have already finished
-// animating. Survives a row or component unmounting and remounting.
-const animatedMessageIds = new Set<string | number>();
 
 export interface BlurRevealShimmerTextProps {
   text?: string;
@@ -19,77 +15,39 @@ export interface BlurRevealShimmerTextProps {
   shimmerGradient?: string;
 }
 
-export const BlurRevealShimmerText: React.FC<BlurRevealShimmerTextProps> = ({
+export const BlurRevealShimmerText: React.FC<BlurRevealShimmerTextProps> = React.memo(({
   text = "",
-  messageId,
   className = "",
-  letterDelay = 40,
-  revealDuration = 1.4,
-  shimmerDelay = 1200,
-  shimmerFadeIn = 900,
-  shimmerDuration = 6,
+  letterDelay = 22,
+  revealDuration = 1.0,
+  shimmerDelay = 400,
+  shimmerFadeIn = 700,
+  shimmerDuration = 5,
   style = {},
   shimmerGradient = "linear-gradient(100deg, rgba(255,255,255,0.7) 25%, #ffffff 45%, #ffd1dc 52%, #ffffff 60%, rgba(255,255,255,0.7) 80%)",
 }) => {
-  const alreadyPlayed = messageId != null && animatedMessageIds.has(messageId);
+  const [shimmerOn, setShimmerOn] = useState(false);
+  const [shimmerVisible, setShimmerVisible] = useState(false);
 
-  const [inView, setInView] = useState(alreadyPlayed);
-  const [shimmerOn, setShimmerOn] = useState(alreadyPlayed);
-  const [shimmerVisible, setShimmerVisible] = useState(alreadyPlayed);
-  const containerRef = useRef<any>(null);
-
-  // Group text into words so words wrap cleanly across lines without breaking mid-word
-  const words = useMemo(() => {
-    return text.split(" ");
+  // Split text by lines (e.g. \n) first, then into words
+  const lines = useMemo(() => {
+    return text.split("\n");
   }, [text]);
 
   const totalLetters = useMemo(() => {
     return text.length;
   }, [text]);
 
-  // Web intersection observer to trigger when in view
+  // Shimmer timer: triggers after blur reveal sequence completes
   useEffect(() => {
-    if (alreadyPlayed) return;
-    if (Platform.OS !== "web" || !containerRef.current) {
-      setInView(true);
-      return;
-    }
-
-    if (typeof IntersectionObserver !== "undefined") {
-      const obs = new IntersectionObserver(
-        ([entry]) => {
-          if (entry.isIntersecting) {
-            setInView(true);
-            obs.unobserve(containerRef.current);
-          }
-        },
-        { threshold: 0.1 }
-      );
-      obs.observe(containerRef.current);
-      return () => obs.disconnect();
-    } else {
-      setInView(true);
-    }
-  }, [alreadyPlayed]);
-
-  // Shimmer trigger timing
-  useEffect(() => {
-    if (alreadyPlayed || !inView) return;
     const totalReveal = totalLetters * letterDelay + revealDuration * 1000 + shimmerDelay;
     const onTimer = setTimeout(() => setShimmerOn(true), totalReveal);
-    const fadeTimer = setTimeout(() => setShimmerVisible(true), totalReveal + 30);
+    const fadeTimer = setTimeout(() => setShimmerVisible(true), totalReveal + 40);
     return () => {
       clearTimeout(onTimer);
       clearTimeout(fadeTimer);
     };
-  }, [inView, alreadyPlayed, totalLetters, letterDelay, revealDuration, shimmerDelay]);
-
-  // Record that this messageId completed
-  useEffect(() => {
-    if (shimmerOn && messageId != null) {
-      animatedMessageIds.add(messageId);
-    }
-  }, [shimmerOn, messageId]);
+  }, [totalLetters, letterDelay, revealDuration, shimmerDelay]);
 
   // Native mobile fallback (React Native Text)
   if (Platform.OS !== "web") {
@@ -100,87 +58,90 @@ export const BlurRevealShimmerText: React.FC<BlurRevealShimmerTextProps> = ({
     );
   }
 
-  // Running letter counter for staggered delays across words
   let globalLetterIndex = 0;
 
   return (
     <div
-      ref={containerRef}
       className={`blur-reveal-shimmer-container ${className}`}
       style={{
-        display: "inline-block",
-        maxWidth: "100%",
+        display: "block",
+        width: "100%",
         textAlign: "center",
         overflowWrap: "break-word",
         wordBreak: "break-word",
-        lineHeight: 1.6,
         ...style,
       }}
     >
-      {words.map((word, wordIdx) => {
-        const wordLetters = word.split("");
+      {lines.map((lineText, lineIdx) => {
+        const words = lineText.split(" ");
         return (
-          <span
-            key={`w-${wordIdx}`}
+          <div
+            key={`line-${lineIdx}`}
             style={{
-              display: "inline-block",
-              whiteSpace: "nowrap",
-              marginRight: wordIdx < words.length - 1 ? "0.28em" : 0,
+              display: "block",
+              textAlign: "center",
+              marginBottom: lineIdx < lines.length - 1 ? "0.45em" : 0,
             }}
           >
-            {wordLetters.map((char, charIdx) => {
-              const currentDelay = (globalLetterIndex * letterDelay) / 1000;
-              globalLetterIndex++;
-
+            {words.map((word, wordIdx) => {
+              const wordLetters = word.split("");
               return (
-                <motion.span
-                  key={`c-${wordIdx}-${charIdx}`}
-                  initial={alreadyPlayed ? false : { filter: "blur(16px)", opacity: 0, y: 12 }}
-                  animate={
-                    alreadyPlayed || inView
-                      ? { filter: "blur(0px)", opacity: 1, y: 0 }
-                      : { filter: "blur(16px)", opacity: 0, y: 12 }
-                  }
-                  transition={
-                    alreadyPlayed
-                      ? { duration: 0 }
-                      : {
+                <span
+                  key={`w-${lineIdx}-${wordIdx}`}
+                  style={{
+                    display: "inline-block",
+                    whiteSpace: "nowrap",
+                    marginRight: wordIdx < words.length - 1 ? "0.28em" : 0,
+                  }}
+                >
+                  {wordLetters.map((char, charIdx) => {
+                    const currentDelay = (globalLetterIndex * letterDelay) / 1000;
+                    globalLetterIndex++;
+
+                    return (
+                      <motion.span
+                        key={`c-${lineIdx}-${wordIdx}-${charIdx}`}
+                        initial={{ filter: "blur(14px)", opacity: 0, y: 8 }}
+                        animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
+                        transition={{
                           duration: revealDuration,
                           ease: [0.16, 1, 0.3, 1],
                           delay: currentDelay,
-                        }
-                  }
-                  style={{
-                    display: "inline-block",
-                    position: "relative",
-                  }}
-                >
-                  {char}
-                  {shimmerOn && (
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        backgroundImage: shimmerGradient,
-                        backgroundSize: "250% 100%",
-                        WebkitBackgroundClip: "text",
-                        backgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                        color: "transparent",
-                        animation: `blurShimmerSweep ${shimmerDuration}s linear infinite`,
-                        opacity: shimmerVisible ? 1 : 0,
-                        transition: `opacity ${shimmerFadeIn}ms ease-out`,
-                        pointerEvents: "none",
-                      }}
-                    >
-                      {char}
-                    </span>
-                  )}
-                </motion.span>
+                        }}
+                        style={{
+                          display: "inline-block",
+                          position: "relative",
+                        }}
+                      >
+                        {char}
+                        {shimmerOn && (
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              backgroundImage: shimmerGradient,
+                              backgroundSize: "250% 100%",
+                              WebkitBackgroundClip: "text",
+                              backgroundClip: "text",
+                              WebkitTextFillColor: "transparent",
+                              color: "transparent",
+                              animation: `blurShimmerSweep ${shimmerDuration}s linear infinite`,
+                              opacity: shimmerVisible ? 1 : 0,
+                              transition: `opacity ${shimmerFadeIn}ms ease-out`,
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {char}
+                          </span>
+                        )}
+                      </motion.span>
+                    );
+                  })}
+                </span>
               );
             })}
-          </span>
+          </div>
         );
       })}
 
@@ -192,6 +153,6 @@ export const BlurRevealShimmerText: React.FC<BlurRevealShimmerTextProps> = ({
       `}</style>
     </div>
   );
-};
+});
 
 export default BlurRevealShimmerText;

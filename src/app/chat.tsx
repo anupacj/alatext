@@ -23,7 +23,7 @@ import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
-import { SleepyByeBlocker, clearStuckLocalByeBlocks } from "../components/SleepyByeBlocker";
+import { SleepyByeBlocker } from "../components/SleepyByeBlocker";
 import { detectEndlessByes } from "../lib/byeDetector";
 import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
@@ -32,9 +32,6 @@ import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 }
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
-
-// Purge any stuck local storage keys
-clearStuckLocalByeBlocks();
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -180,9 +177,36 @@ export default function ChatScreen() {
   const [chatBlockedByMsgId, setChatBlockedByMsgId] = useState<string | null>(null);
   const currentChatId = (Array.isArray(id) ? id[0] : id) || "";
 
-  // Realtime subscription on chats table to keep both users in sync
+  // Realtime subscription and local persistence for chats table to keep both users in sync
   useEffect(() => {
     if (!currentChatId) return;
+
+    // Check if there is an active block in local storage for this chat
+    const checkLocal = async () => {
+      try {
+        let raw: string | null = null;
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          raw = window.localStorage.getItem(`@sleepy_bye_block_${currentChatId}`);
+        }
+        if (!raw) {
+          raw = await AsyncStorage.getItem(`@sleepy_bye_block_${currentChatId}`);
+        }
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.blockedUntil && new Date(parsed.blockedUntil).getTime() > Date.now()) {
+            setChatBlockedUntil(parsed.blockedUntil);
+            setChatBlockQuote(parsed.quote || null);
+            setChatBlockedByMsgId(parsed.triggeringId || null);
+          } else {
+            if (Platform.OS === "web" && typeof window !== "undefined") {
+              window.localStorage.removeItem(`@sleepy_bye_block_${currentChatId}`);
+            }
+            await AsyncStorage.removeItem(`@sleepy_bye_block_${currentChatId}`);
+          }
+        }
+      } catch {}
+    };
+    checkLocal();
 
     const chatChannel = supabase.channel(`chats_realtime_${currentChatId}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chats", filter: `id=eq.${currentChatId}` }, (payload: any) => {
@@ -190,6 +214,15 @@ export default function ChatScreen() {
           setChatBlockedUntil(payload.new.blocked_until || null);
           setChatBlockQuote(payload.new.block_quote || null);
           setChatBlockedByMsgId(payload.new.blocked_by_msg_id || null);
+
+          // Sync with local storage
+          if (payload.new.blocked_until && new Date(payload.new.blocked_until).getTime() > Date.now()) {
+            const record = { blockedUntil: payload.new.blocked_until, quote: payload.new.block_quote, triggeringId: payload.new.blocked_by_msg_id };
+            if (Platform.OS === "web" && typeof window !== "undefined") {
+              window.localStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(record));
+            }
+            AsyncStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(record)).catch(() => {});
+          }
         }
       })
       .subscribe();
@@ -226,6 +259,13 @@ export default function ChatScreen() {
     setChatBlockedUntil(newBlockedUntil);
     setChatBlockQuote(newQuote);
     setChatBlockedByMsgId(triggeringId);
+
+    // Save to local storage so exiting and re-entering the chat preserves the remaining time
+    const record = { blockedUntil: newBlockedUntil, quote: newQuote, triggeringId };
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.localStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(record));
+    }
+    AsyncStorage.setItem(`@sleepy_bye_block_${currentChatId}`, JSON.stringify(record)).catch(() => {});
 
     supabase.from("chats").update({
       blocked_until: newBlockedUntil,
@@ -1514,6 +1554,10 @@ export default function ChatScreen() {
         targetUsername={targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead")}
         onUnlocked={() => {
           setChatBlockedUntil(null);
+          if (Platform.OS === "web" && typeof window !== "undefined") {
+            window.localStorage.removeItem(`@sleepy_bye_block_${currentChatId}`);
+          }
+          AsyncStorage.removeItem(`@sleepy_bye_block_${currentChatId}`).catch(() => {});
           supabase.from("chats").update({ blocked_until: null }).eq("id", currentChatId).then(() => {}, () => {});
         }}
       />
