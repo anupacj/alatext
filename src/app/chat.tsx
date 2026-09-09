@@ -2530,9 +2530,9 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
   welcomeTitle: { color: text, fontSize: 24, fontWeight: "bold", marginBottom: 8, fontFamily: "Josefin Sans" },
   welcomeSubtitle: { color: textMuted, fontSize: 16, fontFamily: "Josefin Sans" },
   listContainer: { paddingHorizontal: isDesktop ? 20 : 16, paddingTop: Platform.OS === "web" ? (isDesktop ? 74 : 82) : 98, paddingBottom: 110 },
-  messageContainer: { flexDirection: "row", marginBottom: 18 },
-  messageContainerLeft: { justifyContent: "flex-start" },
-  messageContainerRight: { justifyContent: "flex-end" },
+  messageContainer: { flexDirection: "row", marginBottom: 18, alignItems: "flex-end" },
+  messageContainerLeft: { justifyContent: "flex-start", alignItems: "flex-start" },
+  messageContainerRight: { justifyContent: "flex-end", alignItems: "flex-end" },
   avatarSlot: { width: 40, marginRight: 16 },
   previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
   dimOverlay: { ...StyleSheet.absoluteFill },
@@ -3041,18 +3041,18 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
 
   const bubbleStyles: any[] = [
     styles.messageBubble, 
-    { borderRadius: radius },
+    { borderRadius: radius, alignSelf: item.isMe ? "flex-end" : "flex-start" },
     item.isMe 
       ? { backgroundColor: item.type === "sticker" ? "transparent" : (gradientEnabled ? "transparent" : sentColor), borderBottomRightRadius: 4 } 
       : { backgroundColor: item.type === "sticker" ? "transparent" : receivedColor, borderBottomLeftRadius: 4 },
     (item.type === "image" || item.type === "video") && { paddingHorizontal: 2, paddingVertical: 2 }, item.type === "sticker" && { paddingHorizontal: 0, paddingVertical: 0 },
     isShimmer && {
       borderWidth: 1.5,
-      borderColor: "rgba(244, 114, 182, 0.45)",
-      shadowColor: "#f472b6",
+      borderColor: "rgba(255, 255, 255, 0.45)",
+      shadowColor: "#ffffff",
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.35,
-      shadowRadius: 10,
+      shadowRadius: 8,
     },
   ];
   if (item.isMe) { if (groupWithPrev) bubbleStyles.push({ borderTopRightRadius: 4 }); if (groupWithNext) bubbleStyles.push({ borderBottomRightRadius: 4 }); }

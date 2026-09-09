@@ -21,15 +21,22 @@ export function renderFormattedContent(
 
   // If entire message is marked as shimmer
   if (options.isShimmer) {
+    const baseColor = options.isMe
+      ? "rgba(255, 255, 255, 0.72)"
+      : (options.textColor ? options.textColor : "rgba(219, 222, 225, 0.75)");
+    const shineColor = "#ffffff";
+
     return (
-      <ShinyText
-        text={text}
-        speed={2}
-        color={options.textColor || (options.isMe ? "#ffffff" : "#dbdee1")}
-        shineColor="#ffffff"
-        spread={120}
-        style={[options.baseStyle, fontStyle, colorStyle]}
-      />
+      <Text style={[options.baseStyle, fontStyle]}>
+        <ShinyText
+          text={text}
+          speed={2}
+          color={baseColor}
+          shineColor={shineColor}
+          spread={120}
+          style={[options.baseStyle, fontStyle]}
+        />
+      </Text>
     );
   }
 
