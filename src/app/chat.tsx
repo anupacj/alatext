@@ -197,27 +197,26 @@ export default function ChatScreen() {
     };
   }, [currentChatId]);
 
-  // Monitor incoming and existing messages for endless bye loop (>= 3 byes in recent messages within 1 hour)
-  useEffect(() => {
-    if (!currentChatId || messages.length < 2) return;
+  // Trigger bye block ONLY on live, real-time message events (never on historical message loads)
+  const checkLiveByeTrigger = useCallback((newMsg: any, allMsgs: Message[]) => {
+    if (!currentChatId) return;
+
+    // Must be a live message created within the last 45 seconds
+    const msgTime = newMsg.created_at_ts || (newMsg.created_at ? new Date(newMsg.created_at).getTime() : Date.now());
+    if (Date.now() - msgTime > 45 * 1000) return;
 
     // If currently active block is still running, do not re-trigger
-    if (chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now()) {
-      return;
-    }
+    if (chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now()) return;
 
-    const detection = detectEndlessByes(messages, 60 * 60 * 1000, 3);
+    const listToTest = [newMsg, ...allMsgs.filter(m => m.id !== newMsg.id)];
+    const detection = detectEndlessByes(listToTest, 5 * 60 * 1000, 3); // 5 minutes window
     if (!detection.shouldTrigger || !detection.triggeringMsgId) return;
 
     // ANTI-LOOP SHIELD:
-    // If this exact message ID was already served, NEVER trigger again!
-    if (chatBlockedByMsgId === detection.triggeringMsgId) {
-      return;
-    }
+    if (chatBlockedByMsgId === detection.triggeringMsgId) return;
 
     Keyboard.dismiss();
 
-    // New bye block event! Update Supabase database
     const newBlockedUntil = new Date(Date.now() + 120_000).toISOString();
     const newQuote = getDailyByeQuote(targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead"));
     const triggeringId = detection.triggeringMsgId;
@@ -233,7 +232,7 @@ export default function ChatScreen() {
     }).eq("id", currentChatId).then(({ error }) => {
       if (error) console.warn("Error updating sleepy block in chats table:", error);
     });
-  }, [messages, currentChatId, chatBlockedUntil, chatBlockedByMsgId, targetUser, name]);
+  }, [currentChatId, chatBlockedUntil, chatBlockedByMsgId, targetUser, name]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -857,6 +856,7 @@ export default function ChatScreen() {
             }
             return [nm, ...prev];
           });
+          checkLiveByeTrigger(nm, messages);
         } else if (payload.eventType === "DELETE") {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           const delId = payload.old?.id;
@@ -1509,7 +1509,10 @@ export default function ChatScreen() {
         blockedUntil={chatBlockedUntil}
         quote={chatBlockQuote}
         targetUsername={targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead")}
-        onUnlocked={() => setChatBlockedUntil(null)}
+        onUnlocked={() => {
+          setChatBlockedUntil(null);
+          supabase.from("chats").update({ blocked_until: null }).eq("id", currentChatId).then(() => {}, () => {});
+        }}
       />
       {showWallpaper && (
         <View style={[StyleSheet.absoluteFill, { overflow: "hidden" }]}>

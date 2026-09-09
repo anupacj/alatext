@@ -6,6 +6,7 @@ import {
   Platform,
   Animated,
   useWindowDimensions,
+  TouchableOpacity,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BlurRevealShimmerText } from "./BlurRevealShimmerText";
@@ -238,7 +239,7 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
         />
       </View>
 
-      {/* Bottom Shimmering Countdown Timer */}
+      {/* Bottom Shimmering Countdown Timer & Escape Hatch */}
       <View style={styles.countdownContainer}>
         <ShinyText
           text={countdownText}
@@ -254,6 +255,16 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
             textAlign: "center",
           }}
         />
+        <TouchableOpacity
+          onPress={() => {
+            setIsActive(false);
+            onUnlockedRef.current?.();
+          }}
+          style={styles.dismissBtn}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.dismissBtnText}>✕ Dismiss & Wake Up</Text>
+        </TouchableOpacity>
       </View>
     </Animated.View>
   );
@@ -284,14 +295,24 @@ const styles = StyleSheet.create({
   },
   countdownContainer: {
     position: "absolute",
-    bottom: 36,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
+    bottom: 28,
+    alignItems: "center",
+    gap: 10,
     zIndex: 2,
+  },
+  dismissBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+  },
+  dismissBtnText: {
+    fontFamily: "Josefin Sans",
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.7)",
+    fontWeight: "500",
   },
 });
 

@@ -65,7 +65,7 @@ export interface ByeDetectionResult {
  */
 export function detectEndlessByes(
   messages: Array<{ id?: string; content?: string; text?: string; created_at?: string; created_at_ts?: number; sender_id?: string }>,
-  windowMs: number = 60 * 60 * 1000, // 1 hour
+  windowMs: number = 3 * 60 * 1000, // 3 minutes
   minByes: number = 3
 ): ByeDetectionResult {
   if (!messages || messages.length === 0) {
@@ -81,7 +81,14 @@ export function detectEndlessByes(
     return tsB - tsA;
   });
 
-  const recentSlice = sorted.slice(0, 20);
+  // The newest message MUST be fresh (within the last 45 seconds) to trigger live
+  const newest = sorted[0];
+  const newestTime = newest?.created_at_ts || (newest?.created_at ? new Date(newest.created_at).getTime() : 0);
+  if (!newestTime || (now - newestTime > 45 * 1000)) {
+    return { shouldTrigger: false, totalByes: 0, recentMessagesCount: 0 };
+  }
+
+  const recentSlice = sorted.slice(0, 15);
   let totalByes = 0;
   let relevantMsgCount = 0;
   let newestByeMsgId: string | undefined = undefined;
@@ -89,10 +96,9 @@ export function detectEndlessByes(
   for (const msg of recentSlice) {
     const text = msg.text || msg.content || "";
 
-    // If timestamp is available, enforce the 1-hour window
+    // Enforce the short window
     const msgTime = msg.created_at_ts || (msg.created_at ? new Date(msg.created_at).getTime() : 0);
     if (msgTime > 0 && now - msgTime > windowMs) {
-      // Exceeded 1 hour
       break;
     }
 
