@@ -10,6 +10,7 @@ export type AppTheme = {
   textMuted: string;
   accent: string;
   border: string;
+  screenRadius?: number | string;
 };
 
 export const THEMES: Record<string, AppTheme> = {

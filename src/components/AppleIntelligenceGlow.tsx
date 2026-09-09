@@ -1,52 +1,88 @@
 import React, { useEffect, useRef } from "react";
 import { StyleSheet, View, Animated, Platform, useWindowDimensions } from "react-native";
-import Svg, { Rect, Defs, LinearGradient, Stop } from "react-native-svg";
+import Svg, { Rect, Defs, RadialGradient, Stop, Mask, G } from "react-native-svg";
 
-interface AppleIntelligenceGlowProps {
+export interface AppleIntelligenceGlowProps {
   visible: boolean;
+  screenRadius?: number | string;
   duration?: number;
 }
 
+const HALO_BOX_SHADOW =
+  "inset 30px 30px 70px -15px #E0507A, inset -30px 30px 70px -15px #F06B9C, inset 30px -30px 70px -15px #C9418F, inset -30px -30px 70px -15px #F4A0C0, inset 0 0 40px -5px #E85C93";
+
 export const AppleIntelligenceGlow: React.FC<AppleIntelligenceGlowProps> = ({
   visible,
-  duration = 3200,
+  screenRadius = 0,
 }) => {
   const { width, height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const pulseAnim = useRef(new Animated.Value(0.55)).current;
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  // Dynamic corner radius to match device curves
-  const cornerRadius = Platform.OS === "ios" ? 50 : (Platform.OS === "android" ? 38 : (width < 768 ? 44 : 24));
+  // Sync Web CSS variable --screen-radius and inject pulse keyframes
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const radiusVal = typeof screenRadius === "number" ? `${screenRadius}px` : String(screenRadius);
+      document.documentElement.style.setProperty("--screen-radius", radiusVal);
 
+      const styleId = "thinking-halo-keyframes";
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement("style");
+        style.id = styleId;
+        style.innerHTML = `
+          @keyframes haloPulse {
+            0%   { opacity: 0.55; }
+            100% { opacity: 0.9; }
+          }
+          .halo {
+            position: absolute;
+            inset: 0;
+            border-radius: var(--screen-radius, 0px);
+            pointer-events: none;
+            box-shadow:
+              inset 30px 30px 70px -15px #E0507A,
+              inset -30px 30px 70px -15px #F06B9C,
+              inset 30px -30px 70px -15px #C9418F,
+              inset -30px -30px 70px -15px #F4A0C0,
+              inset 0 0 40px -5px #E85C93;
+            animation: haloPulse 4s ease-in-out infinite alternate;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+  }, [screenRadius]);
+
+  // Synchronize visibility and pulsing with "Thinking of You"
   useEffect(() => {
     if (visible) {
-      // Fade in smoothly
+      // Smooth fade-in
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 280,
         useNativeDriver: Platform.OS !== "web",
       }).start();
 
-      // Breathing / luminous pulse animation
-      pulseAnim.setValue(1);
-      loopRef.current = Animated.loop(
+      // 4s alternate pulse (0.55 -> 0.9 -> 0.55)
+      pulseAnim.setValue(0.55);
+      pulseLoopRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
-            toValue: 1.08,
-            duration: 800,
+            toValue: 0.9,
+            duration: 2000,
             useNativeDriver: Platform.OS !== "web",
           }),
           Animated.timing(pulseAnim, {
-            toValue: 0.94,
-            duration: 900,
+            toValue: 0.55,
+            duration: 2000,
             useNativeDriver: Platform.OS !== "web",
           }),
         ])
       );
-      loopRef.current.start();
+      pulseLoopRef.current.start();
     } else {
-      if (loopRef.current) loopRef.current.stop();
+      if (pulseLoopRef.current) pulseLoopRef.current.stop();
       Animated.timing(fadeAnim, {
         toValue: 0,
         duration: 350,
@@ -55,11 +91,13 @@ export const AppleIntelligenceGlow: React.FC<AppleIntelligenceGlowProps> = ({
     }
 
     return () => {
-      if (loopRef.current) loopRef.current.stop();
+      if (pulseLoopRef.current) pulseLoopRef.current.stop();
     };
   }, [visible, fadeAnim, pulseAnim]);
 
   if (width <= 0 || height <= 0) return null;
+
+  const numericRadius = typeof screenRadius === "number" ? screenRadius : parseFloat(String(screenRadius)) || 0;
 
   return (
     <Animated.View
@@ -69,134 +107,77 @@ export const AppleIntelligenceGlow: React.FC<AppleIntelligenceGlowProps> = ({
         {
           opacity: fadeAnim,
           zIndex: 9999,
+          borderRadius: screenRadius as any,
           overflow: "hidden",
         },
       ]}
     >
-      {/* Web Inset Box-Shadow Layer for extra diffuse bloom */}
-      {Platform.OS === "web" && (
+      {Platform.OS === "web" ? (
+        // Web: Pure CSS layered inset box-shadow adhering to exact specification
         <View
+          // @ts-ignore className for Web
+          className="halo"
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFill,
             {
-              borderRadius: cornerRadius,
-              boxShadow:
-                "inset 0 0 25px rgba(244, 63, 94, 0.45), inset 0 0 65px rgba(236, 72, 153, 0.32), inset 0 0 110px rgba(192, 132, 252, 0.2), inset 0 0 160px rgba(251, 113, 133, 0.12)",
+              borderRadius: screenRadius as any,
+              boxShadow: HALO_BOX_SHADOW,
+              pointerEvents: "none",
             } as any,
           ]}
         />
+      ) : (
+        // Native (iOS/Android): Box-shadow or RadialGradient inside Mask using the exact same shared radius
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              opacity: pulseAnim,
+              borderRadius: numericRadius,
+              boxShadow: HALO_BOX_SHADOW,
+            } as any,
+          ]}
+        >
+          <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={StyleSheet.absoluteFill}>
+            <Defs>
+              <Mask id="haloMask">
+                <Rect x={0} y={0} width={width} height={height} rx={numericRadius} ry={numericRadius} fill="#ffffff" />
+              </Mask>
+              <RadialGradient id="roseTL" cx="0%" cy="0%" r="50%">
+                <Stop offset="0%" stopColor="#E0507A" stopOpacity="0.8" />
+                <Stop offset="100%" stopColor="#E0507A" stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="pinkTR" cx="100%" cy="0%" r="50%">
+                <Stop offset="0%" stopColor="#F06B9C" stopOpacity="0.8" />
+                <Stop offset="100%" stopColor="#F06B9C" stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="plumBL" cx="0%" cy="100%" r="50%">
+                <Stop offset="0%" stopColor="#C9418F" stopOpacity="0.8" />
+                <Stop offset="100%" stopColor="#C9418F" stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="blushBR" cx="100%" cy="100%" r="50%">
+                <Stop offset="0%" stopColor="#F4A0C0" stopOpacity="0.8" />
+                <Stop offset="100%" stopColor="#F4A0C0" stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="ambientCenter" cx="50%" cy="50%" r="70%">
+                <Stop offset="60%" stopColor="#E85C93" stopOpacity="0" />
+                <Stop offset="100%" stopColor="#E85C93" stopOpacity="0.45" />
+              </RadialGradient>
+            </Defs>
+            <G mask="url(#haloMask)">
+              <Rect x={0} y={0} width={width} height={height} fill="url(#roseTL)" />
+              <Rect x={0} y={0} width={width} height={height} fill="url(#pinkTR)" />
+              <Rect x={0} y={0} width={width} height={height} fill="url(#plumBL)" />
+              <Rect x={0} y={0} width={width} height={height} fill="url(#blushBR)" />
+              <Rect x={0} y={0} width={width} height={height} fill="url(#ambientCenter)" />
+            </G>
+          </Svg>
+        </Animated.View>
       )}
-
-      {/* SVG Layer with multi-layer concentric strokes mapping exact device curves */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            transform: [{ scale: pulseAnim }],
-          },
-        ]}
-      >
-        <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-          <Defs>
-            {/* Gradient 1: Top-Left to Bottom-Right (Pink, Coral, Rose, Violet) */}
-            <LinearGradient id="pinkGlowGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-              <Stop offset="0%" stopColor="#f43f5e" stopOpacity="1" />
-              <Stop offset="25%" stopColor="#fda4af" stopOpacity="0.95" />
-              <Stop offset="50%" stopColor="#ec4899" stopOpacity="1" />
-              <Stop offset="75%" stopColor="#e879f9" stopOpacity="0.95" />
-              <Stop offset="100%" stopColor="#c084fc" stopOpacity="1" />
-            </LinearGradient>
-
-            {/* Gradient 2: Top-Right to Bottom-Left (Soft Blush, Neon Magenta, Warm Coral) */}
-            <LinearGradient id="pinkGlowGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
-              <Stop offset="0%" stopColor="#fb7185" stopOpacity="1" />
-              <Stop offset="30%" stopColor="#f472b6" stopOpacity="0.95" />
-              <Stop offset="65%" stopColor="#ec4899" stopOpacity="1" />
-              <Stop offset="100%" stopColor="#f43f5e" stopOpacity="1" />
-            </LinearGradient>
-
-            {/* Gradient 3: Soft ambient wash */}
-            <LinearGradient id="pinkGlowGrad3" x1="50%" y1="0%" x2="50%" y2="100%">
-              <Stop offset="0%" stopColor="#fda4af" stopOpacity="0.8" />
-              <Stop offset="35%" stopColor="#f43f5e" stopOpacity="0.9" />
-              <Stop offset="70%" stopColor="#d946ef" stopOpacity="0.85" />
-              <Stop offset="100%" stopColor="#c084fc" stopOpacity="0.8" />
-            </LinearGradient>
-          </Defs>
-
-          {/* Layer 1: Razor Edge (Perimeter alignment) */}
-          <Rect
-            x={2}
-            y={2}
-            width={width - 4}
-            height={height - 4}
-            rx={cornerRadius}
-            ry={cornerRadius}
-            stroke="url(#pinkGlowGrad1)"
-            strokeWidth={4}
-            fill="none"
-            opacity={0.95}
-          />
-
-          {/* Layer 2: Radiant Inner Aura */}
-          <Rect
-            x={6}
-            y={6}
-            width={width - 12}
-            height={height - 12}
-            rx={Math.max(4, cornerRadius - 4)}
-            ry={Math.max(4, cornerRadius - 4)}
-            stroke="url(#pinkGlowGrad2)"
-            strokeWidth={12}
-            fill="none"
-            opacity={0.65}
-          />
-
-          {/* Layer 3: Deep Diffuse Wash */}
-          <Rect
-            x={16}
-            y={16}
-            width={width - 32}
-            height={height - 32}
-            rx={Math.max(2, cornerRadius - 12)}
-            ry={Math.max(2, cornerRadius - 12)}
-            stroke="url(#pinkGlowGrad1)"
-            strokeWidth={28}
-            fill="none"
-            opacity={0.38}
-          />
-
-          {/* Layer 4: Ambient Inward Bleed */}
-          <Rect
-            x={32}
-            y={32}
-            width={width - 64}
-            height={height - 64}
-            rx={Math.max(2, cornerRadius - 22)}
-            ry={Math.max(2, cornerRadius - 22)}
-            stroke="url(#pinkGlowGrad3)"
-            strokeWidth={56}
-            fill="none"
-            opacity={0.18}
-          />
-
-          {/* Layer 5: Inward Soft Mist Spreading to Middle */}
-          <Rect
-            x={56}
-            y={56}
-            width={width - 112}
-            height={height - 112}
-            rx={Math.max(2, cornerRadius - 36)}
-            ry={Math.max(2, cornerRadius - 36)}
-            stroke="url(#pinkGlowGrad2)"
-            strokeWidth={90}
-            fill="none"
-            opacity={0.08}
-          />
-        </Svg>
-      </Animated.View>
     </Animated.View>
   );
 };
+
+export const ThinkingOfYouHalo = AppleIntelligenceGlow;

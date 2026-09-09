@@ -1424,9 +1424,11 @@ export default function ChatScreen() {
     );
   }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage]);
 
+  const screenRadius = (styles.container as any)?.borderRadius ?? theme.screenRadius ?? 0;
+
   const chatViewContent = (
-    <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden" }}>
-      <AppleIntelligenceGlow visible={!!thinkingOfYou} />
+    <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden", borderRadius: screenRadius }}>
+      <AppleIntelligenceGlow visible={!!thinkingOfYou} screenRadius={screenRadius} />
       {showWallpaper && (
         <View style={[StyleSheet.absoluteFill, { overflow: "hidden" }]}>
           <Image source={{ uri: chatSettings!.wallpaper_url }}
@@ -2397,7 +2399,7 @@ export default function ChatScreen() {
             />
           </View>
         )}
-        <View key={id as string} style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden" }}>
+        <View key={id as string} style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden", borderRadius: screenRadius }}>
           {chatViewContent}
         </View>
       </View>
@@ -2415,10 +2417,11 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
   const textMuted = isAmoled ? '#888888' : (theme.textMuted || '#949ba4');
   const accent = isAmoled ? '#ffffff' : (theme.accent || '#5865F2');
   const inputBg = isAmoled ? '#000000' : (theme.surface || '#2b2d31');
+  const screenRadius = theme.screenRadius ?? 0;
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
-  container: { flex: 1, height: "100%", backgroundColor: bg, maxWidth: "100%" as any, width: "100%", borderLeftWidth: 0, borderRightWidth: 0, overflow: "hidden" },
+  container: { flex: 1, height: "100%", backgroundColor: bg, maxWidth: "100%" as any, width: "100%", borderLeftWidth: 0, borderRightWidth: 0, overflow: "hidden", borderRadius: screenRadius },
   floatingHeaderWrapper: {
     position: "absolute",
     top: 0,
