@@ -8,7 +8,7 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -151,10 +151,32 @@ export default function ChatScreen() {
   // In-Chat Search State
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchMatches, setSearchMatches] = useState<{ id: string; text: string }[]>([]);
+  const [searchMatches, setSearchMatches] = useState<{ id: string; text: string; created_at?: string }[]>([]);
   const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
+  const [isSearchingDb, setIsSearchingDb] = useState(false);
+  const searchDebounceTimer = useRef<any>(null);
+  const pendingScrollTargetRef = useRef<string | null>(null);
   const searchHeaderAnim = useRef(new RNAnimated.Value(0)).current;
   const searchInputRef = useRef<TextInput>(null);
+
+  // Desktop sidebar collapse state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      AsyncStorage.getItem("@desktop_sidebar_collapsed").then(val => {
+        if (val === "true") setSidebarCollapsed(true);
+      }).catch(() => {});
+    }
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      AsyncStorage.setItem("@desktop_sidebar_collapsed", String(next)).catch(() => {});
+      return next;
+    });
+  }, []);
 
   const openMoreMenu = () => {
     setMoreMenuVisible(true);
@@ -181,6 +203,7 @@ export default function ChatScreen() {
     setSearchQuery("");
     setSearchMatches([]);
     setCurrentMatchIdx(0);
+    setIsSearchingDb(false);
     RNAnimated.timing(searchHeaderAnim, {
       toValue: 1,
       duration: 220,
@@ -192,6 +215,7 @@ export default function ChatScreen() {
   };
 
   const closeSearch = () => {
+    if (searchDebounceTimer.current) clearTimeout(searchDebounceTimer.current);
     RNAnimated.timing(searchHeaderAnim, {
       toValue: 0,
       duration: 200,
@@ -202,6 +226,7 @@ export default function ChatScreen() {
       setSearchQuery("");
       setSearchMatches([]);
       setCurrentMatchIdx(0);
+      setIsSearchingDb(false);
       setHighlightedMsgId(null);
     });
   };
@@ -410,6 +435,34 @@ export default function ChatScreen() {
     };
   }, [user?.id]);
 
+  // Effect to scroll to target message once gap messages are loaded into state
+  useEffect(() => {
+    if (pendingScrollTargetRef.current) {
+      const targetId = pendingScrollTargetRef.current;
+      const idx = messages.findIndex(m => m.id === targetId);
+      if (idx !== -1) {
+        pendingScrollTargetRef.current = null;
+        setTimeout(() => {
+          try {
+            flatListRef.current?.scrollToIndex({
+              index: idx,
+              animated: true,
+              viewPosition: 0.5,
+            });
+          } catch (e) {
+            setTimeout(() => {
+              flatListRef.current?.scrollToIndex({
+                index: idx,
+                animated: true,
+                viewPosition: 0.5,
+              });
+            }, 120);
+          }
+        }, 60);
+      }
+    }
+  }, [messages]);
+
   const scrollToAndHighlightMessage = useCallback(async (targetMsgId: string) => {
     if (!targetMsgId) return;
 
@@ -426,21 +479,37 @@ export default function ChatScreen() {
 
         if (targetMsg?.created_at) {
           const oldest = messages[messages.length - 1];
-          if (oldest) {
-            const { data: gapMessages, error } = await supabase
-              .from("messages")
-              .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
-              .eq("chat_id", id)
-              .lt("created_at", oldest.created_at)
-              .gte("created_at", targetMsg.created_at)
-              .order("created_at", { ascending: false });
+          const oldestTime = oldest ? oldest.created_at : new Date().toISOString();
 
-            if (!error && gapMessages && gapMessages.length > 0) {
-              const formattedGap = gapMessages.map(formatMsg);
-              const updatedMessages = [...messages, ...formattedGap];
-              setMessages(updatedMessages);
-              targetIndex = updatedMessages.findIndex(m => m.id === targetMsgId);
-            }
+          // Fetch all gap messages between current oldest loaded message and target message
+          const { data: gapMessages, error: gapErr } = await supabase
+            .from("messages")
+            .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
+            .eq("chat_id", id)
+            .lt("created_at", oldestTime)
+            .gte("created_at", targetMsg.created_at)
+            .neq("type", "deleted")
+            .order("created_at", { ascending: false });
+
+          // Also fetch 15 older messages past the target message for scroll context
+          const { data: extraOlder } = await supabase
+            .from("messages")
+            .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
+            .eq("chat_id", id)
+            .lt("created_at", targetMsg.created_at)
+            .neq("type", "deleted")
+            .order("created_at", { ascending: false })
+            .limit(15);
+
+          const allFetched = [...(gapMessages || []), ...(extraOlder || [])];
+          if (allFetched.length > 0) {
+            const formatted = allFetched.map(formatMsg);
+            pendingScrollTargetRef.current = targetMsgId;
+            setMessages(prev => {
+              const existingIds = new Set(prev.map(m => m.id));
+              const additions = formatted.filter(m => !existingIds.has(m.id));
+              return [...prev, ...additions];
+            });
           }
         }
       } catch (err) {
@@ -455,7 +524,7 @@ export default function ChatScreen() {
       setHighlightedMsgId(null);
     }, 2500);
 
-    // Scroll to the index
+    // Scroll to the index if already in memory
     if (targetIndex !== -1 && flatListRef.current) {
       try {
         flatListRef.current.scrollToIndex({
@@ -475,10 +544,16 @@ export default function ChatScreen() {
     }
   }, [messages, id, formatMsg]);
 
-  const handleSearchChange = useCallback(async (text: string) => {
+  const handleSearchChange = useCallback((text: string) => {
     setSearchQuery(text);
     const q = text.trim().toLowerCase();
+
+    if (searchDebounceTimer.current) {
+      clearTimeout(searchDebounceTimer.current);
+    }
+
     if (!q) {
+      setIsSearchingDb(false);
       setSearchMatches([]);
       setCurrentMatchIdx(0);
       return;
@@ -486,8 +561,8 @@ export default function ChatScreen() {
 
     // 1. Instant local search across loaded messages
     const local = messages
-      .filter(m => m.type !== "deleted" && m.text && m.text.toLowerCase().includes(q))
-      .map(m => ({ id: m.id, text: m.text }));
+      .filter(m => m.type !== "deleted" && m.type !== "system" && m.type !== "alert" && m.text && m.text.toLowerCase().includes(q))
+      .map(m => ({ id: m.id, text: m.text, created_at: m.created_at }));
 
     setSearchMatches(local);
     setCurrentMatchIdx(0);
@@ -496,37 +571,52 @@ export default function ChatScreen() {
       scrollToAndHighlightMessage(local[0].id);
     }
 
-    // 2. Query Supabase for any other matching messages in this conversation
-    if (id) {
+    // 2. Query Supabase database across the entire conversation history
+    setIsSearchingDb(true);
+    searchDebounceTimer.current = setTimeout(async () => {
+      if (!id) {
+        setIsSearchingDb(false);
+        return;
+      }
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("messages")
           .select("id, content, created_at, type")
           .eq("chat_id", id)
           .ilike("content", `%${q}%`)
           .neq("type", "deleted")
+          .neq("type", "alert")
           .order("created_at", { ascending: false });
 
-        if (data && data.length > 0) {
-          const remoteList = data.map((d: any) => ({
-            id: d.id,
-            text: typeof d.content === "string" ? d.content : JSON.stringify(d.content || ""),
-          }));
+        if (!error && data) {
+          const dbMatches = data
+            .filter((d: any) => d.type !== "system" && d.content)
+            .map((d: any) => ({
+              id: d.id,
+              text: typeof d.content === "string" ? d.content : JSON.stringify(d.content || ""),
+              created_at: d.created_at,
+            }));
 
           const seen = new Set<string>();
-          const merged: { id: string; text: string }[] = [];
-          for (const item of [...local, ...remoteList]) {
+          const merged: { id: string; text: string; created_at?: string }[] = [];
+          for (const item of dbMatches) {
             if (!seen.has(item.id)) {
               seen.add(item.id);
               merged.push(item);
             }
           }
           setSearchMatches(merged);
+          setCurrentMatchIdx(0);
+          if (merged.length > 0) {
+            scrollToAndHighlightMessage(merged[0].id);
+          }
         }
       } catch (err) {
         console.warn("Search query error:", err);
+      } finally {
+        setIsSearchingDb(false);
       }
-    }
+    }, 250);
   }, [messages, id, scrollToAndHighlightMessage]);
 
   const handleNextMatch = useCallback(() => {
@@ -954,7 +1044,19 @@ export default function ChatScreen() {
         });
       }
       if (msgs.length > 0) {
-        await supabase.from("messages").insert(msgs);
+        const { data: insertedMsgs, error: insertErr } = await supabase
+          .from("messages")
+          .insert(msgs)
+          .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)");
+
+        if (!insertErr && insertedMsgs && insertedMsgs.length > 0) {
+          const formatted = insertedMsgs.map(formatMsg);
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const additions = formatted.filter(m => !existingIds.has(m.id));
+            return [...additions, ...prev];
+          });
+        }
         setReplyingTo(null);
       }
     } catch (e: any) {
@@ -964,7 +1066,7 @@ export default function ChatScreen() {
       setUploadingImage(false);
       setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
     }
-  }, [id, user?.id, replyingTo]);
+  }, [id, user?.id, replyingTo, formatMsg]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -1034,7 +1136,19 @@ export default function ChatScreen() {
           });
         }
         if (msgs.length > 0) {
-          await supabase.from("messages").insert(msgs);
+          const { data: insertedMsgs, error: insertErr } = await supabase
+            .from("messages")
+            .insert(msgs)
+            .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)");
+
+          if (!insertErr && insertedMsgs && insertedMsgs.length > 0) {
+            const formatted = insertedMsgs.map(formatMsg);
+            setMessages(prev => {
+              const existingIds = new Set(prev.map(m => m.id));
+              const additions = formatted.filter(m => !existingIds.has(m.id));
+              return [...additions, ...prev];
+            });
+          }
           setReplyingTo(null);
         }
       } catch (e: any) {
@@ -1045,7 +1159,7 @@ export default function ChatScreen() {
         setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
       }
     }
-  }, [id, user?.id, replyingTo]);
+  }, [id, user?.id, replyingTo, formatMsg]);
 
   const handleWebFileChange = useCallback((e: any) => {
     const files = Array.from(e.target.files || []).slice(0, 10) as File[];
@@ -1263,17 +1377,37 @@ export default function ChatScreen() {
                 opacity: searchHeaderAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
               }}
             >
-              <TouchableOpacity
-                onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
-                style={[
-                  styles.headerPill,
-                  styles.headerBackPill,
-                  headerGlassStyle,
-                ]}
-                activeOpacity={0.7}
-              >
-                <ChevronLeft size={24} color={headerIconColor} />
-              </TouchableOpacity>
+              {isDesktop ? (
+                <TouchableOpacity
+                  onPress={toggleSidebar}
+                  style={[
+                    styles.headerPill,
+                    styles.headerBackPill,
+                    headerGlassStyle,
+                  ]}
+                  activeOpacity={0.7}
+                  accessibilityLabel={sidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"}
+                >
+                  {sidebarCollapsed ? (
+                    <PanelLeftOpen size={22} color={headerIconColor} />
+                  ) : (
+                    <PanelLeftClose size={22} color={headerIconColor} />
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
+                  style={[
+                    styles.headerPill,
+                    styles.headerBackPill,
+                    headerGlassStyle,
+                  ]}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Back"
+                >
+                  <ChevronLeft size={24} color={headerIconColor} />
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity 
                 style={[
@@ -1429,24 +1563,29 @@ export default function ChatScreen() {
                 placeholderTextColor={theme.textMuted}
                 value={searchQuery}
                 onChangeText={handleSearchChange}
+                onSubmitEditing={handleNextMatch}
                 autoFocus
                 returnKeyType="search"
               />
 
               {searchQuery.trim().length > 0 && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontFamily: "Josefin Sans",
-                      color: theme.textMuted,
-                      marginHorizontal: 4,
-                    }}
-                  >
-                    {searchMatches.length > 0
-                      ? `${currentMatchIdx + 1}/${searchMatches.length}`
-                      : "0 found"}
-                  </Text>
+                  {isSearchingDb ? (
+                    <ActivityIndicator size="small" color={theme.accent || "#5865F2"} style={{ marginHorizontal: 6 }} />
+                  ) : (
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "Josefin Sans",
+                        color: theme.textMuted,
+                        marginHorizontal: 4,
+                      }}
+                    >
+                      {searchMatches.length > 0
+                        ? `${currentMatchIdx + 1}/${searchMatches.length}`
+                        : "0 found"}
+                    </Text>
+                  )}
 
                   <TouchableOpacity
                     onPress={handlePrevMatch}
@@ -2043,15 +2182,18 @@ export default function ChatScreen() {
   if (isDesktop) {
     return (
       <View style={{ flex: 1, flexDirection: "row", backgroundColor: isAmoled ? "#000000" : theme.background, overflow: "hidden" }}>
-        <View style={{ width: 380, height: "100%", zIndex: 10, backgroundColor: isAmoled ? "#000000" : theme.background, overflow: "hidden" }}>
-          <ChatSidebar
-            activeChatId={id as string}
-            onSelectChat={(selectedId, selectedName) => {
-              if (selectedId === id) return;
-              router.replace({ pathname: "/chat", params: { id: selectedId, name: selectedName } });
-            }}
-          />
-        </View>
+        {!sidebarCollapsed && (
+          <View style={{ width: 380, height: "100%", zIndex: 10, backgroundColor: isAmoled ? "#000000" : theme.background, overflow: "hidden" }}>
+            <ChatSidebar
+              activeChatId={id as string}
+              onSelectChat={(selectedId, selectedName) => {
+                if (selectedId === id) return;
+                router.replace({ pathname: "/chat", params: { id: selectedId, name: selectedName } });
+              }}
+              onToggleCollapse={toggleSidebar}
+            />
+          </View>
+        )}
         <View key={id as string} style={{ flex: 1, height: "100%", position: "relative", overflow: "hidden" }}>
           {chatViewContent}
         </View>
@@ -2572,32 +2714,31 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   let isAlbumLeader = false;
 
   if (isMedia && !item.reply_to_id) {
+    const canClump = (m1: any, m2: any) => {
+      if (!m1 || !m2) return false;
+      const isM1 = m1.type === "image" || m1.type === "video";
+      const isM2 = m2.type === "image" || m2.type === "video";
+      if (!isM1 || !isM2) return false;
+      if (m1.sender_id !== m2.sender_id) return false;
+      if (m1.reply_to_id || m2.reply_to_id) return false;
+      return Math.abs(m1.created_at_ts - m2.created_at_ts) <= 60000;
+    };
+
     let startIdx = index;
-    while (startIdx > 0) {
-      const prev = messages[startIdx - 1];
-      if (prev && (prev.type === "image" || prev.type === "video") && prev.sender_id === item.sender_id && !prev.reply_to_id && Math.abs(item.created_at_ts - prev.created_at_ts) <= 10000) {
-        startIdx--;
-      } else {
-        break;
-      }
+    while (startIdx > 0 && canClump(messages[startIdx], messages[startIdx - 1])) {
+      startIdx--;
     }
 
     let endIdx = index;
-    while (endIdx < messages.length - 1) {
-      const next = messages[endIdx + 1];
-      if (next && (next.type === "image" || next.type === "video") && next.sender_id === item.sender_id && !next.reply_to_id && Math.abs(item.created_at_ts - next.created_at_ts) <= 10000) {
-        endIdx++;
-      } else {
-        break;
-      }
+    while (endIdx < messages.length - 1 && canClump(messages[endIdx], messages[endIdx + 1])) {
+      endIdx++;
     }
 
     if (endIdx - startIdx >= 1) {
       if (index === startIdx) {
         isAlbumLeader = true;
-        for (let i = startIdx; i <= endIdx; i++) {
-          albumGroup.push(messages[i]);
-        }
+        const clump = messages.slice(startIdx, endIdx + 1);
+        albumGroup.push(...clump.slice().sort((a: any, b: any) => a.created_at_ts - b.created_at_ts));
       } else {
         return null;
       }

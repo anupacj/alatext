@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Modal, TextInput, Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { User, Search, MessageSquare, Plus, Users, Lock, Maximize2, Minimize2, Settings } from "lucide-react-native";
+import { User, Search, MessageSquare, Plus, Users, Lock, Maximize2, Minimize2, Settings, PanelLeftClose } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { useTheme } from "../context/ThemeContext";
@@ -15,9 +15,10 @@ import ShinyText from "./ShinyText";
 interface ChatSidebarProps {
   activeChatId?: string;
   onSelectChat?: (chatId: string, name: string, avatar: string) => void;
+  onToggleCollapse?: () => void;
 }
 
-export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarProps) {
+export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollapse }: ChatSidebarProps) {
   const { theme } = useTheme();
   const isAmoled = theme.id === "black";
   const { isDecoyMode, isPinEnabled, realPin, lockNow } = useAlaPin();
@@ -359,6 +360,15 @@ export default function ChatSidebar({ activeChatId, onSelectChat }: ChatSidebarP
           <TouchableOpacity style={[styles.iconButton, { backgroundColor: theme.accent || "#5865F2" }]} onPress={() => setModalVisible(true)}>
             <Plus size={20} color="#ffffff" />
           </TouchableOpacity>
+          {onToggleCollapse && (
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={onToggleCollapse}
+              accessibilityLabel="Minimize Sidebar"
+            >
+              <PanelLeftClose size={18} color={theme.textMuted} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
