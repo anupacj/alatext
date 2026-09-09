@@ -15,135 +15,106 @@ import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 export interface SleepyByeBlockerProps {
   chatId: string;
   visible: boolean;
+  blockedUntil?: string | null;   // ISO timestamp stored in Supabase chats.blocked_until
+  quote?: string | null;          // Quote stored in Supabase chats.block_quote
   targetUsername?: string;
-  screenRadius?: number | string;
   onUnlocked?: () => void;
-  lockDurationSeconds?: number; // default 120s (2 minutes)
 }
 
-const STORAGE_BLOCK_KEY = (chatId: string) => `@sleepy_bye_block_${chatId}`;
-const STORAGE_COOLDOWN_KEY = (chatId: string) => `@sleepy_bye_cooldown_${chatId}`;
+/**
+ * Purges any legacy local storage keys that may have caused infinite lock loops
+ */
+export async function clearStuckLocalByeBlocks() {
+  try {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && (k.startsWith("@sleepy_bye_block_") || k.startsWith("@sleepy_bye_cooldown_"))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+    }
+    const asyncKeys = await AsyncStorage.getAllKeys();
+    const stuck = asyncKeys.filter(
+      (k) => k.startsWith("@sleepy_bye_block_") || k.startsWith("@sleepy_bye_cooldown_")
+    );
+    if (stuck.length > 0) {
+      await Promise.all(stuck.map((k) => AsyncStorage.removeItem(k)));
+    }
+  } catch {}
+}
 
 export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
   chatId,
   visible,
+  blockedUntil,
+  quote,
   targetUsername = "sleepyhead",
-  screenRadius = 0,
   onUnlocked,
-  lockDurationSeconds = 120, // 2 minutes
 }) => {
   const { width, height } = useWindowDimensions();
   const [isActive, setIsActive] = useState(false);
-  const [quote, setQuote] = useState("");
-  const [remainingSeconds, setRemainingSeconds] = useState(lockDurationSeconds);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [fadeAnim] = useState(new Animated.Value(0));
 
   const timerRef = useRef<any>(null);
   const onUnlockedRef = useRef(onUnlocked);
   onUnlockedRef.current = onUnlocked;
 
-  // Initialize or resume block from storage to prevent bypass on refresh/exit
-  const checkOrInitBlock = useCallback(async () => {
-    if (!chatId) return;
-
-    try {
-      let storedData: { expiresAt: number; quote: string } | null = null;
-
-      // Check synchronous localStorage on Web for instant zero-flicker check
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        const raw = window.localStorage.getItem(STORAGE_BLOCK_KEY(chatId));
-        if (raw) {
-          try {
-            storedData = JSON.parse(raw);
-          } catch {}
-        }
-      }
-
-      // Fallback to AsyncStorage
-      if (!storedData) {
-        const rawAsync = await AsyncStorage.getItem(STORAGE_BLOCK_KEY(chatId));
-        if (rawAsync) {
-          try {
-            storedData = JSON.parse(rawAsync);
-          } catch {}
-        }
-      }
-
-      const now = Date.now();
-
-      // Case 1: Active persistent block already running
-      if (storedData && storedData.expiresAt > now) {
-        const leftSec = Math.max(1, Math.ceil((storedData.expiresAt - now) / 1000));
-        setQuote(storedData.quote || getDailyByeQuote(targetUsername));
-        setRemainingSeconds(leftSec);
-        setIsActive(true);
-        return;
-      }
-
-      // Case 2: New trigger event requested
-      if (visible) {
-        const expiresAt = now + lockDurationSeconds * 1000;
-        const currentQuote = getDailyByeQuote(targetUsername);
-        const record = { expiresAt, quote: currentQuote };
-
-        if (Platform.OS === "web" && typeof window !== "undefined") {
-          window.localStorage.setItem(STORAGE_BLOCK_KEY(chatId), JSON.stringify(record));
-        }
-        await AsyncStorage.setItem(STORAGE_BLOCK_KEY(chatId), JSON.stringify(record));
-
-        setQuote(currentQuote);
-        setRemainingSeconds(lockDurationSeconds);
-        setIsActive(true);
-      }
-    } catch (e) {
-      console.warn("Error handling sleepy bye block state:", e);
-    }
-  }, [chatId, visible, targetUsername, lockDurationSeconds]);
-
+  // Determine active status from Supabase blockedUntil or visible prop
   useEffect(() => {
-    checkOrInitBlock();
-  }, [checkOrInitBlock]);
-
-  // Clean unlock handler: sets cooldown and dissolves overlay
-  const handleUnlock = useCallback(async () => {
-    try {
-      // Register 30-minute cooldown
-      const cooldownExpiry = Date.now() + 30 * 60 * 1000;
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        window.localStorage.removeItem(STORAGE_BLOCK_KEY(chatId));
-        window.localStorage.setItem(STORAGE_COOLDOWN_KEY(chatId), String(cooldownExpiry));
+    if (!blockedUntil) {
+      if (!visible) {
+        if (isActive) {
+          setIsActive(false);
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: Platform.OS !== "web",
+          }).start();
+        }
       }
-      await AsyncStorage.removeItem(STORAGE_BLOCK_KEY(chatId));
-      await AsyncStorage.setItem(STORAGE_COOLDOWN_KEY(chatId), String(cooldownExpiry));
-    } catch {}
+      return;
+    }
 
-    // Smooth fade out
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 900,
-      useNativeDriver: Platform.OS !== "web",
-    }).start(() => {
+    const exp = new Date(blockedUntil).getTime();
+    const diff = Math.max(0, Math.ceil((exp - Date.now()) / 1000));
+
+    if (diff > 0) {
+      setRemainingSeconds(diff);
+      setIsActive(true);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: Platform.OS !== "web",
+      }).start();
+    } else {
       setIsActive(false);
       onUnlockedRef.current?.();
-    });
-  }, [chatId, fadeAnim]);
+    }
+  }, [blockedUntil, visible, isActive, fadeAnim]);
 
-  // Live countdown ticker
+  // Handle countdown ticking
   useEffect(() => {
-    if (!isActive) return;
-
-    // Smooth silky fade-in
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1300,
-      useNativeDriver: Platform.OS !== "web",
-    }).start();
+    if (!isActive) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
 
     timerRef.current = setInterval(() => {
       setRemainingSeconds((prev) => {
         if (prev <= 1) {
           clearInterval(timerRef.current);
-          handleUnlock();
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: Platform.OS !== "web",
+          }).start(() => {
+            setIsActive(false);
+            onUnlockedRef.current?.();
+          });
           return 0;
         }
         return prev - 1;
@@ -153,7 +124,7 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isActive, fadeAnim, handleUnlock]);
+  }, [isActive, fadeAnim]);
 
   // Inject Web keyframes for twilight halo breathing
   useEffect(() => {
@@ -186,28 +157,36 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
     }
   }, []);
 
-  if (!isActive && !visible) return null;
+  if (!isActive) return null;
+
+  const displayQuote = quote || getDailyByeQuote(targetUsername);
 
   // Format seconds into MM:SS
   const mins = Math.floor(remainingSeconds / 60);
   const secs = remainingSeconds % 60;
   const timeFormatted = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-
   const countdownText = `The block will be lifted in ${timeFormatted}`;
+
+  const isMobile = width < 600;
 
   return (
     <Animated.View
       pointerEvents="auto"
       style={[
-        StyleSheet.absoluteFill,
         {
-          opacity: fadeAnim,
-          zIndex: 99999,
-          borderRadius: screenRadius as any,
-          overflow: "hidden",
+          position: Platform.OS === "web" ? ("fixed" as any) : "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: "100%",
+          height: "100%",
+          zIndex: 999999,
           backgroundColor: "#07070a",
           justifyContent: "center",
           alignItems: "center",
+          overflow: "hidden",
+          opacity: fadeAnim,
         },
       ]}
     >
@@ -220,7 +199,7 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
             // @ts-ignore Web gradient
             background:
               Platform.OS === "web"
-                ? "radial-gradient(ellipse at 50% 48%, rgba(85, 45, 125, 0.28) 0%, rgba(35, 15, 60, 0.18) 45%, rgba(7, 7, 10, 0.95) 75%, #07070a 100%)"
+                ? "radial-gradient(ellipse at 50% 50%, rgba(85, 45, 125, 0.32) 0%, rgba(35, 15, 60, 0.20) 45%, rgba(7, 7, 10, 0.95) 75%, #07070a 100%)"
                 : undefined,
             backgroundColor: Platform.OS !== "web" ? "rgba(12, 10, 20, 0.95)" : undefined,
           } as any,
@@ -228,39 +207,33 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
       />
 
       {/* Screen edge twilight glow */}
-      {Platform.OS === "web" && (
-        <div
-          className="sleepy-halo"
-          style={{
-            borderRadius: typeof screenRadius === "number" ? `${screenRadius}px` : screenRadius,
-          }}
-        />
-      )}
+      {Platform.OS === "web" && <div className="sleepy-halo" />}
 
-      {/* Center quote reveal */}
-      <View style={styles.quoteWrapper}>
+      {/* Optical Center Container */}
+      <View style={[styles.quoteWrapper, { maxWidth: isMobile ? 340 : 540, paddingHorizontal: isMobile ? 16 : 28 }]}>
         <View style={styles.badgeRow}>
           <Text style={styles.badgeText}>🌙 SLEEPYHEAD MODE</Text>
         </View>
 
         <BlurRevealShimmerText
-          text={quote}
-          messageId={`sleepy-block-${chatId}-${quote.slice(0, 15)}`}
-          letterDelay={35}
-          revealDuration={1.3}
-          shimmerDelay={800}
-          shimmerFadeIn={1000}
-          shimmerDuration={5.5}
+          text={displayQuote}
+          messageId={`sleepy-${chatId}-${blockedUntil || displayQuote.slice(0, 15)}`}
+          letterDelay={25}
+          revealDuration={1.2}
+          shimmerDelay={600}
+          shimmerFadeIn={800}
+          shimmerDuration={5}
           style={{
             fontFamily: "Josefin Sans, system-ui, sans-serif",
-            fontSize: width > 600 ? 22 : 18,
+            fontSize: isMobile ? 17 : 21,
             fontWeight: "400",
-            color: "rgba(255, 255, 255, 0.92)",
+            color: "rgba(255, 255, 255, 0.94)",
             textAlign: "center",
             letterSpacing: 0.3,
-            lineHeight: width > 600 ? 34 : 28,
-            maxWidth: 520,
+            lineHeight: isMobile ? 27 : 34,
+            maxWidth: isMobile ? 340 : 520,
             textShadow: "0 2px 20px rgba(180, 130, 255, 0.25)",
+            wordBreak: "break-word",
           }}
         />
       </View>
@@ -270,7 +243,7 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
         <ShinyText
           text={countdownText}
           speed={3}
-          color="rgba(255, 255, 255, 0.65)"
+          color="rgba(255, 255, 255, 0.68)"
           shineColor="#ffffff"
           spread={110}
           style={{
@@ -286,76 +259,27 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
   );
 };
 
-// Helper to inspect if cooldown is currently active
-export async function isSleepyByeCooldownActive(chatId: string): Promise<boolean> {
-  if (!chatId) return false;
-  try {
-    const key = STORAGE_COOLDOWN_KEY(chatId);
-    let raw: string | null = null;
-
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      raw = window.localStorage.getItem(key);
-    }
-    if (!raw) {
-      raw = await AsyncStorage.getItem(key);
-    }
-
-    if (raw) {
-      const exp = parseInt(raw, 10);
-      if (!isNaN(exp) && exp > Date.now()) {
-        return true;
-      }
-    }
-  } catch {}
-  return false;
-}
-
-// Helper to inspect if active block is already stored
-export async function hasActiveSleepyByeBlock(chatId: string): Promise<boolean> {
-  if (!chatId) return false;
-  try {
-    const key = STORAGE_BLOCK_KEY(chatId);
-    let raw: string | null = null;
-
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      raw = window.localStorage.getItem(key);
-    }
-    if (!raw) {
-      raw = await AsyncStorage.getItem(key);
-    }
-
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.expiresAt && parsed.expiresAt > Date.now()) {
-        return true;
-      }
-    }
-  } catch {}
-  return false;
-}
-
 const styles = StyleSheet.create({
   quoteWrapper: {
-    paddingHorizontal: 28,
-    maxWidth: 580,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
+    marginTop: -20, // optical center compensation
   },
   badgeRow: {
-    marginBottom: 20,
+    marginBottom: 18,
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.14)",
   },
   badgeText: {
     fontFamily: "Josefin Sans",
     fontSize: 11,
     fontWeight: "700",
-    color: "rgba(220, 200, 255, 0.8)",
+    color: "rgba(220, 200, 255, 0.85)",
     letterSpacing: 1.5,
   },
   countdownContainer: {
@@ -364,9 +288,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.10)",
     zIndex: 2,
   },
 });

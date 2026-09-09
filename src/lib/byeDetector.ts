@@ -56,6 +56,7 @@ export interface ByeDetectionResult {
   shouldTrigger: boolean;
   totalByes: number;
   recentMessagesCount: number;
+  triggeringMsgId?: string;
 }
 
 /**
@@ -83,6 +84,7 @@ export function detectEndlessByes(
   const recentSlice = sorted.slice(0, 20);
   let totalByes = 0;
   let relevantMsgCount = 0;
+  let newestByeMsgId: string | undefined = undefined;
 
   for (const msg of recentSlice) {
     const text = msg.text || msg.content || "";
@@ -96,6 +98,9 @@ export function detectEndlessByes(
 
     const count = countByesInText(text);
     if (count > 0) {
+      if (!newestByeMsgId && msg.id) {
+        newestByeMsgId = msg.id;
+      }
       totalByes += count;
       relevantMsgCount++;
     }
@@ -110,5 +115,6 @@ export function detectEndlessByes(
     shouldTrigger: totalByes >= minByes,
     totalByes,
     recentMessagesCount: relevantMsgCount,
+    triggeringMsgId: newestByeMsgId,
   };
 }

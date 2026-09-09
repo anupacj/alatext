@@ -3,7 +3,7 @@ import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
   Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
   LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder,
-  Animated as RNAnimated, Easing, Dimensions, useWindowDimensions,
+  Animated as RNAnimated, Easing, Dimensions, useWindowDimensions, Keyboard,
 } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,14 +23,18 @@ import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
-import { SleepyByeBlocker, hasActiveSleepyByeBlock, isSleepyByeCooldownActive } from "../components/SleepyByeBlocker";
+import { SleepyByeBlocker, clearStuckLocalByeBlocks } from "../components/SleepyByeBlocker";
 import { detectEndlessByes } from "../lib/byeDetector";
+import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
 import { supabase } from "../lib/supabase";
 import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
+
+// Purge any stuck local storage keys
+clearStuckLocalByeBlocks();
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -168,38 +172,68 @@ export default function ChatScreen() {
   // Desktop sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Sleepy Bye Blocker State & Persistence
-  const [sleepyBlockVisible, setSleepyBlockVisible] = useState(false);
+  // Sleepy Bye Blocker Database-Driven State
+  const [chatBlockedUntil, setChatBlockedUntil] = useState<string | null>(null);
+  const [chatBlockQuote, setChatBlockQuote] = useState<string | null>(null);
+  const [chatBlockedByMsgId, setChatBlockedByMsgId] = useState<string | null>(null);
   const currentChatId = (Array.isArray(id) ? id[0] : id) || "";
 
-  // Check if active block exists in persistent storage on load / chat change
+  // Realtime subscription on chats table to keep both users in sync
   useEffect(() => {
     if (!currentChatId) return;
-    let mounted = true;
-    hasActiveSleepyByeBlock(currentChatId).then(active => {
-      if (mounted && active) {
-        setSleepyBlockVisible(true);
-      }
-    });
-    return () => { mounted = false; };
+
+    const chatChannel = supabase.channel(`chats_realtime_${currentChatId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chats", filter: `id=eq.${currentChatId}` }, (payload: any) => {
+        if (payload.new) {
+          setChatBlockedUntil(payload.new.blocked_until || null);
+          setChatBlockQuote(payload.new.block_quote || null);
+          setChatBlockedByMsgId(payload.new.blocked_by_msg_id || null);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(chatChannel);
+    };
   }, [currentChatId]);
 
   // Monitor incoming and existing messages for endless bye loop (>= 3 byes in recent messages within 1 hour)
   useEffect(() => {
-    if (!currentChatId || messages.length < 2 || sleepyBlockVisible) return;
+    if (!currentChatId || messages.length < 2) return;
 
-    let mounted = true;
-    isSleepyByeCooldownActive(currentChatId).then(inCooldown => {
-      if (!mounted || inCooldown) return;
+    // If currently active block is still running, do not re-trigger
+    if (chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now()) {
+      return;
+    }
 
-      const detection = detectEndlessByes(messages, 60 * 60 * 1000, 3);
-      if (detection.shouldTrigger) {
-        setSleepyBlockVisible(true);
-      }
+    const detection = detectEndlessByes(messages, 60 * 60 * 1000, 3);
+    if (!detection.shouldTrigger || !detection.triggeringMsgId) return;
+
+    // ANTI-LOOP SHIELD:
+    // If this exact message ID was already served, NEVER trigger again!
+    if (chatBlockedByMsgId === detection.triggeringMsgId) {
+      return;
+    }
+
+    Keyboard.dismiss();
+
+    // New bye block event! Update Supabase database
+    const newBlockedUntil = new Date(Date.now() + 120_000).toISOString();
+    const newQuote = getDailyByeQuote(targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead"));
+    const triggeringId = detection.triggeringMsgId;
+
+    setChatBlockedUntil(newBlockedUntil);
+    setChatBlockQuote(newQuote);
+    setChatBlockedByMsgId(triggeringId);
+
+    supabase.from("chats").update({
+      blocked_until: newBlockedUntil,
+      block_quote: newQuote,
+      blocked_by_msg_id: triggeringId,
+    }).eq("id", currentChatId).then(({ error }) => {
+      if (error) console.warn("Error updating sleepy block in chats table:", error);
     });
-
-    return () => { mounted = false; };
-  }, [messages, currentChatId, sleepyBlockVisible]);
+  }, [messages, currentChatId, chatBlockedUntil, chatBlockedByMsgId, targetUser, name]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -708,6 +742,11 @@ export default function ChatScreen() {
         AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(mergedSettings)).catch(() => {});
       }
       const { data: chatData } = await supabase.from("chats").select("*").eq("id", id).single();
+      if (chatData) {
+        setChatBlockedUntil(chatData.blocked_until || null);
+        setChatBlockQuote(chatData.block_quote || null);
+        setChatBlockedByMsgId(chatData.blocked_by_msg_id || null);
+      }
       if (chatData?.is_group) {
         setIsGroup(true);
         setGroupChatData(chatData);
@@ -1466,11 +1505,11 @@ export default function ChatScreen() {
       <AppleIntelligenceGlow visible={!!thinkingOfYou} screenRadius={screenRadius} />
       <SleepyByeBlocker
         chatId={currentChatId}
-        visible={sleepyBlockVisible}
+        visible={!!(chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now())}
+        blockedUntil={chatBlockedUntil}
+        quote={chatBlockQuote}
         targetUsername={targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead")}
-        screenRadius={screenRadius}
-        onUnlocked={() => setSleepyBlockVisible(false)}
-        lockDurationSeconds={120}
+        onUnlocked={() => setChatBlockedUntil(null)}
       />
       {showWallpaper && (
         <View style={[StyleSheet.absoluteFill, { overflow: "hidden" }]}>
