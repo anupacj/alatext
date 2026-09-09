@@ -23,6 +23,8 @@ import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
+import { SleepyByeBlocker, hasActiveSleepyByeBlock, isSleepyByeCooldownActive } from "../components/SleepyByeBlocker";
+import { detectEndlessByes } from "../lib/byeDetector";
 import { renderFormattedContent } from "../lib/formatText";
 import { supabase } from "../lib/supabase";
 import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
@@ -165,6 +167,39 @@ export default function ChatScreen() {
 
   // Desktop sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Sleepy Bye Blocker State & Persistence
+  const [sleepyBlockVisible, setSleepyBlockVisible] = useState(false);
+  const currentChatId = (Array.isArray(id) ? id[0] : id) || "";
+
+  // Check if active block exists in persistent storage on load / chat change
+  useEffect(() => {
+    if (!currentChatId) return;
+    let mounted = true;
+    hasActiveSleepyByeBlock(currentChatId).then(active => {
+      if (mounted && active) {
+        setSleepyBlockVisible(true);
+      }
+    });
+    return () => { mounted = false; };
+  }, [currentChatId]);
+
+  // Monitor incoming and existing messages for endless bye loop (>= 3 byes in recent messages within 1 hour)
+  useEffect(() => {
+    if (!currentChatId || messages.length < 2 || sleepyBlockVisible) return;
+
+    let mounted = true;
+    isSleepyByeCooldownActive(currentChatId).then(inCooldown => {
+      if (!mounted || inCooldown) return;
+
+      const detection = detectEndlessByes(messages, 60 * 60 * 1000, 3);
+      if (detection.shouldTrigger) {
+        setSleepyBlockVisible(true);
+      }
+    });
+
+    return () => { mounted = false; };
+  }, [messages, currentChatId, sleepyBlockVisible]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -1429,6 +1464,14 @@ export default function ChatScreen() {
   const chatViewContent = (
     <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden", borderRadius: screenRadius }}>
       <AppleIntelligenceGlow visible={!!thinkingOfYou} screenRadius={screenRadius} />
+      <SleepyByeBlocker
+        chatId={currentChatId}
+        visible={sleepyBlockVisible}
+        targetUsername={targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead")}
+        screenRadius={screenRadius}
+        onUnlocked={() => setSleepyBlockVisible(false)}
+        lockDurationSeconds={120}
+      />
       {showWallpaper && (
         <View style={[StyleSheet.absoluteFill, { overflow: "hidden" }]}>
           <Image source={{ uri: chatSettings!.wallpaper_url }}
