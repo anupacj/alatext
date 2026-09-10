@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Platform, Text as RNText, StyleSheet } from 'react-native';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Platform, Text as RNText, StyleSheet, Animated } from 'react-native';
 import './ShinyText.css';
 
 export interface ShinyTextProps {
@@ -20,15 +20,28 @@ export interface ShinyTextProps {
 export const ShinyText: React.FC<ShinyTextProps> = ({
   text,
   disabled = false,
-  speed = 2,
+  speed = 2.2,
   className = '',
   color = '#b5b5b5',
   shineColor = '#ffffff',
-  spread = 120,
+  spread = 115,
   pauseOnHover = false,
   style = {},
 }) => {
   const [isPaused, setIsPaused] = useState(false);
+  const shimmerPulse = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || disabled) return;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerPulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(shimmerPulse, { toValue: 0.45, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [shimmerPulse, disabled]);
 
   const handleMouseEnter = useCallback(() => {
     if (pauseOnHover) setIsPaused(true);
@@ -50,17 +63,17 @@ export const ShinyText: React.FC<ShinyTextProps> = ({
   // Cross-platform check: on mobile React Native native views, render animated RNText fallback
   if (Platform.OS !== 'web') {
     return (
-      <RNText style={[{ color: shineColor || color }, flatStyle]}>
+      <Animated.Text style={[{ color: shineColor || color, opacity: shimmerPulse }, flatStyle]}>
         {text}
-      </RNText>
+      </Animated.Text>
     );
   }
 
   const gradientStyle: React.CSSProperties = {
     backgroundImage: disabled
       ? 'none'
-      : `linear-gradient(${spread}deg, ${color} 0%, ${color} 35%, ${shineColor} 50%, ${color} 65%, ${color} 100%)`,
-    backgroundSize: '200% auto',
+      : `linear-gradient(${spread}deg, ${color} 0%, ${color} 30%, ${shineColor} 44%, #ffffff 50%, ${shineColor} 56%, ${color} 70%, ${color} 100%)`,
+    backgroundSize: '260% 100%',
     WebkitBackgroundClip: 'text',
     backgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
