@@ -105,6 +105,19 @@ export const FONT_OPTIONS = [
   { label: "Chewy", value: "Chewy" },
   { label: "La Belle Aurore", value: "La Belle Aurore" },
   { label: "Balsamiq Sans", value: "Balsamiq Sans" },
+  { label: "Sacramento", value: "Sacramento" },
+  { label: "Great Vibes", value: "Great Vibes" },
+  { label: "Dancing Script", value: "Dancing Script" },
+  { label: "Parisienne", value: "Parisienne" },
+  { label: "Alex Brush", value: "Alex Brush" },
+  { label: "Comfortaa", value: "Comfortaa" },
+  { label: "Sniglet", value: "Sniglet" },
+  { label: "DynaPuff", value: "DynaPuff" },
+  { label: "Patrick Hand", value: "Patrick Hand" },
+  { label: "Cormorant", value: "Cormorant Garamond" },
+  { label: "DM Serif", value: "DM Serif Display" },
+  { label: "Space Grotesk", value: "Space Grotesk" },
+  { label: "Silkscreen", value: "Silkscreen" },
 ];
 
 interface ChatSettingsModalProps {

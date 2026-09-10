@@ -47,7 +47,7 @@ export default function Layout() {
       document.head.appendChild(preconnect2);
 
       const link = document.createElement("link");
-      link.href = "https://fonts.googleapis.com/css2?family=BenchNine&family=Caveat&family=Changa+One&family=Cinzel&family=Elsie&family=Handjet&family=Josefin+Sans:wght@300;400;600;700&family=Lobster+Two&family=Montserrat&family=Outfit&family=Playwrite+BR&family=Playwrite+DE+LA&family=Raleway&family=Rum+Raisin&family=Concert+One&family=Nothing+You+Could+Do&family=Chewy&family=La+Belle+Aurore&family=Balsamiq+Sans&display=swap";
+      link.href = "https://fonts.googleapis.com/css2?family=BenchNine&family=Caveat&family=Changa+One&family=Cinzel&family=Elsie&family=Handjet&family=Josefin+Sans:wght@300;400;600;700&family=Lobster+Two&family=Montserrat&family=Outfit&family=Playwrite+BR&family=Playwrite+DE+LA&family=Raleway&family=Rum+Raisin&family=Concert+One&family=Nothing+You+Could+Do&family=Chewy&family=La+Belle+Aurore&family=Balsamiq+Sans&family=Sacramento&family=Great+Vibes&family=Dancing+Script&family=Parisienne&family=Alex+Brush&family=Comfortaa&family=Sniglet&family=DynaPuff&family=Patrick+Hand&family=Cormorant+Garamond&family=DM+Serif+Display&family=Space+Grotesk&family=Silkscreen&display=swap";
       link.rel = "stylesheet";
       document.head.appendChild(link);
 
