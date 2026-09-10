@@ -21,6 +21,7 @@ interface ChatInfoModalProps {
   targetUser?: any;
   currentUserId: string;
   onGroupUpdated?: (updated: { name?: string; avatar_url?: string }) => void;
+  onOpenImageViewer?: (url: string) => void;
 }
 
 export default function ChatInfoModal({
@@ -31,6 +32,7 @@ export default function ChatInfoModal({
   targetUser,
   currentUserId,
   onGroupUpdated,
+  onOpenImageViewer,
 }: ChatInfoModalProps) {
   const router = useRouter();
   const { theme } = useTheme();
@@ -503,7 +505,10 @@ export default function ChatInfoModal({
                         <TouchableOpacity
                           key={m.id}
                           style={styles.mediaGridItem}
-                          onPress={() => setSelectedImage(m.content)}
+                          onPress={() => {
+                            if (onOpenImageViewer) onOpenImageViewer(m.content);
+                            else setSelectedImage(m.content);
+                          }}
                         >
                           <Image source={{ uri: getThumbnailUrl(m.content, 260, 260, 75) }} style={styles.mediaThumb} />
                         </TouchableOpacity>
@@ -568,7 +573,10 @@ export default function ChatInfoModal({
                       <TouchableOpacity
                         key={m.id}
                         style={styles.mediaGridItem}
-                        onPress={() => setSelectedImage(m.content)}
+                        onPress={() => {
+                          if (onOpenImageViewer) onOpenImageViewer(m.content);
+                          else setSelectedImage(m.content);
+                        }}
                       >
                         <Image source={{ uri: getThumbnailUrl(m.content, 260, 260, 75) }} style={styles.mediaThumb} />
                       </TouchableOpacity>

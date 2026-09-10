@@ -18,6 +18,8 @@ import { HeartPing } from "../components/HeartPing";
 import ShinyText from "../components/ShinyText";
 import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
+import ZoomableImageViewer from "../components/ZoomableImageViewer";
+import { tryEnterFullscreen } from "../lib/fullscreen";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
@@ -588,6 +590,29 @@ export default function ChatScreen() {
       document.removeEventListener("pointerdown", handlePointerDown, true);
     };
   }, [fontPickerOpen]);
+
+  // Automatically enter fullscreen when entering a chat
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+
+    // 1. Immediate attempt (in case navigation preserved gesture)
+    tryEnterFullscreen();
+
+    // 2. Interaction fallback (in case direct link or refreshed page requires fresh tap)
+    const handleFirstTap = () => {
+      tryEnterFullscreen();
+      window.removeEventListener("pointerdown", handleFirstTap, true);
+      window.removeEventListener("keydown", handleFirstTap, true);
+    };
+
+    window.addEventListener("pointerdown", handleFirstTap, true);
+    window.addEventListener("keydown", handleFirstTap, true);
+
+    return () => {
+      window.removeEventListener("pointerdown", handleFirstTap, true);
+      window.removeEventListener("keydown", handleFirstTap, true);
+    };
+  }, []);
 
   const formatMsg = useCallback((msg: any): Message => {
     const rawTs = msg.created_at ? new Date(msg.created_at).getTime() : Date.now();
@@ -2541,68 +2566,17 @@ export default function ChatScreen() {
           onGroupUpdated={(updated) => {
             setGroupChatData((prev: any) => ({ ...prev, ...updated }));
           }}
+          onOpenImageViewer={(url) => setImageViewerUrl(url)}
         />
       )}
-      <Modal visible={!!imageViewerUrl} transparent animationType="fade" onRequestClose={() => setImageViewerUrl(null)}>
-        <TouchableOpacity style={styles.imageViewerOverlay} activeOpacity={1} onPress={() => setImageViewerUrl(null)}>
-          {imageViewerUrl && <Image source={{ uri: imageViewerUrl }} style={styles.imageViewerImg} resizeMode="contain" />}
-          
-          {/* Top Floating Frosted Action Bar */}
-          <View style={styles.imageViewerToolbar}>
-            <TouchableOpacity
-              style={styles.imageViewerToolBtn}
-              onPress={(e) => {
-                e.stopPropagation?.();
-                handleDownloadImage(imageViewerUrl);
-              }}
-              accessibilityLabel="Download photo"
-            >
-              <Download size={18} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.imageViewerToolBtn}
-              onPress={(e) => {
-                e.stopPropagation?.();
-                handleCopyImage(imageViewerUrl);
-              }}
-              accessibilityLabel="Copy photo"
-            >
-              <Copy size={18} color="#ffffff" />
-            </TouchableOpacity>
-
-            {Platform.OS === "web" && (
-              <TouchableOpacity
-                style={styles.imageViewerToolBtn}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  if (imageViewerUrl) window.open(imageViewerUrl, "_blank");
-                }}
-                accessibilityLabel="Open original"
-              >
-                <ExternalLink size={18} color="#ffffff" />
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={[styles.imageViewerToolBtn, { backgroundColor: "rgba(255,255,255,0.18)" }]}
-              onPress={(e) => {
-                e.stopPropagation?.();
-                setImageViewerUrl(null);
-              }}
-              accessibilityLabel="Close"
-            >
-              <X size={18} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
-
-          {viewerToast && (
-            <View style={styles.imageViewerToast}>
-              <Text style={styles.imageViewerToastText}>{viewerToast}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </Modal>
+      <ZoomableImageViewer
+        visible={!!imageViewerUrl}
+        imageUrl={imageViewerUrl}
+        onClose={() => setImageViewerUrl(null)}
+        onDownload={handleDownloadImage}
+        onCopy={handleCopyImage}
+        viewerToast={viewerToast}
+      />
       <Modal visible={!!customAlert} transparent animationType="fade" onRequestClose={() => {}}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ width: '90%', maxWidth: 440, backgroundColor: '#313338', borderRadius: 8, overflow: 'hidden' }}>

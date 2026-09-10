@@ -11,6 +11,7 @@ import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useAlaPin } from "../context/AlaPinContext";
 import ShinyText from "./ShinyText";
+import { tryEnterFullscreen } from "../lib/fullscreen";
 
 interface ChatSidebarProps {
   activeChatId?: string;
@@ -219,6 +220,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
           if (existingPart && existingPart.length > 0) {
             const existingChatId = existingPart[0].chat_id;
             resetModal();
+            tryEnterFullscreen();
             if (onSelectChat) onSelectChat(existingChatId, tp.username, "");
             else router.push({ pathname: "/chat", params: { id: existingChatId, name: tp.username } });
             return;
@@ -236,6 +238,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
       ]);
       if (pe2) throw pe2;
       resetModal();
+      tryEnterFullscreen();
       if (onSelectChat) onSelectChat(newChatId, tp.username, "");
       else router.push({ pathname: "/chat", params: { id: newChatId, name: tp.username } });
     } catch (e: any) { setSearchError(e.message || "An error occurred."); }
@@ -264,6 +267,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
       const { error: pe } = await supabase.from("chat_participants").insert(participants);
       if (pe) throw pe;
       resetModal();
+      tryEnterFullscreen();
       if (onSelectChat) onSelectChat(newChatId, groupName.trim(), "");
       else router.push({ pathname: "/chat", params: { id: newChatId, name: groupName.trim() } });
     } catch (e: any) { setSearchError(e.message || "An error occurred."); }
@@ -279,6 +283,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
       );
 
   const handleChatItemPress = (item: any) => {
+    tryEnterFullscreen();
     if (onSelectChat) {
       onSelectChat(item.id, item.name, item.avatar || "");
     } else {
