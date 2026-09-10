@@ -24,6 +24,7 @@ import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
 import { SleepyByeBlocker } from "../components/SleepyByeBlocker";
+import { ParallaxWallpaper } from "../components/ParallaxWallpaper";
 import { detectEndlessByes, countByesInText } from "../lib/byeDetector";
 import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
@@ -177,6 +178,7 @@ export default function ChatScreen() {
   const [chatBlockedByMsgId, setChatBlockedByMsgId] = useState<string | null>(null);
   const lastBlockTimeRef = useRef<number>(0);
   const cooldownUntilRef = useRef<number>(0);
+  const wallpaperScrollY = useRef(new RNAnimated.Value(0)).current;
   const currentChatId = (Array.isArray(id) ? id[0] : id) || "";
 
   // Realtime subscription and local persistence for chats table to keep both users in sync
@@ -1628,14 +1630,13 @@ export default function ChatScreen() {
         }}
       />
       {showWallpaper && (
-        <View style={[StyleSheet.absoluteFill, { overflow: "hidden" }]}>
-          <Image source={{ uri: chatSettings!.wallpaper_url }}
-            style={[StyleSheet.absoluteFill, { resizeMode: "cover", transform: [{ scale: chatSettings?.wallpaper_zoom || 1 }] }]}
-            blurRadius={(chatSettings?.wallpaper_blur || 0) * 20} />
-          {chatSettings?.wallpaper_dim ? (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${chatSettings?.wallpaper_dim || 0})` }]} />
-          ) : null}
-        </View>
+        <ParallaxWallpaper
+          uri={chatSettings!.wallpaper_url}
+          zoom={chatSettings?.wallpaper_zoom || 1}
+          blur={chatSettings?.wallpaper_blur || 0}
+          dim={chatSettings?.wallpaper_dim || 0}
+          scrollY={wallpaperScrollY}
+        />
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
         <View style={styles.floatingHeaderWrapper}>
@@ -2108,6 +2109,10 @@ export default function ChatScreen() {
             contentContainerStyle={styles.listContainer}
             showsVerticalScrollIndicator={false}
             extraData={highlightedMsgId}
+            onScroll={(e) => {
+              wallpaperScrollY.setValue(e.nativeEvent.contentOffset.y);
+            }}
+            scrollEventThrottle={16}
             onScrollToIndexFailed={(info) => {
               setTimeout(() => {
                 flatListRef.current?.scrollToIndex({
