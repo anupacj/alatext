@@ -10,6 +10,7 @@
   -webkit-text-fill-color: transparent;
   color: transparent;
   vertical-align: baseline;
+  line-height: inherit;
 }
 
 .shiny-text-josefin {

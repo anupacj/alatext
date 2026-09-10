@@ -295,7 +295,7 @@ export default function ChatScreen() {
     const now = Date.now();
     const COOLDOWN_DURATION = 15 * 60 * 1000; // 15 minutes cooldown
     const newBlockedUntil = new Date(now + 120_000).toISOString();
-    const newQuote = getDailyByeQuote(targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead"));
+    const newQuote = getDailyByeQuote();
     const triggeringId = detection.triggeringMsgId;
 
     lastBlockTimeRef.current = now;
@@ -567,9 +567,27 @@ export default function ChatScreen() {
       window.removeEventListener("resize", handleViewport);
       window.removeEventListener("scroll", handleViewport);
       document.removeEventListener("fullscreenchange", handleFullscreen);
-      document.removeEventListener("webkitfullscreenchange", handleFullscreen);
     };
   }, []);
+
+  // Close font picker tray when clicking / tapping anywhere outside on Web
+  useEffect(() => {
+    if (!fontPickerOpen || Platform.OS !== "web" || typeof document === "undefined") return;
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("#font-picker-tray") || target.closest("#font-picker-trigger")) {
+        return;
+      }
+      setFontPickerOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [fontPickerOpen]);
 
   const formatMsg = useCallback((msg: any): Message => {
     const rawTs = msg.created_at ? new Date(msg.created_at).getTime() : Date.now();
@@ -1609,7 +1627,7 @@ export default function ChatScreen() {
         visible={!!(chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now())}
         blockedUntil={chatBlockedUntil}
         quote={chatBlockQuote}
-        targetUsername={targetUser?.nickname || targetUser?.username || (typeof name === "string" ? name : "sleepyhead")}
+        targetUsername={myProfile?.display_name || myProfile?.username || user?.user_metadata?.username || user?.user_metadata?.name || "sleepyhead"}
         onUnlocked={() => {
           setChatBlockedUntil(null);
           // Maintain cooldown so unlocking or dismissing doesn't immediately re-trap users
@@ -2103,6 +2121,9 @@ export default function ChatScreen() {
             renderItem={renderMessage}
             keyExtractor={item => item.id}
             inverted
+            onTouchStart={() => {
+              if (fontPickerOpen) setFontPickerOpen(false);
+            }}
             onEndReached={loadOlderMessages}
             onEndReachedThreshold={0.3}
             ListFooterComponent={loadingOlder ? <ActivityIndicator size="small" color={theme.accent} style={{ marginVertical: 10 }} /> : null}
@@ -2233,15 +2254,18 @@ export default function ChatScreen() {
             )}
 
             {fontPickerOpen && (
-              <View style={{
-                backgroundColor: isAmoled ? "#111" : theme.surface,
-                padding: 12,
-                borderRadius: 16,
-                marginBottom: 8,
-                elevation: 4,
-                borderWidth: 1,
-                borderColor: isShimmerActive ? (theme.id === "pink" ? "#f472b6" : "#c084fc") : "rgba(255,255,255,0.08)"
-              }}>
+              <View 
+                nativeID="font-picker-tray"
+                {...({ id: "font-picker-tray" } as any)}
+                style={{
+                  backgroundColor: isAmoled ? "#111" : theme.surface,
+                  padding: 12,
+                  borderRadius: 16,
+                  marginBottom: 8,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: isShimmerActive ? (theme.id === "pink" ? "#f472b6" : "#c084fc") : "rgba(255,255,255,0.08)"
+                }}>
                 {/* Top Action Row: Shimmer Effect Toggle + Rich Text Format Helpers */}
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                   <TouchableOpacity
@@ -2307,6 +2331,14 @@ export default function ChatScreen() {
                     >
                       <Code size={13} color={theme.text} />
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setFontPickerOpen(false)}
+                      style={[styles.formatChip, { backgroundColor: isAmoled ? "#222" : "rgba(255,255,255,0.06)", marginLeft: 2 }]}
+                      accessibilityLabel="Close Font Picker"
+                    >
+                      <X size={13} color={isAmoled ? "#aaa" : theme.textMuted} />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -2361,7 +2393,12 @@ export default function ChatScreen() {
                       <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
                     )}
                     {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
-                      <TouchableOpacity style={styles.inputIconButton} onPress={() => setFontPickerOpen(!fontPickerOpen)}>
+                      <TouchableOpacity 
+                        nativeID="font-picker-trigger"
+                        {...({ id: "font-picker-trigger" } as any)}
+                        style={styles.inputIconButton} 
+                        onPress={() => setFontPickerOpen(!fontPickerOpen)}
+                      >
                         <Type size={20} color={fontPickerOpen || isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} />
                       </TouchableOpacity>
                     )}

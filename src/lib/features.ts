@@ -8,6 +8,8 @@ export type FeatureKey =
 export interface UserProfile {
   id?: string;
   username?: string;
+  display_name?: string;
+  avatar_url?: string;
   email?: string;
   is_admin?: boolean;
   is_banned?: boolean;

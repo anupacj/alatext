@@ -39,6 +39,7 @@ export function getDailyByeQuote(username?: string): string {
   const day = new Date().getDate(); // 1 - 31
   const index = (day - 1) % SLEEPY_BYE_QUOTES.length;
   const rawQuote = SLEEPY_BYE_QUOTES[index];
+  if (username === undefined) return rawQuote;
   const safeName = username?.trim() || "sleepyhead";
   return rawQuote.replace(/\[username\]/g, safeName);
 }

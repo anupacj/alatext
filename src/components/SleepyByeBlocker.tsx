@@ -28,8 +28,7 @@ const STORAGE_BLOCK_KEY = (chatId: string) => `@sleepy_bye_block_${chatId}`;
 const ShimmeringCountdown: React.FC<{
   expiresAtMs: number;
   onComplete: () => void;
-  onDismiss: () => void;
-}> = React.memo(({ expiresAtMs, onComplete, onDismiss }) => {
+}> = React.memo(({ expiresAtMs, onComplete }) => {
   const [remainingSecs, setRemainingSecs] = useState(() => {
     return Math.max(0, Math.ceil((expiresAtMs - Date.now()) / 1000));
   });
@@ -71,14 +70,6 @@ const ShimmeringCountdown: React.FC<{
           textAlign: "center",
         }}
       />
-      <TouchableOpacity
-        onPress={onDismiss}
-        style={styles.dismissBtn}
-        activeOpacity={0.7}
-        accessibilityLabel="Dismiss block"
-      >
-        <Text style={styles.dismissBtnText}>✕ Dismiss & Wake Up</Text>
-      </TouchableOpacity>
     </View>
   );
 });
@@ -143,7 +134,13 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
       }
 
       if (candidateExp > Date.now()) {
-        const q = candidateQuote || getDailyByeQuote(targetUsername);
+        const safeName = targetUsername?.trim() || "sleepyhead";
+        let q = candidateQuote;
+        if (q && q.includes("[username]")) {
+          q = q.replace(/\[username\]/g, safeName);
+        } else if (!q || (safeName !== "sleepyhead" && !q.includes(safeName))) {
+          q = getDailyByeQuote(safeName);
+        }
         setActiveExpiresAt(candidateExp);
         setActiveQuote(q);
         setIsActive(true);
@@ -294,7 +291,6 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
       <ShimmeringCountdown
         expiresAtMs={activeExpiresAt}
         onComplete={handleDismiss}
-        onDismiss={handleDismiss}
       />
     </Animated.View>
   );

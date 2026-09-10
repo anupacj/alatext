@@ -41,6 +41,12 @@ export const ShinyText: React.FC<ShinyTextProps> = ({
   const flatStyle = StyleSheet.flatten(style) || {};
   const { color: _ignoredColor, ...safeFlatStyle } = flatStyle;
 
+  // Web typography fix: if lineHeight is a number > 3 (e.g. 20, 22), convert to px
+  // so React DOM does not treat it as a 2200% multiplier (which made bubbles 350px tall!)
+  if (typeof safeFlatStyle.lineHeight === 'number' && safeFlatStyle.lineHeight > 3) {
+    safeFlatStyle.lineHeight = `${safeFlatStyle.lineHeight}px`;
+  }
+
   // Cross-platform check: on mobile React Native native views, render animated RNText fallback
   if (Platform.OS !== 'web') {
     return (
