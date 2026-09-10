@@ -51,12 +51,26 @@ export const BlurRevealShimmerText: React.FC<BlurRevealShimmerTextProps> = React
 
   // Native mobile fallback (React Native Text)
   if (Platform.OS !== "web") {
+    const nativeStyle = { ...style };
+    if (typeof nativeStyle.lineHeight === "string" && nativeStyle.lineHeight.endsWith("px")) {
+      nativeStyle.lineHeight = parseFloat(nativeStyle.lineHeight);
+    }
     return (
-      <RNText style={style}>
+      <RNText style={nativeStyle}>
         {text}
       </RNText>
     );
   }
+
+  // Web typography style normalization: ensure unitless lineHeight > 3 is converted to px
+  const computedStyle = useMemo(() => {
+    if (!style) return {};
+    const s = { ...style };
+    if (typeof s.lineHeight === "number") {
+      s.lineHeight = s.lineHeight > 3 ? `${s.lineHeight}px` : s.lineHeight;
+    }
+    return s;
+  }, [style]);
 
   let globalLetterIndex = 0;
 
@@ -69,11 +83,11 @@ export const BlurRevealShimmerText: React.FC<BlurRevealShimmerTextProps> = React
         textAlign: "center",
         overflowWrap: "break-word",
         wordBreak: "break-word",
-        ...style,
+        ...computedStyle,
       }}
     >
       {lines.map((lineText, lineIdx) => {
-        const words = lineText.split(" ");
+        const words = lineText.split(" ").filter((w) => w.length > 0);
         return (
           <div
             key={`line-${lineIdx}`}
@@ -84,14 +98,15 @@ export const BlurRevealShimmerText: React.FC<BlurRevealShimmerTextProps> = React
             }}
           >
             {words.map((word, wordIdx) => {
-              const wordLetters = word.split("");
+              // Unicode-safe grapheme split so emojis (e.g. 🌙, 🕯️) are never split into broken surrogate pairs
+              const wordLetters = Array.from(word);
               return (
                 <span
                   key={`w-${lineIdx}-${wordIdx}`}
                   style={{
                     display: "inline-block",
                     whiteSpace: "nowrap",
-                    marginRight: wordIdx < words.length - 1 ? "0.28em" : 0,
+                    marginRight: wordIdx < words.length - 1 ? "0.3em" : 0,
                   }}
                 >
                   {wordLetters.map((char, charIdx) => {

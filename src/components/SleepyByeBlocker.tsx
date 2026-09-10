@@ -269,7 +269,7 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
       {Platform.OS === "web" && <div className="sleepy-halo" />}
 
       {/* Optical Center Container */}
-      <View style={[styles.quoteWrapper, { maxWidth: isMobile ? 320 : 540, paddingHorizontal: isMobile ? 16 : 24 }]}>
+      <View style={[styles.quoteWrapper, { maxWidth: isMobile ? "88%" : 640, width: "100%", paddingHorizontal: isMobile ? 16 : 28 }]}>
         <BlurRevealShimmerText
           text={activeQuote}
           letterDelay={22}
@@ -284,7 +284,7 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
             color: "rgba(255, 255, 255, 0.95)",
             textAlign: "center",
             letterSpacing: 0.2,
-            lineHeight: isMobile ? 28 : 36,
+            lineHeight: isMobile ? "30px" : "38px",
             textShadow: "0 2px 20px rgba(180, 130, 255, 0.30)",
           }}
         />
