@@ -1,6 +1,8 @@
 import React from "react";
-import { Text } from "react-native";
+import { Text, Platform } from "react-native";
 import ShinyText from "../components/ShinyText";
+import { hasHeartEmojis } from "./loveDetector";
+import "../components/ShinyText.css";
 
 export interface FormatOptions {
   isShimmer?: boolean;
@@ -8,6 +10,36 @@ export interface FormatOptions {
   textColor?: string;
   isMe?: boolean;
   fontFamily?: string | null;
+  isLove?: boolean;
+}
+
+const HEART_SPLIT_REGEX = /(❤️|🩷|🧡|💛|💚|💙|🩵|💜|🤎|🖤|🤍|💔|❤️‍🔥|❤️‍🩹|❣️|💕|💞|💓|💗|💖|💘|💝|💟|💌|🫶)/u;
+
+function renderTextOrHearts(chunk: string, keyPrefix: string | number) {
+  if (!chunk) return null;
+  if (!hasHeartEmojis(chunk)) return chunk;
+
+  const parts = chunk.split(HEART_SPLIT_REGEX);
+  if (parts.length === 1) return chunk;
+
+  return parts.map((sub, idx) => {
+    if (!sub) return null;
+    if (hasHeartEmojis(sub)) {
+      if (Platform.OS === "web") {
+        return (
+          <span key={`${keyPrefix}-${idx}`} className="beating-heart-emoji">
+            {sub}
+          </span>
+        );
+      }
+      return (
+        <Text key={`${keyPrefix}-${idx}`} style={{ fontSize: 18 }}>
+          {sub}
+        </Text>
+      );
+    }
+    return sub;
+  });
 }
 
 export function renderFormattedContent(
@@ -47,7 +79,7 @@ export function renderFormattedContent(
   if (parts.length === 1) {
     return (
       <Text style={[options.baseStyle, fontStyle, colorStyle]}>
-        {text}
+        {options.isLove ? renderTextOrHearts(text, "plain") : text}
       </Text>
     );
   }
@@ -73,34 +105,38 @@ export function renderFormattedContent(
           );
         }
         if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+          const inner = part.slice(2, -2);
           return (
             <Text key={i} style={{ fontWeight: "bold" }}>
-              {part.slice(2, -2)}
+              {options.isLove ? renderTextOrHearts(inner, `b-${i}`) : inner}
             </Text>
           );
         }
         if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+          const inner = part.slice(1, -1);
           return (
             <Text key={i} style={{ fontWeight: "bold" }}>
-              {part.slice(1, -1)}
+              {options.isLove ? renderTextOrHearts(inner, `b-${i}`) : inner}
             </Text>
           );
         }
         if (part.startsWith("_") && part.endsWith("_") && part.length > 2) {
+          const inner = part.slice(1, -1);
           return (
             <Text key={i} style={{ fontStyle: "italic" }}>
-              {part.slice(1, -1)}
+              {options.isLove ? renderTextOrHearts(inner, `i-${i}`) : inner}
             </Text>
           );
         }
         if (part.startsWith("~") && part.endsWith("~") && part.length > 2) {
+          const inner = part.slice(1, -1);
           return (
             <Text key={i} style={{ textDecorationLine: "line-through" }}>
-              {part.slice(1, -1)}
+              {options.isLove ? renderTextOrHearts(inner, `s-${i}`) : inner}
             </Text>
           );
         }
-        return part;
+        return options.isLove ? renderTextOrHearts(part, `t-${i}`) : part;
       })}
     </Text>
   );

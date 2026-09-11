@@ -25,9 +25,11 @@ import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
+import { FloatingHearts } from "../components/FloatingHearts";
 import { SleepyByeBlocker } from "../components/SleepyByeBlocker";
 import { ParallaxWallpaper } from "../components/ParallaxWallpaper";
 import { detectEndlessByes, countByesInText } from "../lib/byeDetector";
+import { isLoveMessage } from "../lib/loveDetector";
 import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
 import { supabase } from "../lib/supabase";
@@ -146,10 +148,15 @@ export default function ChatScreen() {
   const [pingVisible, setPingVisible] = useState(false);
   const [isHeartGlowing, setIsHeartGlowing] = useState(false);
   const [thinkingOfYou, setThinkingOfYou] = useState<{ text: string } | null>(null);
+  const [loveGlowActive, setLoveGlowActive] = useState(false);
+  const [floatingHeartsActive, setFloatingHeartsActive] = useState(false);
   const heartAnim = useRef(new RNAnimated.Value(1)).current;
   const thinkingAnim = useRef(new RNAnimated.Value(0)).current;
   const heartTimerRef = useRef<any>(null);
   const thinkingTimerRef = useRef<any>(null);
+  const loveGlowTimerRef = useRef<any>(null);
+  const lastLoveTriggerMsgIdRef = useRef<string | null>(null);
+  const lastLoveTriggerTimeRef = useRef<number>(0);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [pinnedMessage, setPinnedMessage] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState<string | null>(null);
@@ -325,6 +332,50 @@ export default function ChatScreen() {
       if (error) console.warn("Error updating sleepy block in chats table:", error);
     });
   }, [currentChatId, chatBlockedUntil, chatBlockedByMsgId, targetUser, name]);
+
+  const triggerLoveGlow = useCallback(() => {
+    setLoveGlowActive(true);
+    setFloatingHeartsActive(true);
+    if (loveGlowTimerRef.current) clearTimeout(loveGlowTimerRef.current);
+
+    // 6.5s screen border glow (between 5 and 7 seconds, longer than thinking of you; NO top pill banner)
+    loveGlowTimerRef.current = setTimeout(() => {
+      setLoveGlowActive(false);
+    }, 6500);
+  }, []);
+
+  // Trigger romantic love glow and floating hearts ONLY on fresh live messages
+  const checkLiveLoveTrigger = useCallback((newMsg: any) => {
+    if (!newMsg) return;
+
+    // 1. Ignore non-text messages
+    if (newMsg.type && newMsg.type !== "text") return;
+
+    const msgText = newMsg.text || newMsg.content;
+    if (typeof msgText !== "string" || !msgText.trim()) return;
+
+    // 2. Romantic love phrase detection (flexible repeated letters e.g. love youuu, ily, etc.)
+    if (!isLoveMessage(msgText)) return;
+
+    // 3. Must be a live message created within the last 15 seconds (never historical messages or reloads)
+    const msgTime = newMsg.created_at_ts || (newMsg.created_at ? new Date(newMsg.created_at).getTime() : Date.now());
+    if (Math.abs(Date.now() - msgTime) > 15 * 1000) return;
+
+    // 4. Anti-loop shield: never re-trigger on the same message ID
+    if (newMsg.id && lastLoveTriggerMsgIdRef.current === newMsg.id) return;
+
+    // 5. Anti-spam cooldown: 10s cooldown to prevent repeated spam
+    const now = Date.now();
+    if (now - lastLoveTriggerTimeRef.current < 10000) return;
+
+    if (newMsg.id) {
+      lastLoveTriggerMsgIdRef.current = newMsg.id;
+    }
+    lastLoveTriggerTimeRef.current = now;
+
+    // 6. Trigger glow & floating hearts (NO top pill banner)
+    triggerLoveGlow();
+  }, [triggerLoveGlow]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -843,6 +894,7 @@ export default function ChatScreen() {
     setMessages([]); setHasMore(true); setEditingMsgId(null); setReplyingTo(null); setHoveredMsg(null);
     setTargetUser(null); setGroupChatData(null); setIsGroup(false); setGroupMemberCount(0);
     setChatSettings(null); setPinnedMessage(null); setMyNicknameFromPartner(null);
+    setLoveGlowActive(false); setFloatingHeartsActive(false);
     profileCache.current.clear();
 
     const sessionToken = `${id}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
@@ -1000,6 +1052,7 @@ export default function ChatScreen() {
             return [nm, ...prev];
           });
           checkLiveByeTrigger(nm, messagesRef.current);
+          checkLiveLoveTrigger(nm);
         } else if (payload.eventType === "DELETE") {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           const delId = payload.old?.id;
@@ -1241,6 +1294,7 @@ export default function ChatScreen() {
       
       setMessages(prev => [tempMsg, ...prev]);
       checkLiveByeTrigger(tempMsg, messagesRef.current);
+      checkLiveLoveTrigger(tempMsg);
 
       const { data, error } = await supabase.from("messages").insert({
         chat_id: id, sender_id: user.id, content, type: "text",
@@ -1260,7 +1314,7 @@ export default function ChatScreen() {
         });
       }
     }
-  }, [inputText, user, id, editingMsgId, replyingTo, messageFont, isShimmerActive, chatSettings?.font_family]);
+  }, [inputText, user, id, editingMsgId, replyingTo, messageFont, isShimmerActive, chatSettings?.font_family, checkLiveLoveTrigger]);
 
   const deleteMessage = useCallback(async (msgId: string) => {
     // 1. Optimistically remove from state immediately
@@ -1646,7 +1700,8 @@ export default function ChatScreen() {
 
   const chatViewContent = (
     <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden", borderRadius: screenRadius }}>
-      <AppleIntelligenceGlow visible={!!thinkingOfYou} screenRadius={screenRadius} />
+      <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive} screenRadius={screenRadius} />
+      <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
       <SleepyByeBlocker
         chatId={currentChatId}
         visible={!!(chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now())}
@@ -3252,6 +3307,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   const isShimmer = item.custom_font?.includes(":shimmer") || item.custom_font === "shimmer";
   const rawFont = item.custom_font?.replace(":shimmer", "");
   const activeFont = (rawFont && rawFont !== "system" ? rawFont : null) || chatSettings?.font_family;
+  const isLove = (item.type === "text" || !item.type) && isLoveMessage(item.text);
 
   const bubbleStyles: any[] = [
     styles.messageBubble, 
@@ -3260,6 +3316,15 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       ? { backgroundColor: item.type === "sticker" ? "transparent" : (gradientEnabled ? "transparent" : sentColor), borderBottomRightRadius: 4 } 
       : { backgroundColor: item.type === "sticker" ? "transparent" : receivedColor, borderBottomLeftRadius: 4 },
     (item.type === "image" || item.type === "video") && { paddingHorizontal: 2, paddingVertical: 2 }, item.type === "sticker" && { paddingHorizontal: 0, paddingVertical: 0 },
+    isLove && {
+      backgroundColor: item.isMe ? "#f43f5e" : "#be123c",
+      borderWidth: 1.5,
+      borderColor: "rgba(255, 228, 230, 0.55)",
+      shadowColor: "#f43f5e",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+    },
     isShimmer && {
       borderWidth: 1.5,
       borderColor: "rgba(255, 255, 255, 0.45)",
@@ -3288,14 +3353,16 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     if (item.type === "video") {
       return <VideoPlayerBubble videoUrl={item.text} isMe={item.isMe} />;
     }
+    const loveTextColor = isLove ? "#ffffff" : bubbleTextColor;
     return renderFormattedContent(
       typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : ""),
       {
         isShimmer,
         baseStyle: [styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft],
-        textColor: bubbleTextColor,
+        textColor: loveTextColor,
         isMe: item.isMe,
         fontFamily: activeFont,
+        isLove,
       }
     );
   };
@@ -3388,7 +3455,16 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
             </TouchableOpacity>
           )}
           
-          {item.isMe && gradientEnabled && item.type !== "sticker" ? (
+          {isLove ? (
+            <LinearGradient
+              colors={item.isMe ? ["#f43f5e", "#fb7185"] : ["#be123c", "#f43f5e"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={bubbleStyles}
+            >
+              {renderBubbleContent()}
+            </LinearGradient>
+          ) : item.isMe && gradientEnabled && item.type !== "sticker" ? (
             <LinearGradient colors={[sentColor, gradientColor2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={bubbleStyles}>
               {renderBubbleContent()}
             </LinearGradient>
