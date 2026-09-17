@@ -8,9 +8,10 @@ import {
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence, LinearTransition } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
+import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ChatSettingsModal, { FONT_OPTIONS } from '../components/ChatSettingsModal';
 import StickerPicker from '../components/StickerPicker';
@@ -100,6 +101,7 @@ export default function ChatScreen() {
   const [isTyping, setIsTyping] = useState(false);
   const [typingUsername, setTypingUsername] = useState<string | null>(null);
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
+  const [isGlassKeyboardOpen, setIsGlassKeyboardOpen] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -2214,6 +2216,7 @@ export default function ChatScreen() {
             inverted
             onTouchStart={() => {
               if (fontPickerOpen) setFontPickerOpen(false);
+              if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
             }}
             onEndReached={loadOlderMessages}
             onEndReachedThreshold={0.3}
@@ -2242,7 +2245,7 @@ export default function ChatScreen() {
             styles.inputArea,
             {
               bottom: viewportBottom,
-              paddingBottom: viewportBottom > 0 ? 6 : (Platform.OS === "web" ? 20 : (Platform.OS === "ios" ? 28 : 16))
+              paddingBottom: viewportBottom > 0 ? 6 : (isGlassKeyboardOpen ? 4 : (Platform.OS === "web" ? 20 : (Platform.OS === "ios" ? 28 : 16)))
             },
             showWallpaper && { backgroundColor: "transparent" }
           ]}>
@@ -2499,8 +2502,34 @@ export default function ChatScreen() {
                     <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
                       <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                     </TouchableOpacity>
+                    {!isDesktop && (
+                      <TouchableOpacity 
+                        style={styles.inputIconButton} 
+                        onPress={() => {
+                          if (isGlassKeyboardOpen) {
+                            setIsGlassKeyboardOpen(false);
+                            textInputRef.current?.focus();
+                          } else {
+                            Keyboard.dismiss();
+                            setEmojiOpen(false);
+                            setStickerPickerOpen(false);
+                            setFontPickerOpen(false);
+                            setIsGlassKeyboardOpen(true);
+                          }
+                        }}
+                        accessibilityLabel="Toggle AlaGlass Keyboard"
+                      >
+                        <KeyboardIcon 
+                          size={20} 
+                          color={isGlassKeyboardOpen 
+                            ? (theme.id === "pink" ? "#f43f5e" : (theme.accent || "#5865F2")) 
+                            : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} 
+                        />
+                      </TouchableOpacity>
+                    )}
                     <TextInput 
                       ref={textInputRef}
+                      showSoftInputOnFocus={!isGlassKeyboardOpen}
                       style={[
                         styles.textInput, 
                         (messageFont && messageFont !== "system") 
@@ -2575,6 +2604,20 @@ export default function ChatScreen() {
               )}
             </View>
           </View>
+          {isGlassKeyboardOpen && !isDesktop && (
+            <AlaGlassKeyboard
+              onInsertText={(char) => setInputText((prev) => prev + char)}
+              onBackspace={() => setInputText((prev) => prev.slice(0, -1))}
+              onSend={sendMessage}
+              onClose={() => setIsGlassKeyboardOpen(false)}
+              onSwitchToSystem={() => {
+                setIsGlassKeyboardOpen(false);
+                setTimeout(() => textInputRef.current?.focus(), 100);
+              }}
+              theme={theme}
+              isAmoled={isAmoled}
+            />
+          )}
         </KeyboardAvoidingView>
       </View>
 
