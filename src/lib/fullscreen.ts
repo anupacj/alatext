@@ -6,7 +6,11 @@ export function isFullscreenActive(): boolean {
 }
 
 export function tryEnterFullscreen() {
-  if (Platform.OS !== "web" || typeof document === "undefined") return;
+  if (Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined") return;
+  // ONLY trigger fullscreen on mobile devices. Never on desktop / PC!
+  const isDesktop = window.innerWidth >= 768;
+  if (isDesktop) return;
+
   try {
     if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
       const el = document.documentElement as any;
