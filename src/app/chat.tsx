@@ -5,7 +5,7 @@ import {
   LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder,
   Animated as RNAnimated, Easing, Dimensions, useWindowDimensions, Keyboard,
 } from "react-native";
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence } from "react-native-reanimated";
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence, LinearTransition } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code } from "lucide-react-native";
@@ -1292,6 +1292,17 @@ export default function ChatScreen() {
         reply_to_sender: curReply?.sender || null,
       };
       
+      LayoutAnimation.configureNext({
+        duration: 280,
+        create: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+          property: LayoutAnimation.Properties.opacity,
+        },
+        update: {
+          type: LayoutAnimation.Types.spring,
+          springDamping: 0.82,
+        },
+      });
       setMessages(prev => [tempMsg, ...prev]);
       checkLiveByeTrigger(tempMsg, messagesRef.current);
       checkLiveLoveTrigger(tempMsg);
@@ -3172,9 +3183,14 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
 
 // --- MessageRow Component for Animations & Gradients ---
 const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage }: any) => {
-  const isNew = index === 0;
-  const scale = useSharedValue(isNew ? 0.8 : 1);
-  const opacity = useSharedValue(isNew ? 0 : 1);
+  // Live entrance: only messages sent/received fresh in the session animate (avoids whole-list re-bounce on mount)
+  const isLiveEntrance = useRef(
+    index === 0 && (item.status === "sending" || Date.now() - (item.created_at_ts || 0) < 4000)
+  ).current;
+
+  const scale = useSharedValue(isLiveEntrance ? 0.85 : 1);
+  const translateY = useSharedValue(isLiveEntrance ? 28 : 0);
+  const opacity = useSharedValue(isLiveEntrance ? 0 : 1);
   const highlightAnim = useSharedValue(0);
 
   useEffect(() => {
@@ -3219,15 +3235,23 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   ).current;
 
   useEffect(() => {
-    if (isNew) {
-      scale.value = withSpring(1, { damping: 14, stiffness: 200 });
-      opacity.value = withSpring(1);
+    if (isLiveEntrance) {
+      // Telegram / Instagram fluid rubber spring physics:
+      // Damping ratio ~0.8 (damping 24, stiffness 260, mass 0.85) produces a snappy upward glide
+      // with a single ~2.5% rubbery stretch that cushions smoothly into resting state without wobble.
+      scale.value = withSpring(1, { damping: 24, stiffness: 260, mass: 0.85 });
+      translateY.value = withSpring(0, { damping: 24, stiffness: 260, mass: 0.85 });
+      opacity.value = withTiming(1, { duration: 160 });
     }
-  }, [isNew, scale, opacity]);
+  }, [isLiveEntrance, scale, translateY, opacity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
     opacity: opacity.value,
+    transformOrigin: item.isMe ? "bottom right" : "bottom left",
   }));
 
   // Album Grouping logic for WhatsApp style multi-media clumps
@@ -3380,7 +3404,11 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   };
 
   return (
-    <Animated.View style={animatedStyle} {...panResponder.panHandlers}>
+    <Animated.View
+      layout={LinearTransition.springify().damping(24).stiffness(240).mass(0.85)}
+      style={animatedStyle}
+      {...panResponder.panHandlers}
+    >
       <Pressable
         style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
         onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
