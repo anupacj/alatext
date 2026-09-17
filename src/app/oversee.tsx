@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -26,6 +26,7 @@ import {
   Image as ImageIcon,
   Bell,
   RefreshCw,
+  Keyboard,
 } from "lucide-react-native";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -38,6 +39,7 @@ const ALL_FEATURES: { key: FeatureKey; label: string; icon: any; desc: string }[
   { key: "wallpapers", label: "Wallpaper Doodles", icon: ImageIcon, desc: "Background doodle overlays" },
   { key: "alapin_decoy", label: "AlaPin Decoy Mode", icon: Lock, desc: "Stealth decoy PIN passcode screen" },
   { key: "custom_alerts", label: "Custom Alert Popups", icon: Bell, desc: "Broadcast non-dismissible alert popups" },
+  { key: "glass_keyboard", label: "AlaGlass Keyboard (Beta)", icon: Keyboard, desc: "Custom frosted glass keyboard on mobile devices" },
 ];
 
 export default function OverseerScreen() {
@@ -52,6 +54,19 @@ export default function OverseerScreen() {
   const [copiedSql, setCopiedSql] = useState<string | null>(null);
   const [cleaning, setCleaning] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const syncChannelRef = useRef<any>(null);
+
+  useEffect(() => {
+    const channel = supabase.channel("app_settings_sync");
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        syncChannelRef.current = channel;
+      }
+    });
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -60,18 +75,27 @@ export default function OverseerScreen() {
 
   const broadcastSettingsUpdate = (payload: any) => {
     try {
-      const channel = supabase.channel("app_settings_sync");
-      channel.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          channel.send({
-            type: "broadcast",
-            event: "settings_updated",
-            payload,
-          });
-        }
-      });
+      if (syncChannelRef.current) {
+        syncChannelRef.current.send({
+          type: "broadcast",
+          event: "settings_updated",
+          payload,
+        });
+      } else {
+        const channel = supabase.channel("app_settings_sync");
+        channel.subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            syncChannelRef.current = channel;
+            channel.send({
+              type: "broadcast",
+              event: "settings_updated",
+              payload,
+            });
+          }
+        });
+      }
     } catch (e) {
-      console.error(e);
+      console.error("Broadcast error:", e);
     }
   };
 
@@ -161,7 +185,7 @@ export default function OverseerScreen() {
 
   // Toggle Personal Feature Award per User
   const togglePersonalAward = async (targetUser: UserProfile, featureKey: FeatureKey, label: string) => {
-    const current = targetUser.awarded_features || [];
+    const current = Array.isArray(targetUser.awarded_features) ? targetUser.awarded_features : [];
     const updated = current.includes(featureKey)
       ? current.filter((f) => f !== featureKey)
       : [...current, featureKey];
@@ -178,12 +202,18 @@ export default function OverseerScreen() {
         .eq("id", targetUser.id);
 
       if (error) {
+        setProfiles((prev) =>
+          prev.map((p) => (p.id === targetUser.id ? { ...p, awarded_features: current } : p))
+        );
         showToast(`⚠️ Award failed for @${targetUser.username}: ${error.message}`);
       } else {
         showToast(`✓ Saved: ${label} ${isNowAwarded ? "awarded to" : "removed from"} @${targetUser.username || "user"}`);
         broadcastSettingsUpdate({ userId: targetUser.id, awardedFeatures: updated });
       }
     } catch (e: any) {
+      setProfiles((prev) =>
+        prev.map((p) => (p.id === targetUser.id ? { ...p, awarded_features: current } : p))
+      );
       showToast(`⚠️ Exception: ${e.message}`);
     }
   };
@@ -363,7 +393,7 @@ export default function OverseerScreen() {
                         style={[
                           styles.awardBadge,
                           isAwarded && styles.awardBadgeActive,
-                          isGloballyPublic && styles.awardBadgePublic,
+                          isGloballyPublic && !isAwarded && styles.awardBadgePublic,
                         ]}
                         onPress={() => togglePersonalAward(p, f.key, f.label)}
                       >
@@ -373,7 +403,7 @@ export default function OverseerScreen() {
                             (isAwarded || isGloballyPublic) && styles.awardBadgeTextActive,
                           ]}
                         >
-                          {f.label} {isGloballyPublic ? "(Public)" : isAwarded ? "✓" : "+"}
+                          {f.label} {isAwarded ? "✓ (Awarded)" : isGloballyPublic ? "(Public)" : "+ (Assign)"}
                         </Text>
                       </TouchableOpacity>
                     );

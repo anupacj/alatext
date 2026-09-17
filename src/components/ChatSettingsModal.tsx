@@ -129,6 +129,8 @@ interface ChatSettingsModalProps {
   currentSettings: any;
   onSettingsSaved: (newSettings: any) => void;
   onSendAlert?: (alert: { title: string; message: string; actionText: string; cancelText: string }) => void;
+  myProfile?: UserProfile | null;
+  publicFeatures?: string[];
 }
 
 export default function ChatSettingsModal({
@@ -140,6 +142,8 @@ export default function ChatSettingsModal({
   currentSettings,
   onSettingsSaved,
   onSendAlert,
+  myProfile: myProfileProp,
+  publicFeatures: publicFeaturesProp,
 }: ChatSettingsModalProps) {
   const router = useRouter();
   const { theme } = useTheme();
@@ -168,8 +172,12 @@ export default function ChatSettingsModal({
   const [alertCancelText, setAlertCancelText] = useState("");
   const [lastSentTime, setLastSentTime] = useState(0);
 
-  const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
-  const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
+  const [internalProfile, setInternalProfile] = useState<UserProfile | null>(null);
+  const [internalPublicFeatures, setInternalPublicFeatures] = useState<string[]>([]);
+
+  const activeProfile = myProfileProp !== undefined ? myProfileProp : internalProfile;
+  const activePublicFeatures = publicFeaturesProp !== undefined ? publicFeaturesProp : internalPublicFeatures;
+
   const [partnerUser, setPartnerUser] = useState<any>(targetUser || null);
   const [partnerNickname, setPartnerNickname] = useState(targetUser?.nickname || currentSettings?.nickname || "");
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState("");
@@ -177,13 +185,26 @@ export default function ChatSettingsModal({
   useEffect(() => {
     if (!visible || !chatId || !userId) return;
 
-    if (userId) {
+    let syncChannel: any = null;
+    if (userId && (myProfileProp === undefined || publicFeaturesProp === undefined)) {
       supabase.from("profiles").select("*").eq("id", userId).single().then(({ data }) => {
-        if (data) setMyProfile(data);
+        if (data) setInternalProfile(data);
       });
       supabase.from("app_settings").select("value").eq("key", "public_features").single().then(({ data }) => {
-        if (data?.value && Array.isArray(data.value)) setPublicFeatures(data.value);
+        if (data?.value && Array.isArray(data.value)) setInternalPublicFeatures(data.value);
       });
+
+      syncChannel = supabase.channel("app_settings_sync");
+      syncChannel
+        .on("broadcast", { event: "settings_updated" }, (payload: any) => {
+          if (payload.payload?.publicFeatures) {
+            setInternalPublicFeatures(payload.payload.publicFeatures);
+          }
+          if (payload.payload?.userId === userId && payload.payload?.awardedFeatures) {
+            setInternalProfile((prev: any) => ({ ...prev, awarded_features: payload.payload.awardedFeatures }));
+          }
+        })
+        .subscribe();
     }
 
     if (targetUser) {
@@ -217,6 +238,12 @@ export default function ChatSettingsModal({
           }
         }
       });
+
+    return () => {
+      if (syncChannel) {
+        try { supabase.removeChannel(syncChannel); } catch (e) {}
+      }
+    };
   }, [visible, userId, chatId, targetUser]);
 
   useEffect(() => {
@@ -616,7 +643,7 @@ export default function ChatSettingsModal({
             </View>
 
             {/* CUSTOM ALERT TRIGGER BUTTON */}
-            {isFeatureEnabled("custom_alerts", myProfile, publicFeatures) && (
+            {isFeatureEnabled("custom_alerts", activeProfile, activePublicFeatures) && (
               <>
                 <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚨 Custom Alerts</Text>
                 <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>

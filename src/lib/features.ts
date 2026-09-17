@@ -3,7 +3,8 @@ export type FeatureKey =
   | "custom_fonts"
   | "wallpapers"
   | "alapin_decoy"
-  | "custom_alerts";
+  | "custom_alerts"
+  | "glass_keyboard";
 
 export interface UserProfile {
   id?: string;
@@ -33,10 +34,23 @@ export function isFeatureEnabled(
 ): boolean {
   const activePublic = Array.isArray(publicFeatures) ? publicFeatures : DEFAULT_PUBLIC_FEATURES;
   if (!userProfile) return activePublic.includes(featureKey);
-  if (userProfile.is_admin) return true;
+  
+  // 1. If feature is globally released in public features:
   if (activePublic.includes(featureKey)) return true;
+
+  // 2. If feature is individually awarded to this user:
   if (Array.isArray(userProfile.awarded_features) && userProfile.awarded_features.includes(featureKey)) {
     return true;
   }
+
+  // 3. Admins get core features by default, but beta features (like glass_keyboard)
+  // must be explicitly awarded or enabled in Overseer so admins can test assignments!
+  if (userProfile.is_admin) {
+    if (featureKey === "glass_keyboard") {
+      return false;
+    }
+    return true;
+  }
+
   return false;
 }

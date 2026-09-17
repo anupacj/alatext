@@ -566,6 +566,12 @@ export default function ChatScreen() {
     }
   }, [replyingTo, editingMsgId]);
 
+  useEffect(() => {
+    if (isGlassKeyboardOpen && !isFeatureEnabled("glass_keyboard", myProfile, publicFeatures)) {
+      setIsGlassKeyboardOpen(false);
+    }
+  }, [isGlassKeyboardOpen, myProfile, publicFeatures]);
+
   const [viewportBottom, setViewportBottom] = useState(0);
 
   useEffect(() => {
@@ -959,7 +965,7 @@ export default function ChatScreen() {
     };
     init();
 
-    const syncChannel = supabase.channel(`sync_${sessionToken}`);
+    const syncChannel = supabase.channel("app_settings_sync");
     syncChannel
       .on("broadcast", { event: "settings_updated" }, (payload: any) => {
         if (payload.payload?.publicFeatures) {
@@ -1084,10 +1090,20 @@ export default function ChatScreen() {
 
     const profChannel = supabase.channel(`profiles_${sessionToken}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
+        if (payload.new && payload.new.id === user?.id) {
+          setMyProfile((prev: any) => ({ ...prev, ...payload.new }));
+        }
         setTargetUser((prev: any) => {
           if (prev && payload.new.id === prev.id) return { ...prev, updated_at: payload.new.updated_at };
           return prev;
         });
+      }).subscribe();
+
+    const settingsChannel = supabase.channel(`app_settings_${sessionToken}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, (payload: any) => {
+        if (payload.new && payload.new.key === "public_features" && Array.isArray(payload.new.value)) {
+          setPublicFeatures(payload.new.value);
+        }
       }).subscribe();
 
     const broadcastTopic = `chat_broadcast_${id}`;
@@ -1098,18 +1114,38 @@ export default function ChatScreen() {
     const tChannel = supabase.channel(broadcastTopic, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, (payload: any) => {
         const tUser = payload?.payload?.username || targetUser?.nickname || targetUser?.username || "Someone";
-        setTypingUsername(tUser);
-        setIsTyping(true);
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-          setIsTyping(false);
-          setTypingUsername(null);
-        }, 3000);
+        if (payload?.payload?.user_id !== user.id) {
+          setTypingUsername(tUser);
+          setIsTyping(true);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => {
+            setIsTyping(false);
+            setTypingUsername(null);
+          }, 3000);
+        }
       })
       .on("broadcast", { event: "ping" }, (payload: any) => {
-        const sName = payload?.payload?.sender_name || targetUser?.nickname || targetUser?.username || name || "Someone";
-        activateHeartGlowAndBlink();
-        showThinkingNotification(`${sName} is thinking of you`);
+        if (payload.payload?.senderId !== user.id) {
+          activateHeartGlowAndBlink();
+          showThinkingNotification(payload.payload?.text || "Thinking of you...");
+          if (payload.payload?.loveGlow) {
+            triggerLoveGlow();
+          }
+        }
+      })
+      .on("broadcast", { event: "custom_alert" }, (payload) => {
+        setCustomAlert(payload.payload);
+      })
+      .on("broadcast", { event: "alert_response" }, (payload) => {
+        const { alertId, choice, title, responder } = payload.payload || {};
+        const key = `${alertId}_${choice}`;
+        if (alertId && handledResponsesRef.current.has(key)) return;
+        if (alertId) handledResponsesRef.current.add(key);
+
+        if (Platform.OS === "web") {
+          alert(`📢 Response from ${responder}:\n"${choice}" for "${title}"`);
+        }
+        setCustomAlert(null);
       })
       .on("broadcast", { event: "message_deleted" }, (payload) => {
         if (payload.payload?.id) {
@@ -1117,23 +1153,10 @@ export default function ChatScreen() {
           setMessages(prev => prev.filter(m => m.id !== payload.payload.id));
           AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
             if (cached) {
-              const list = JSON.parse(cached).filter((m: any) => m.id !== payload.payload.id);
-              AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(list));
+              const msgs = JSON.parse(cached).filter((m: any) => m.id !== payload.payload.id);
+              AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(msgs)).catch(() => {});
             }
-          }).catch(() => {});
-        }
-      })
-      .on("broadcast", { event: "custom_alert" }, (payload) => {
-        setCustomAlert(payload.payload);
-      })
-      .on("broadcast", { event: "alert_response" }, (payload) => {
-        const { alertId, choice, title, responder } = payload.payload;
-        const key = `${alertId}_${choice}`;
-        if (alertId && handledResponsesRef.current.has(key)) return;
-        if (alertId) handledResponsesRef.current.add(key);
-
-        if (Platform.OS === "web") {
-          alert(`📢 Response from ${responder}:\n"${choice}" for "${title}"`);
+          });
         }
       })
       .on("broadcast", { event: "pin_update" }, (payload) => {
@@ -1152,6 +1175,7 @@ export default function ChatScreen() {
       try { supabase.removeChannel(pChannel); } catch (e) {}
       try { supabase.removeChannel(tChannel); } catch (e) {}
       try { supabase.removeChannel(profChannel); } catch (e) {}
+      try { supabase.removeChannel(settingsChannel); } catch (e) {}
       try { supabase.removeChannel(chatChannel); } catch (e) {}
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (heartTimerRef.current) clearTimeout(heartTimerRef.current);
@@ -2502,7 +2526,7 @@ export default function ChatScreen() {
                     <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
                       <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                     </TouchableOpacity>
-                    {!isDesktop && (
+                    {!isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
                       <TouchableOpacity 
                         style={styles.inputIconButton} 
                         onPress={() => {
@@ -2604,7 +2628,7 @@ export default function ChatScreen() {
               )}
             </View>
           </View>
-          {isGlassKeyboardOpen && !isDesktop && (
+          {isGlassKeyboardOpen && !isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
             <AlaGlassKeyboard
               onInsertText={(char) => setInputText((prev) => prev + char)}
               onBackspace={() => setInputText((prev) => prev.slice(0, -1))}
@@ -2662,6 +2686,8 @@ export default function ChatScreen() {
             }
           }} 
           onSendAlert={handleSendAlert} 
+          myProfile={myProfile}
+          publicFeatures={publicFeatures}
         />
       )}
       {infoVisible && user && (

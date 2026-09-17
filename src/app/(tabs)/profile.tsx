@@ -152,6 +152,31 @@ export default function Profile() {
     };
     
     fetchProfile();
+
+    const syncChannel = supabase.channel("app_settings_sync");
+    syncChannel
+      .on("broadcast", { event: "settings_updated" }, (payload: any) => {
+        if (payload.payload?.publicFeatures) {
+          setPublicFeatures(payload.payload.publicFeatures);
+        }
+        if (payload.payload?.userId === user?.id && payload.payload?.awardedFeatures) {
+          setProfile((prev: any) => ({ ...prev, awarded_features: payload.payload.awardedFeatures }));
+        }
+      })
+      .subscribe();
+
+    const profChannel = supabase.channel(`profile_sync_${user.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload: any) => {
+        if (payload.new && payload.new.id === user.id) {
+          setProfile((prev: any) => ({ ...prev, ...payload.new }));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(syncChannel); } catch (e) {}
+      try { supabase.removeChannel(profChannel); } catch (e) {}
+    };
   }, [user]);
 
   const saveNotificationPref = async (val: string) => {
