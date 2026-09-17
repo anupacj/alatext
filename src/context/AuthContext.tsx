@@ -18,16 +18,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
+    const checkBan = async (uid: string) => {
+      const { data } = await supabase.from('profiles').select('is_banned').eq('id', uid).single();
+      if (data?.is_banned) {
+        if (typeof alert !== "undefined") {
+          alert("Your account has been suspended by an administrator.");
+        }
+        supabase.auth.signOut();
+      }
+    };
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setInitialized(true);
       if (session?.user) {
         supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', session.user.id).then();
+        checkBan(session.user.id);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session?.user) {
+        checkBan(session.user.id);
+      }
     });
 
     return () => {
@@ -43,7 +57,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', session.user.id).then();
     }, 30 * 1000);
 
-    return () => clearInterval(heartbeat);
+    const syncChannel = supabase.channel("app_settings_sync");
+    syncChannel
+      .on("broadcast", { event: "settings_updated" }, (payload: any) => {
+        if (payload.payload?.userId === session.user.id && payload.payload?.isBanned) {
+          if (typeof alert !== "undefined") {
+            alert("Your account has been suspended by an administrator.");
+          }
+          supabase.auth.signOut();
+        }
+      })
+      .subscribe();
+
+    const profChannel = supabase.channel(`auth_prof_sync_${session.user.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${session.user.id}` }, (payload: any) => {
+        if (payload.new?.is_banned) {
+          if (typeof alert !== "undefined") {
+            alert("Your account has been suspended by an administrator.");
+          }
+          supabase.auth.signOut();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      clearInterval(heartbeat);
+      try { supabase.removeChannel(syncChannel); } catch (e) {}
+      try { supabase.removeChannel(profChannel); } catch (e) {}
+    };
   }, [session?.user?.id]);
 
   useEffect(() => {

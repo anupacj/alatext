@@ -519,18 +519,22 @@ export default function ChatSettingsModal({
             {/* WALLPAPER */}
             <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🖼 Wallpaper</Text>
             
-            <Text style={[styles.sliderLabel, { marginBottom: 12 }]}>Doodle Overlay</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-              {DOODLE_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[styles.shapeOption, { width: 80, marginRight: 8, paddingVertical: 10 }, wallpaperDoodle === opt.value && styles.shapeOptionSelected]}
-                  onPress={() => setWallpaperDoodle(opt.value)}
-                >
-                  <Text style={[styles.shapeLabel, wallpaperDoodle === opt.value && { color: theme.text }]}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isFeatureEnabled("wallpapers", activeProfile, activePublicFeatures) && (
+              <>
+                <Text style={[styles.sliderLabel, { marginBottom: 12 }]}>Doodle Overlay</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                  {DOODLE_OPTIONS.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.shapeOption, { width: 80, marginRight: 8, paddingVertical: 10 }, wallpaperDoodle === opt.value && styles.shapeOptionSelected]}
+                      onPress={() => setWallpaperDoodle(opt.value)}
+                    >
+                      <Text style={[styles.shapeLabel, wallpaperDoodle === opt.value && { color: theme.text }]}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
 
             <View style={styles.wallpaperPreviewContainer}>
               {wallpaperUrl ? (

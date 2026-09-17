@@ -114,7 +114,11 @@ export default function ChatScreen() {
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(false);
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
+  const myProfileRef = useRef<UserProfile | null>(null);
+  myProfileRef.current = myProfile;
   const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
+  const publicFeaturesRef = useRef<string[]>([]);
+  publicFeaturesRef.current = publicFeatures;
   const isTargetOnline = targetUser && targetUser.updated_at 
     ? Date.now() - new Date(targetUser.updated_at).getTime() < 45 * 1000 
     : false;
@@ -1113,6 +1117,7 @@ export default function ChatScreen() {
     }
     const tChannel = supabase.channel(broadcastTopic, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, (payload: any) => {
+        if (!isFeatureEnabled("ghost_typing", myProfileRef.current, publicFeaturesRef.current)) return;
         const tUser = payload?.payload?.username || targetUser?.nickname || targetUser?.username || "Someone";
         if (payload?.payload?.user_id !== user.id) {
           setTypingUsername(tUser);
@@ -2273,7 +2278,7 @@ export default function ChatScreen() {
             },
             showWallpaper && { backgroundColor: "transparent" }
           ]}>
-            {isTyping && (
+            {isTyping && isFeatureEnabled("ghost_typing", myProfile, publicFeatures) && (
               <View style={[
                 styles.typingBanner,
                 isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
@@ -2567,7 +2572,7 @@ export default function ChatScreen() {
                       onChangeText={(text) => {
                         setInputText(text);
                         const now = Date.now();
-                        if (typingChannelRef.current && user && now - lastTypingSentRef.current > 2000) {
+                        if (typingChannelRef.current && user && isFeatureEnabled("ghost_typing", myProfile, publicFeatures) && now - lastTypingSentRef.current > 2000) {
                           lastTypingSentRef.current = now;
                           typingChannelRef.current.send({
                             type: "broadcast",
