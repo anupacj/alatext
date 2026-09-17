@@ -576,6 +576,15 @@ export default function ChatScreen() {
     }
   }, [isGlassKeyboardOpen, myProfile, publicFeatures]);
 
+  useEffect(() => {
+    if (isGlassKeyboardOpen) {
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [isGlassKeyboardOpen]);
+
   const [viewportBottom, setViewportBottom] = useState(0);
 
   useEffect(() => {
@@ -2250,7 +2259,12 @@ export default function ChatScreen() {
             onEndReached={loadOlderMessages}
             onEndReachedThreshold={0.3}
             ListFooterComponent={loadingOlder ? <ActivityIndicator size="small" color={theme.accent} style={{ marginVertical: 10 }} /> : null}
-            contentContainerStyle={styles.listContainer}
+            contentContainerStyle={[
+              styles.listContainer,
+              isGlassKeyboardOpen && !isDesktop && {
+                paddingTop: (Platform.OS === "web" ? (isDesktop ? 74 : 82) : 98) + 290,
+              },
+            ]}
             showsVerticalScrollIndicator={false}
             extraData={highlightedMsgId}
             onScroll={(e) => {
@@ -2274,10 +2288,16 @@ export default function ChatScreen() {
             styles.inputArea,
             {
               bottom: viewportBottom,
-              paddingBottom: viewportBottom > 0 ? 6 : (isGlassKeyboardOpen ? 4 : (Platform.OS === "web" ? 20 : (Platform.OS === "ios" ? 28 : 16)))
+              paddingBottom: isGlassKeyboardOpen ? 0 : (viewportBottom > 0 ? 6 : (Platform.OS === "web" ? (isDesktop ? 16 : 22) : (Platform.OS === "ios" ? 28 : 16)))
             },
             showWallpaper && { backgroundColor: "transparent" }
           ]}>
+            <View style={{
+              width: "100%",
+              paddingHorizontal: isDesktop ? 20 : 10,
+              paddingTop: 8,
+              paddingBottom: isGlassKeyboardOpen ? 6 : 0,
+            }}>
             {isTyping && isFeatureEnabled("ghost_typing", myProfile, publicFeatures) && (
               <View style={[
                 styles.typingBanner,
@@ -2520,15 +2540,30 @@ export default function ChatScreen() {
                         nativeID="font-picker-trigger"
                         {...({ id: "font-picker-trigger" } as any)}
                         style={styles.inputIconButton} 
-                        onPress={() => setFontPickerOpen(!fontPickerOpen)}
+                        onPress={() => {
+                          if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                          setFontPickerOpen(!fontPickerOpen);
+                        }}
                       >
                         <Type size={20} color={fontPickerOpen || isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} />
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity style={styles.inputIconButton} onPress={() => setStickerPickerOpen(true)}>
+                    <TouchableOpacity 
+                      style={styles.inputIconButton} 
+                      onPress={() => {
+                        if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                        setStickerPickerOpen(true);
+                      }}
+                    >
                       <Sticker size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.inputIconButton} onPress={() => setEmojiOpen(true)}>
+                    <TouchableOpacity 
+                      style={styles.inputIconButton} 
+                      onPress={() => {
+                        if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                        setEmojiOpen(true);
+                      }}
+                    >
                       <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                     </TouchableOpacity>
                     {!isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
@@ -2559,6 +2594,7 @@ export default function ChatScreen() {
                     <TextInput 
                       ref={textInputRef}
                       showSoftInputOnFocus={!isGlassKeyboardOpen}
+                      inputMode={isGlassKeyboardOpen ? "none" : "text"}
                       style={[
                         styles.textInput, 
                         (messageFont && messageFont !== "system") 
@@ -2632,21 +2668,22 @@ export default function ChatScreen() {
                 </>
               )}
             </View>
+            </View>
+            {isGlassKeyboardOpen && !isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
+              <AlaGlassKeyboard
+                onInsertText={(char) => setInputText((prev) => prev + char)}
+                onBackspace={() => setInputText((prev) => prev.slice(0, -1))}
+                onSend={sendMessage}
+                onClose={() => setIsGlassKeyboardOpen(false)}
+                onSwitchToSystem={() => {
+                  setIsGlassKeyboardOpen(false);
+                  setTimeout(() => textInputRef.current?.focus(), 100);
+                }}
+                theme={theme}
+                isAmoled={isAmoled}
+              />
+            )}
           </View>
-          {isGlassKeyboardOpen && !isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
-            <AlaGlassKeyboard
-              onInsertText={(char) => setInputText((prev) => prev + char)}
-              onBackspace={() => setInputText((prev) => prev.slice(0, -1))}
-              onSend={sendMessage}
-              onClose={() => setIsGlassKeyboardOpen(false)}
-              onSwitchToSystem={() => {
-                setIsGlassKeyboardOpen(false);
-                setTimeout(() => textInputRef.current?.focus(), 100);
-              }}
-              theme={theme}
-              isAmoled={isAmoled}
-            />
-          )}
         </KeyboardAvoidingView>
       </View>
 
@@ -3006,9 +3043,6 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: isDesktop ? 20 : 10,
-    paddingVertical: 10,
-    paddingBottom: Platform.OS === "web" ? (isDesktop ? 16 : 22) : (Platform.OS === "ios" ? 28 : 16),
     backgroundColor: "transparent",
     zIndex: 50,
   },
