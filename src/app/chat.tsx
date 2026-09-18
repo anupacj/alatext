@@ -64,6 +64,7 @@ interface Message {
   reply_to_sender?: string | null;
   custom_font?: string | null;
   status?: "sending" | "failed" | "sent";
+  client_id?: string;
 }
 
 function SendingDots() {
@@ -1077,10 +1078,10 @@ export default function ChatScreen() {
           setMessages(prev => {
             if (prev.some(m => m.id === nm.id)) return prev;
             if (nm.sender_id === user?.id) {
-              const tempIndex = prev.findIndex(m => m.id.startsWith("temp-") && m.text === nm.text);
+              const tempIndex = prev.findIndex(m => (m.id.startsWith("temp-") || m.client_id) && m.text === nm.text);
               if (tempIndex !== -1) {
                 const updated = [...prev];
-                updated[tempIndex] = { ...nm, status: "sent" };
+                updated[tempIndex] = { ...nm, client_id: updated[tempIndex].client_id || updated[tempIndex].id, status: "sent" };
                 return updated;
               }
             }
@@ -1497,23 +1498,13 @@ export default function ChatScreen() {
         avatar: user.user_metadata?.avatar_url || "https://ui-avatars.com/api/?name=U",
         isMe: true,
         status: "sending",
+        client_id: tempId,
         custom_font: curFont || null,
         reply_to_id: curReply?.id || null,
         reply_to_content: curReply?.text || null,
         reply_to_sender: curReply?.sender || null,
       };
       
-      LayoutAnimation.configureNext({
-        duration: 320,
-        create: {
-          type: LayoutAnimation.Types.easeInEaseOut,
-          property: LayoutAnimation.Properties.opacity,
-        },
-        update: {
-          type: LayoutAnimation.Types.spring,
-          springDamping: 0.68,
-        },
-      });
       setMessages(prev => [tempMsg, ...prev]);
       checkLiveByeTrigger(tempMsg, messagesRef.current);
       checkLiveLoveTrigger(tempMsg);
@@ -1532,7 +1523,7 @@ export default function ChatScreen() {
           if (prev.some(m => m.id === data.id)) {
             return prev.filter(m => m.id !== tempId);
           }
-          return prev.map(m => m.id === tempId ? { ...m, id: data.id, status: "sent" } : m);
+          return prev.map(m => m.id === tempId ? { ...m, id: data.id, client_id: tempId, status: "sent" } : m);
         });
       }
     }
@@ -1616,17 +1607,6 @@ export default function ChatScreen() {
 
         if (!insertErr && insertedMsgs && insertedMsgs.length > 0) {
           const formatted = insertedMsgs.map(formatMsg);
-          LayoutAnimation.configureNext({
-            duration: 320,
-            create: {
-              type: LayoutAnimation.Types.easeInEaseOut,
-              property: LayoutAnimation.Properties.opacity,
-            },
-            update: {
-              type: LayoutAnimation.Types.spring,
-              springDamping: 0.68,
-            },
-          });
           setMessages(prev => {
             const existingIds = new Set(prev.map(m => m.id));
             const additions = formatted.filter(m => !existingIds.has(m.id));
@@ -1785,22 +1765,12 @@ export default function ChatScreen() {
       avatar: user.user_metadata?.avatar_url || "https://ui-avatars.com/api/?name=U",
       isMe: true,
       status: "sending",
+      client_id: tempId,
       reply_to_id: curReply?.id || null,
       reply_to_content: curReply?.text || null,
       reply_to_sender: curReply?.sender || null,
     };
 
-    LayoutAnimation.configureNext({
-      duration: 320,
-      create: {
-        type: LayoutAnimation.Types.easeInEaseOut,
-        property: LayoutAnimation.Properties.opacity,
-      },
-      update: {
-        type: LayoutAnimation.Types.spring,
-        springDamping: 0.68,
-      },
-    });
     setMessages(prev => [tempMsg, ...prev]);
 
     try {
@@ -1825,7 +1795,7 @@ export default function ChatScreen() {
             console.error("Voice insert failed:", error);
             setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "failed" } : m));
           } else if (data) {
-            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.id, text: publicUrl, status: "sent" } : m));
+            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.id, client_id: tempId, text: publicUrl, status: "sent" } : m));
           }
         } catch (err: any) {
           console.error("Voice upload error:", err);
@@ -2443,7 +2413,7 @@ export default function ChatScreen() {
             ref={flatListRef}
             data={messages}
             renderItem={renderMessage}
-            keyExtractor={item => item.id}
+            keyExtractor={item => item.client_id || item.id}
             inverted
             onTouchStart={() => {
               if (fontPickerOpen) setFontPickerOpen(false);
@@ -3507,9 +3477,13 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
 
 // --- MessageRow Component for Animations & Gradients ---
 const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage }: any) => {
-  // Live entrance: only messages sent/received fresh in the session animate (avoids whole-list re-bounce on mount)
+  // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
   const isLiveEntrance = useRef(
-    index === 0 && (item.status === "sending" || Date.now() - (item.created_at_ts || 0) < 4000)
+    index === 0 && (
+      item.isMe 
+        ? item.status === "sending" 
+        : (Date.now() - (item.created_at_ts || 0) < 3000)
+    )
   ).current;
 
   // Sleek rubbery bubble sending physics:
