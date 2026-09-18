@@ -11,7 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
@@ -103,6 +103,7 @@ export default function ChatScreen() {
   const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUsername, setTypingUsername] = useState<string | null>(null);
+  const [ghostText, setGhostText] = useState<string | null>(null);
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
   const [isGlassKeyboardOpen, setIsGlassKeyboardOpen] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -557,6 +558,8 @@ export default function ChatScreen() {
 
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<any>(null);
+  const typingDebounceTimeoutRef = useRef<any>(null);
+  const typingIdleTimeoutRef = useRef<any>(null);
   const handledResponsesRef = useRef<Set<string>>(new Set());
   const lastTypingSentRef = useRef<number>(0);
   const typingChannelRef = useRef<any>(null);
@@ -1060,8 +1063,16 @@ export default function ChatScreen() {
             created_at_ts: validTs, time: timeStr,
             avatar: pd?.avatar_url || null, isMe: payload.new.sender_id === user?.id,
             reply_to_id: payload.new.reply_to_id, reply_to_content: payload.new.reply_to_content, reply_to_sender: payload.new.reply_to_sender,
-            custom_font: payload.new.custom_font,
           };
+          if (nm.sender_id !== user?.id) {
+            setIsTyping(false);
+            setGhostText(null);
+            setTypingUsername(null);
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current);
+              typingTimeoutRef.current = null;
+            }
+          }
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setMessages(prev => {
             if (prev.some(m => m.id === nm.id)) return prev;
@@ -1129,17 +1140,37 @@ export default function ChatScreen() {
     }
     const tChannel = supabase.channel(broadcastTopic, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, (payload: any) => {
-        if (!isFeatureEnabled("ghost_typing", myProfileRef.current, publicFeaturesRef.current)) return;
-        const tUser = payload?.payload?.username || targetUser?.nickname || targetUser?.username || "Someone";
-        if (payload?.payload?.user_id !== user.id) {
-          setTypingUsername(tUser);
-          setIsTyping(true);
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = setTimeout(() => {
-            setIsTyping(false);
-            setTypingUsername(null);
-          }, 3000);
+        const p = payload?.payload;
+        if (!p || p.user_id === user.id) return;
+
+        // Explicit stop typing broadcast from sender (sent message, backspaced to empty, or blur)
+        if (p.is_typing === false) {
+          setIsTyping(false);
+          setGhostText(null);
+          setTypingUsername(null);
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = null;
+          }
+          return;
         }
+
+        const tUser = p.username || targetUser?.nickname || targetUser?.username || "Someone";
+        setTypingUsername(tUser);
+        setIsTyping(true);
+
+        if (p.ghost_text) {
+          setGhostText(p.ghost_text);
+        } else {
+          setGhostText(null);
+        }
+
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+          setIsTyping(false);
+          setGhostText(null);
+          setTypingUsername(null);
+        }, 3500);
       })
       .on("broadcast", { event: "ping" }, (payload: any) => {
         if (payload.payload?.senderId !== user.id) {
@@ -1187,6 +1218,18 @@ export default function ChatScreen() {
       }).subscribe();
 
     return () => {
+      if (typingDebounceTimeoutRef.current) clearTimeout(typingDebounceTimeoutRef.current);
+      if (typingIdleTimeoutRef.current) clearTimeout(typingIdleTimeoutRef.current);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (tChannel && user) {
+        try {
+          tChannel.send({
+            type: "broadcast",
+            event: "typing",
+            payload: { user_id: user.id, is_typing: false, ghost_text: null }
+          });
+        } catch (e) {}
+      }
       try { supabase.removeChannel(syncChannel); } catch (e) {}
       try { supabase.removeChannel(channel); } catch (e) {}
       try { supabase.removeChannel(pChannel); } catch (e) {}
@@ -1194,7 +1237,6 @@ export default function ChatScreen() {
       try { supabase.removeChannel(profChannel); } catch (e) {}
       try { supabase.removeChannel(settingsChannel); } catch (e) {}
       try { supabase.removeChannel(chatChannel); } catch (e) {}
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (heartTimerRef.current) clearTimeout(heartTimerRef.current);
       if (thinkingTimerRef.current) clearTimeout(thinkingTimerRef.current);
       setIsHeartGlowing(false);
@@ -1299,6 +1341,108 @@ export default function ChatScreen() {
     setTimeout(() => textInputRef.current?.focus(), 50);
   }, []);
 
+  const handleInputChange = useCallback((text: string) => {
+    setInputText(text);
+
+    if (!typingChannelRef.current || !user) return;
+    const trimmed = text.trim();
+
+    // 1. If text is cleared or empty, instantly broadcast stop_typing
+    if (!trimmed) {
+      if (typingDebounceTimeoutRef.current) {
+        clearTimeout(typingDebounceTimeoutRef.current);
+        typingDebounceTimeoutRef.current = null;
+      }
+      if (typingIdleTimeoutRef.current) {
+        clearTimeout(typingIdleTimeoutRef.current);
+        typingIdleTimeoutRef.current = null;
+      }
+      try {
+        typingChannelRef.current.send({
+          type: "broadcast",
+          event: "typing",
+          payload: {
+            user_id: user.id,
+            username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+            is_typing: false,
+            ghost_text: null,
+          },
+        });
+      } catch (e) {}
+      return;
+    }
+
+    // Set an idle fallback: if the user stops typing for 3.5s, auto broadcast stop_typing
+    if (typingIdleTimeoutRef.current) clearTimeout(typingIdleTimeoutRef.current);
+    typingIdleTimeoutRef.current = setTimeout(() => {
+      try {
+        if (typingChannelRef.current && user) {
+          typingChannelRef.current.send({
+            type: "broadcast",
+            event: "typing",
+            payload: {
+              user_id: user.id,
+              username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+              is_typing: false,
+              ghost_text: null,
+            },
+          });
+        }
+      } catch (e) {}
+    }, 3500);
+
+    const canGhost = isFeatureEnabled("ghost_typing", myProfileRef.current, publicFeaturesRef.current);
+    const now = Date.now();
+
+    if (canGhost) {
+      // Ghost typing: fast real-time letter-by-letter reveal (120ms debounce)
+      if (typingDebounceTimeoutRef.current) {
+        clearTimeout(typingDebounceTimeoutRef.current);
+      }
+
+      const sendGhostPayload = () => {
+        lastTypingSentRef.current = Date.now();
+        try {
+          typingChannelRef.current.send({
+            type: "broadcast",
+            event: "typing",
+            payload: {
+              user_id: user.id,
+              username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+              is_typing: true,
+              ghost_text: text,
+            },
+          });
+        } catch (e) {}
+      };
+
+      // If user just started typing (first keypress or after long idle), broadcast immediately
+      if (now - lastTypingSentRef.current > 1500) {
+        sendGhostPayload();
+      } else {
+        // Subsequent keystrokes debounced by 120ms for smooth live letter reveal without flooding
+        typingDebounceTimeoutRef.current = setTimeout(sendGhostPayload, 120);
+      }
+    } else {
+      // Normal typing indicator: broadcast every 2000ms
+      if (now - lastTypingSentRef.current > 2000) {
+        lastTypingSentRef.current = now;
+        try {
+          typingChannelRef.current.send({
+            type: "broadcast",
+            event: "typing",
+            payload: {
+              user_id: user.id,
+              username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+              is_typing: true,
+              ghost_text: null,
+            },
+          });
+        } catch (e) {}
+      }
+    }
+  }, [user, myNicknameFromPartner]);
+
   const sendMessage = useCallback(async () => {
     if (!inputText.trim() || !user || !id) return;
     const content = inputText.trim();
@@ -1310,6 +1454,30 @@ export default function ChatScreen() {
       ? (baseFont ? `${baseFont}:shimmer` : "system:shimmer")
       : baseFont;
     setInputText(""); setEditingMsgId(null); setReplyingTo(null); setMessageFont(null); setIsShimmerActive(false); setFontPickerOpen(false);
+    
+    // Instantly cancel any pending typing debounces and broadcast stop_typing
+    if (typingDebounceTimeoutRef.current) {
+      clearTimeout(typingDebounceTimeoutRef.current);
+      typingDebounceTimeoutRef.current = null;
+    }
+    if (typingIdleTimeoutRef.current) {
+      clearTimeout(typingIdleTimeoutRef.current);
+      typingIdleTimeoutRef.current = null;
+    }
+    if (typingChannelRef.current && user) {
+      try {
+        typingChannelRef.current.send({
+          type: "broadcast",
+          event: "typing",
+          payload: {
+            user_id: user.id,
+            username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+            is_typing: false,
+            ghost_text: null,
+          },
+        });
+      } catch (e) {}
+    }
     
     if (curEdit) {
       setMessages(prev => prev.map(m => m.id === curEdit ? { ...m, text: content } : m));
@@ -2323,30 +2491,67 @@ export default function ChatScreen() {
               paddingTop: 8,
               paddingBottom: isGlassKeyboardOpen ? 6 : 0,
             }}>
-            {isTyping && isFeatureEnabled("ghost_typing", myProfile, publicFeatures) && (
+            {isTyping && (
               <View style={[
                 styles.typingBanner,
                 isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
                 showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
                 theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
                 theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
-                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+                { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
+                ghostText ? { paddingVertical: 6, paddingHorizontal: 12 } : {}
               ]}>
-                <ShinyText
-                  text={`${typingUsername || targetUser?.nickname || targetUser?.username || name || "Someone"} is typing`}
-                  speed={2}
-                  color={isAmoled ? "#aaaaaa" : (theme.id === "light" ? "#4b5563" : "#d1d5db")}
-                  shineColor={isAmoled ? "#ffffff" : (theme.id === "light" ? "#111827" : "#ffffff")}
-                  spread={120}
-                  style={[
-                    styles.typingText,
-                    { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") },
-                    chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-                  ]}
-                />
-                <Text style={[styles.typingText, { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") }]}>
-                  <SendingDots />
-                </Text>
+                {ghostText ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", flex: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Ghost size={14} color={theme.accent || "#a855f7"} />
+                      <Text style={[
+                        styles.typingText,
+                        { fontWeight: "700", color: theme.accent || "#a855f7" },
+                        chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                      ]}>
+                        {typingUsername || targetUser?.nickname || targetUser?.username || name || "Someone"}:
+                      </Text>
+                    </View>
+                    <Text
+                      numberOfLines={2}
+                      ellipsizeMode="head"
+                      style={[
+                        styles.typingText,
+                        {
+                          color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff"),
+                          fontStyle: "italic",
+                          opacity: 0.92,
+                          flexShrink: 1,
+                        },
+                        chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                      ]}
+                    >
+                      "{ghostText}"
+                    </Text>
+                    <Text style={[styles.typingText, { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") }]}>
+                      <SendingDots />
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <ShinyText
+                      text={`${typingUsername || targetUser?.nickname || targetUser?.username || name || "Someone"} is typing`}
+                      speed={2}
+                      color={isAmoled ? "#aaaaaa" : (theme.id === "light" ? "#4b5563" : "#d1d5db")}
+                      shineColor={isAmoled ? "#ffffff" : (theme.id === "light" ? "#111827" : "#ffffff")}
+                      spread={120}
+                      style={[
+                        styles.typingText,
+                        { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") },
+                        chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                      ]}
+                    />
+                    <Text style={[styles.typingText, { color: isAmoled ? "#ffffff" : (theme.id === "light" || theme.id === "pink" ? "#333333" : "#ffffff") }]}>
+                      <SendingDots />
+                    </Text>
+                  </>
+                )}
               </View>
             )}
 
@@ -2630,21 +2835,7 @@ export default function ChatScreen() {
                       placeholder={`Message #${name || "chat"}`} 
                       placeholderTextColor={theme.id === "pink" ? "rgba(244, 114, 182, 0.6)" : (isAmoled ? "#888888" : theme.textMuted)}
                       value={inputText}
-                      onChangeText={(text) => {
-                        setInputText(text);
-                        const now = Date.now();
-                        if (typingChannelRef.current && user && isFeatureEnabled("ghost_typing", myProfile, publicFeatures) && now - lastTypingSentRef.current > 2000) {
-                          lastTypingSentRef.current = now;
-                          typingChannelRef.current.send({
-                            type: "broadcast",
-                            event: "typing",
-                            payload: {
-                              user_id: user.id,
-                              username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
-                            },
-                          });
-                        }
-                      }}
+                      onChangeText={handleInputChange}
                       onFocus={() => {
                         if (Platform.OS === "web" && typeof window !== "undefined") {
                           setTimeout(() => {
@@ -2696,8 +2887,8 @@ export default function ChatScreen() {
             </View>
             {isGlassKeyboardOpen && !isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
               <AlaGlassKeyboard
-                onInsertText={(char) => setInputText((prev) => prev + char)}
-                onBackspace={() => setInputText((prev) => prev.slice(0, -1))}
+                onInsertText={(char) => handleInputChange(inputText + char)}
+                onBackspace={() => handleInputChange(inputText.slice(0, -1))}
                 onSend={sendMessage}
                 onClose={() => setIsGlassKeyboardOpen(false)}
                 onSwitchToSystem={() => {

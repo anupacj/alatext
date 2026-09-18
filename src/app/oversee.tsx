@@ -39,7 +39,7 @@ import { useTheme } from "../context/ThemeContext";
 import { FeatureKey, UserProfile, DEFAULT_PUBLIC_FEATURES } from "../lib/features";
 
 const ALL_FEATURES: { key: FeatureKey; label: string; icon: any; desc: string }[] = [
-  { key: "ghost_typing", label: "Ghost Typing Preview", icon: Ghost, desc: "Live character typing indicator" },
+  { key: "ghost_typing", label: "Ghost Typing Preview (Beta)", icon: Ghost, desc: "Live letter-by-letter typing preview" },
   { key: "custom_fonts", label: "Custom Message Fonts", icon: Type, desc: "Custom font selector when sending" },
   { key: "wallpapers", label: "Wallpaper Doodles", icon: ImageIcon, desc: "Background doodle overlays in chat" },
   { key: "alapin_decoy", label: "AlaPin Decoy Mode", icon: Lock, desc: "Stealth decoy PIN passcode screen" },
