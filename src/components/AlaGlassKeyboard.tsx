@@ -11,6 +11,7 @@ import {
   Animated,
   PanResponder,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import Svg, { Path, Circle } from "react-native-svg";
 import {
   ArrowUp,
@@ -404,12 +405,26 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
     });
   }, []);
 
-  const triggerHaptic = useCallback(() => {
+  const triggerHaptic = useCallback((type: "light" | "medium" | "heavy" = "light") => {
     try {
-      if (Platform.OS !== "web") {
-        Vibration.vibrate(8);
+      if (Platform.OS === "web") {
+        if (typeof window !== "undefined" && typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate(type === "heavy" ? 22 : (type === "medium" ? 14 : 8));
+        }
+      } else {
+        if (type === "heavy") {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => Vibration.vibrate(20));
+        } else if (type === "medium") {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => Vibration.vibrate(12));
+        } else {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => Vibration.vibrate(8));
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      try {
+        Vibration.vibrate(8);
+      } catch (err) {}
+    }
   }, []);
 
   const slidePanResponder = useRef(
@@ -473,7 +488,7 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
         if (keys.length >= 2) {
           const word = resolveSlideWord(keys);
           if (word) {
-            triggerHaptic();
+            triggerHaptic("heavy");
             onInsertText(word + " ");
           }
         }
@@ -520,11 +535,11 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
   }, [isCapsLock, triggerHaptic]);
 
   const handleBackspaceStart = useCallback(() => {
-    triggerHaptic();
+    triggerHaptic("medium");
     onBackspace();
 
     backspaceTimerRef.current = setInterval(() => {
-      triggerHaptic();
+      triggerHaptic("medium");
       onBackspace();
     }, 90);
   }, [onBackspace, triggerHaptic]);
@@ -545,7 +560,7 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
   }, []);
 
   const handleQuickPhrase = useCallback((phrase: string) => {
-    triggerHaptic();
+    triggerHaptic("medium");
     onInsertText(phrase + " ");
   }, [onInsertText, triggerHaptic]);
 
@@ -878,7 +893,7 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
               flex={1.5}
               isSpecial
               onPress={() => {
-                triggerHaptic();
+                triggerHaptic("medium");
                 onSend();
               }}
               displayContent={<Send size={18} color="#ffffff" />}
