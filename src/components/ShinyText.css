@@ -19,15 +19,15 @@
 
 @keyframes shinySweep {
   0% {
-    background-position: 190% 0;
+    background-position: 200% 0;
   }
-  65%, 100% {
-    background-position: -90% 0;
+  100% {
+    background-position: -100% 0;
   }
 }
 
 .shiny-text-animated {
-  animation: shinySweep 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  animation: shinySweep 2.2s linear infinite;
   filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, 0.45));
 }
 

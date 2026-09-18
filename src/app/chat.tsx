@@ -1336,14 +1336,14 @@ export default function ChatScreen() {
       };
       
       LayoutAnimation.configureNext({
-        duration: 280,
+        duration: 320,
         create: {
           type: LayoutAnimation.Types.easeInEaseOut,
           property: LayoutAnimation.Properties.opacity,
         },
         update: {
           type: LayoutAnimation.Types.spring,
-          springDamping: 0.82,
+          springDamping: 0.68,
         },
       });
       setMessages(prev => [tempMsg, ...prev]);
@@ -1448,6 +1448,17 @@ export default function ChatScreen() {
 
         if (!insertErr && insertedMsgs && insertedMsgs.length > 0) {
           const formatted = insertedMsgs.map(formatMsg);
+          LayoutAnimation.configureNext({
+            duration: 320,
+            create: {
+              type: LayoutAnimation.Types.easeInEaseOut,
+              property: LayoutAnimation.Properties.opacity,
+            },
+            update: {
+              type: LayoutAnimation.Types.spring,
+              springDamping: 0.68,
+            },
+          });
           setMessages(prev => {
             const existingIds = new Set(prev.map(m => m.id));
             const additions = formatted.filter(m => !existingIds.has(m.id));
@@ -1611,6 +1622,17 @@ export default function ChatScreen() {
       reply_to_sender: curReply?.sender || null,
     };
 
+    LayoutAnimation.configureNext({
+      duration: 320,
+      create: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+      update: {
+        type: LayoutAnimation.Types.spring,
+        springDamping: 0.68,
+      },
+    });
     setMessages(prev => [tempMsg, ...prev]);
 
     try {
@@ -3299,9 +3321,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     index === 0 && (item.status === "sending" || Date.now() - (item.created_at_ts || 0) < 4000)
   ).current;
 
-  const scale = useSharedValue(isLiveEntrance ? 0.85 : 1);
-  const translateY = useSharedValue(isLiveEntrance ? 28 : 0);
-  const opacity = useSharedValue(isLiveEntrance ? 0 : 1);
+  // Sleek rubbery bubble sending physics:
+  // Starts collapsed into a small rubber bead / capsule at the origin corner (bottom right for sent, bottom left for received)
+  const scaleX = useSharedValue(isLiveEntrance ? (item.isMe ? 0.38 : 0.6) : 1);
+  const scaleY = useSharedValue(isLiveEntrance ? (item.isMe ? 0.22 : 0.4) : 1);
+  const translateY = useSharedValue(isLiveEntrance ? (item.isMe ? 38 : 24) : 0);
+  const opacity = useSharedValue(isLiveEntrance ? 0.5 : 1);
   const highlightAnim = useSharedValue(0);
 
   useEffect(() => {
@@ -3310,7 +3335,11 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         withTiming(1, { duration: 250 }),
         withDelay(1400, withTiming(0, { duration: 700 }))
       );
-      scale.value = withSequence(
+      scaleX.value = withSequence(
+        withTiming(1.04, { duration: 180 }),
+        withTiming(1, { duration: 180 })
+      );
+      scaleY.value = withSequence(
         withTiming(1.04, { duration: 180 }),
         withTiming(1, { duration: 180 })
       );
@@ -3387,17 +3416,42 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
 
   useEffect(() => {
     if (isLiveEntrance) {
-      scale.value = withSpring(1, { damping: 24, stiffness: 260, mass: 0.85 });
-      translateY.value = withSpring(0, { damping: 24, stiffness: 260, mass: 0.85 });
-      opacity.value = withTiming(1, { duration: 160 });
+      if (item.isMe) {
+        // 1. Rocket stretch: stretches vertically as it shoots upward from the input bar
+        scaleY.value = withSequence(
+          withTiming(1.22, { duration: 90 }),
+          withSpring(1, { damping: 13, stiffness: 210, mass: 0.85 })
+        );
+        // 2. Narrows horizontally during upward flight, then squashes out on impact with rubber rebound
+        scaleX.value = withSequence(
+          withTiming(0.86, { duration: 90 }),
+          withSpring(1, { damping: 13, stiffness: 210, mass: 0.85 })
+        );
+        // 3. Elastic upward translation with slight cushion
+        translateY.value = withSpring(0, { damping: 14, stiffness: 220, mass: 0.85 });
+        opacity.value = withTiming(1, { duration: 80 });
+      } else {
+        // Incoming message pop
+        scaleY.value = withSequence(
+          withTiming(1.15, { duration: 90 }),
+          withSpring(1, { damping: 15, stiffness: 230, mass: 0.85 })
+        );
+        scaleX.value = withSequence(
+          withTiming(0.92, { duration: 90 }),
+          withSpring(1, { damping: 15, stiffness: 230, mass: 0.85 })
+        );
+        translateY.value = withSpring(0, { damping: 15, stiffness: 230, mass: 0.85 });
+        opacity.value = withTiming(1, { duration: 80 });
+      }
     }
-  }, [isLiveEntrance, scale, translateY, opacity]);
+  }, [isLiveEntrance, item.isMe, scaleX, scaleY, translateY, opacity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: translateY.value },
       { translateX: translateX.value },
-      { scale: scale.value },
+      { scaleX: scaleX.value },
+      { scaleY: scaleY.value },
     ],
     opacity: opacity.value,
     transformOrigin: item.isMe ? "bottom right" : "bottom left",
@@ -3622,7 +3676,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       </Animated.View>
 
       <Animated.View
-        layout={LinearTransition.springify().damping(24).stiffness(240).mass(0.85)}
+        layout={LinearTransition.springify().damping(15).stiffness(210).mass(0.85)}
         style={animatedStyle}
         {...panResponder.panHandlers}
       >
