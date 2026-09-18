@@ -2,11 +2,14 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
   Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
-  LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder,
+  LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder, Vibration,
   Animated as RNAnimated, Easing, Dimensions, useWindowDimensions, Keyboard,
 } from "react-native";
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, withSequence, LinearTransition } from "react-native-reanimated";
+import Animated, { useSharedValue, useAnimatedStyle, useAnimatedProps, withSpring, withDelay, withTiming, withSequence, LinearTransition, interpolate } from "react-native-reanimated";
+import Svg, { Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -3329,24 +3332,61 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     lastPressRef.current = now;
   };
 
+  const translateX = useSharedValue(0);
+  const swipeProgress = useSharedValue(0);
+  const hapticTriggeredRef = useRef(false);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (evt, gestureState) => {
-        return Math.abs(gestureState.dx) > 30 && Math.abs(gestureState.dy) < 30;
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+      },
+      onPanResponderGrant: () => {
+        hapticTriggeredRef.current = false;
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        const rawDx = gestureState.dx;
+        // Rubber-band drag: dx * 0.45, capped at max ±62px
+        const clampedDx = Math.sign(rawDx) * Math.min(Math.abs(rawDx) * 0.45, 62);
+        translateX.value = clampedDx;
+
+        const progress = Math.min(Math.abs(clampedDx) / 44, 1);
+        swipeProgress.value = progress;
+
+        if (progress >= 1 && !hapticTriggeredRef.current) {
+          hapticTriggeredRef.current = true;
+          try {
+            if (Platform.OS !== "web") {
+              Vibration.vibrate(10);
+            }
+          } catch {}
+        } else if (progress < 0.75) {
+          hapticTriggeredRef.current = false;
+        }
       },
       onPanResponderRelease: (evt, gestureState) => {
-        if (Math.abs(gestureState.dx) > 50) {
+        if (swipeProgress.value >= 1) {
           setReplyingTo({ id: item.id, text: item.text, sender: item.sender });
+          try {
+            if (Platform.OS !== "web") {
+              Vibration.vibrate(16);
+            }
+          } catch {}
         }
+        translateX.value = withSpring(0, { damping: 22, stiffness: 280, mass: 0.85 });
+        swipeProgress.value = withTiming(0, { duration: 180 });
+        hapticTriggeredRef.current = false;
+      },
+      onPanResponderTerminate: () => {
+        translateX.value = withSpring(0, { damping: 22, stiffness: 280, mass: 0.85 });
+        swipeProgress.value = withTiming(0, { duration: 180 });
+        hapticTriggeredRef.current = false;
       },
     })
   ).current;
 
   useEffect(() => {
     if (isLiveEntrance) {
-      // Telegram / Instagram fluid rubber spring physics:
-      // Damping ratio ~0.8 (damping 24, stiffness 260, mass 0.85) produces a snappy upward glide
-      // with a single ~2.5% rubbery stretch that cushions smoothly into resting state without wobble.
       scale.value = withSpring(1, { damping: 24, stiffness: 260, mass: 0.85 });
       translateY.value = withSpring(0, { damping: 24, stiffness: 260, mass: 0.85 });
       opacity.value = withTiming(1, { duration: 160 });
@@ -3356,11 +3396,36 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: translateY.value },
+      { translateX: translateX.value },
       { scale: scale.value },
     ],
     opacity: opacity.value,
     transformOrigin: item.isMe ? "bottom right" : "bottom left",
   }));
+
+  const swipeCircleCircumference = 2 * Math.PI * 13;
+  const animatedCircleProps = useAnimatedProps(() => {
+    return {
+      strokeDashoffset: swipeCircleCircumference * (1 - swipeProgress.value),
+    };
+  });
+
+  const badgeAnimatedStyle = useAnimatedStyle(() => {
+    const isSwipingLeft = translateX.value < 0;
+    const isVisible = swipeProgress.value > 0.05;
+    return {
+      opacity: isVisible ? interpolate(swipeProgress.value, [0.05, 0.35, 1], [0, 0.75, 1]) : 0,
+      transform: [
+        { scale: interpolate(swipeProgress.value, [0, 0.85, 1], [0.5, 0.95, 1.15]) },
+      ],
+      position: "absolute" as const,
+      top: "50%",
+      marginTop: -18,
+      left: isSwipingLeft ? undefined : 14,
+      right: isSwipingLeft ? 14 : undefined,
+      zIndex: 0,
+    };
+  });
 
   // Album Grouping logic for WhatsApp style multi-media clumps
   const isMedia = item.type === "image" || item.type === "video";
@@ -3425,11 +3490,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   const showMeta = !groupWithNext;
 
   // Cosmetic overrides
-  const sentColor = isAmoled ? "#000000" : (chatSettings?.bubble_color_sent || "#5865F2");
-  const receivedColor = isAmoled ? "#000000" : (chatSettings?.bubble_color_received || "#2b2d31");
-  const bubbleTextColor = isAmoled ? "#ffffff" : undefined;
   const gradientEnabled = chatSettings?.bubble_gradient_enabled || false;
   const gradientColor2 = chatSettings?.bubble_gradient_color2 || "#a78bfa";
+  const baseSentColor = chatSettings?.bubble_color_sent || (theme.accent || "#5865F2");
+  const sentColor = (isAmoled && !gradientEnabled) ? "#000000" : baseSentColor;
+  const receivedColor = isAmoled ? "#000000" : (chatSettings?.bubble_color_received || "#2b2d31");
+  const bubbleTextColor = (isAmoled && !gradientEnabled) ? "#ffffff" : undefined;
   const shape = chatSettings?.bubble_shape || "round";
   
   let radius = 18;
@@ -3512,11 +3578,54 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   };
 
   return (
-    <Animated.View
-      layout={LinearTransition.springify().damping(24).stiffness(240).mass(0.85)}
-      style={animatedStyle}
-      {...panResponder.panHandlers}
-    >
+    <View style={{ position: "relative", width: "100%", justifyContent: "center" }}>
+      {/* Instagram-style Circular Reply Indicator behind the message */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          {
+            width: 36,
+            height: 36,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+          badgeAnimatedStyle,
+        ]}
+      >
+        <Svg width={36} height={36} viewBox="0 0 36 36">
+          <Circle
+            cx={18}
+            cy={18}
+            r={13}
+            stroke={isAmoled ? "rgba(255, 255, 255, 0.15)" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.25)" : "rgba(255, 255, 255, 0.20)")}
+            strokeWidth={2.5}
+            fill={isAmoled ? "#141414" : (theme.id === "pink" ? "#fce7f3" : (theme.id === "light" ? "#f0f2f5" : "#222428"))}
+          />
+          <AnimatedCircle
+            cx={18}
+            cy={18}
+            r={13}
+            stroke={theme.accent || "#5865F2"}
+            strokeWidth={2.5}
+            strokeDasharray={swipeCircleCircumference}
+            animatedProps={animatedCircleProps}
+            strokeLinecap="round"
+            fill="none"
+            transform="rotate(-90 18 18)"
+          />
+        </Svg>
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <Reply size={15} color={theme.accent || (isAmoled ? "#ffffff" : theme.text)} />
+          </View>
+        </View>
+      </Animated.View>
+
+      <Animated.View
+        layout={LinearTransition.springify().damping(24).stiffness(240).mass(0.85)}
+        style={animatedStyle}
+        {...panResponder.panHandlers}
+      >
       <Pressable
         style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
         onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
@@ -3646,13 +3755,10 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           )}
         </View>
       </Pressable>
-    </Animated.View>
+      </Animated.View>
+    </View>
   );
 });
-
-
-
-
 
 
 

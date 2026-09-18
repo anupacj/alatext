@@ -9,7 +9,9 @@ import {
   Vibration,
   ScrollView,
   Animated,
+  PanResponder,
 } from "react-native";
+import Svg, { Path, Circle } from "react-native-svg";
 import {
   ArrowUp,
   Delete,
@@ -20,6 +22,7 @@ import {
   ChevronDown,
   Sparkles,
 } from "lucide-react-native";
+import { resolveSlideWord, getKeyAtCoordinate } from "../lib/slideTyping";
 
 export interface AlaGlassKeyboardProps {
   onInsertText: (text: string) => void;
@@ -55,6 +58,7 @@ interface GlassKeyProps {
   onPressOut?: () => void;
   isSpecial?: boolean;
   isActive?: boolean;
+  isSlideHighlighted?: boolean;
   activeBorderColor?: string;
   customStyle?: any;
   textColor: string;
@@ -74,6 +78,7 @@ const GlassKey: React.FC<GlassKeyProps> = ({
   onPressOut,
   isSpecial,
   isActive = false,
+  isSlideHighlighted = false,
   activeBorderColor,
   customStyle,
   textColor,
@@ -83,16 +88,16 @@ const GlassKey: React.FC<GlassKeyProps> = ({
   glowColor,
   glowBorder,
 }) => {
-  const glowAnim = useRef(new Animated.Value(isActive ? 1 : 0)).current;
+  const glowAnim = useRef(new Animated.Value((isActive || isSlideHighlighted) ? 1 : 0)).current;
   const [isPressed, setIsPressed] = useState(false);
 
   useEffect(() => {
     Animated.timing(glowAnim, {
-      toValue: isActive ? 1 : 0,
-      duration: 180,
+      toValue: (isActive || isSlideHighlighted) ? 1 : 0,
+      duration: isSlideHighlighted ? 60 : 180,
       useNativeDriver: false,
     }).start();
-  }, [isActive]);
+  }, [isActive, isSlideHighlighted]);
 
   const handlePressIn = () => {
     setIsPressed(true);
@@ -106,7 +111,7 @@ const GlassKey: React.FC<GlassKeyProps> = ({
 
   const handlePressOut = () => {
     setIsPressed(false);
-    if (!isActive) {
+    if (!isActive && !isSlideHighlighted) {
       Animated.timing(glowAnim, {
         toValue: 0,
         duration: 320, // Subtle, smooth fading glow!
@@ -116,7 +121,7 @@ const GlassKey: React.FC<GlassKeyProps> = ({
     onPressOut?.();
   };
 
-  const isLit = isPressed || isActive;
+  const isLit = isPressed || isActive || isSlideHighlighted;
 
   return (
     <Pressable
@@ -378,6 +383,27 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
   const backspaceTimerRef = useRef<any>(null);
   const heartIndexRef = useRef<number>(0);
 
+  // Slide Typing (Gesture / Glide Typing) state
+  const [isSlideTyping, setIsSlideTyping] = useState(true);
+  const [activeSlideKey, setActiveSlideKey] = useState<string | null>(null);
+  const [trailPoints, setTrailPoints] = useState<{ x: number; y: number }[]>([]);
+  const [slidePreviewWord, setSlidePreviewWord] = useState<string | null>(null);
+
+  const isSlidingRef = useRef(false);
+  const slideKeysRef = useRef<string[]>([]);
+  const keysSectionRef = useRef<View>(null);
+  const keypadDimensionsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  const keysOffsetRef = useRef<{ pageX: number; pageY: number }>({ pageX: 0, pageY: 0 });
+
+  const updateSectionOffset = useCallback(() => {
+    keysSectionRef.current?.measure((x, y, width, height, pageX, pageY) => {
+      if (width > 0 && height > 0) {
+        keypadDimensionsRef.current = { width, height };
+        keysOffsetRef.current = { pageX, pageY };
+      }
+    });
+  }, []);
+
   const triggerHaptic = useCallback(() => {
     try {
       if (Platform.OS !== "web") {
@@ -385,6 +411,86 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
       }
     } catch (e) {}
   }, []);
+
+  const slidePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return isSlideTyping && mode === "letters" && Math.hypot(gestureState.dx, gestureState.dy) > 10;
+      },
+      onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+        return isSlideTyping && mode === "letters" && Math.hypot(gestureState.dx, gestureState.dy) > 10;
+      },
+      onPanResponderGrant: (evt) => {
+        isSlidingRef.current = true;
+        slideKeysRef.current = [];
+        updateSectionOffset();
+
+        const { pageX, pageY } = evt.nativeEvent;
+        const x = pageX - (keysOffsetRef.current.pageX || 0);
+        const y = pageY - (keysOffsetRef.current.pageY || 0);
+
+        setTrailPoints([{ x, y }]);
+
+        const key = getKeyAtCoordinate(x, y, keypadDimensionsRef.current.width, keypadDimensionsRef.current.height);
+        if (key) {
+          slideKeysRef.current = [key];
+          setActiveSlideKey(key);
+          setSlidePreviewWord(key);
+          triggerHaptic();
+        }
+      },
+      onPanResponderMove: (evt) => {
+        if (!isSlidingRef.current) return;
+        const { pageX, pageY } = evt.nativeEvent;
+        const x = pageX - (keysOffsetRef.current.pageX || 0);
+        const y = pageY - (keysOffsetRef.current.pageY || 0);
+
+        setTrailPoints((prev) => {
+          const next = [...prev, { x, y }];
+          return next.length > 22 ? next.slice(next.length - 22) : next;
+        });
+
+        const key = getKeyAtCoordinate(x, y, keypadDimensionsRef.current.width, keypadDimensionsRef.current.height);
+        if (key) {
+          const lastKey = slideKeysRef.current[slideKeysRef.current.length - 1];
+          if (key !== lastKey) {
+            slideKeysRef.current.push(key);
+            setActiveSlideKey(key);
+            triggerHaptic();
+            const candidate = resolveSlideWord(slideKeysRef.current);
+            setSlidePreviewWord(candidate);
+          }
+        }
+      },
+      onPanResponderRelease: () => {
+        if (!isSlidingRef.current) return;
+        isSlidingRef.current = false;
+        setActiveSlideKey(null);
+
+        const keys = slideKeysRef.current;
+        if (keys.length >= 2) {
+          const word = resolveSlideWord(keys);
+          if (word) {
+            triggerHaptic();
+            onInsertText(word + " ");
+          }
+        }
+
+        setSlidePreviewWord(null);
+        setTimeout(() => {
+          setTrailPoints([]);
+        }, 120);
+      },
+      onPanResponderTerminate: () => {
+        isSlidingRef.current = false;
+        setActiveSlideKey(null);
+        setSlidePreviewWord(null);
+        setTrailPoints([]);
+      },
+    })
+  ).current;
 
   const handleCharPress = useCallback((char: string) => {
     triggerHaptic();
@@ -457,25 +563,25 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
     : theme.text || "#f2f3f5";
 
   const keyBg = isAmoled
-    ? "rgba(255, 255, 255, 0.08)"
+    ? "rgba(255, 255, 255, 0.06)"
     : theme.id === "pink"
     ? "rgba(255, 255, 255, 0.45)"
     : "rgba(255, 255, 255, 0.09)";
 
   const keyBorder = isAmoled
-    ? "rgba(255, 255, 255, 0.12)"
+    ? "rgba(255, 255, 255, 0.10)"
     : theme.id === "pink"
     ? "rgba(244, 114, 182, 0.35)"
     : "rgba(255, 255, 255, 0.15)";
 
   const activeKeyBg = isAmoled
-    ? "rgba(168, 85, 247, 0.28)"
+    ? "rgba(255, 255, 255, 0.22)"
     : theme.id === "pink"
     ? "rgba(244, 114, 182, 0.42)"
     : hexToRgba(theme.accent || "#5865F2", 0.35);
 
   const glowColor = isAmoled
-    ? "rgba(192, 132, 252, 0.55)"
+    ? "rgba(168, 85, 247, 0.55)"
     : theme.id === "pink"
     ? "rgba(244, 63, 94, 0.50)"
     : theme.id === "hacker"
@@ -483,7 +589,7 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
     : hexToRgba(theme.accent || "#5865F2", 0.55);
 
   const glowBorder = isAmoled
-    ? "rgba(192, 132, 252, 0.85)"
+    ? "#a855f7"
     : theme.id === "pink"
     ? "rgba(244, 63, 94, 0.75)"
     : theme.id === "hacker"
@@ -494,12 +600,14 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
     const displayVal = value || label;
     const isSpecialChar = displayVal.length > 1;
     const transformedLabel = (!isSpecialChar && (isShift || isCapsLock)) ? label.toUpperCase() : label.toLowerCase();
+    const isSlideActive = activeSlideKey === label.toLowerCase();
 
     return (
       <GlassKey
         key={label}
         label={transformedLabel}
         flex={flex}
+        isSlideHighlighted={isSlideActive}
         onPress={() => handleCharPress(displayVal)}
         textColor={textColor}
         keyBg={keyBg}
@@ -516,7 +624,15 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
       style={[
         styles.keyboardContainer,
         isAmoled
-          ? { backgroundColor: "rgba(10, 10, 14, 0.88)", borderTopColor: "rgba(255, 255, 255, 0.12)" }
+          ? {
+              backgroundColor: "#000000",
+              borderTopColor: "rgba(255, 255, 255, 0.08)",
+              ...(Platform.OS === "web" ? {
+                boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.95)",
+                backdropFilter: "none",
+                WebkitBackdropFilter: "none",
+              } as any : {}),
+            }
           : theme.id === "pink"
           ? { backgroundColor: "rgba(253, 242, 248, 0.86)", borderTopColor: "rgba(244, 114, 182, 0.35)" }
           : { backgroundColor: "rgba(18, 20, 26, 0.86)", borderTopColor: "rgba(255, 255, 255, 0.12)" },
@@ -529,6 +645,34 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.quickPhrasesList}
         >
+          {/* Slide Typing Toggle Chip */}
+          <Pressable
+            style={[
+              styles.quickChip,
+              {
+                borderColor: isSlideTyping ? glowBorder : keyBorder,
+                backgroundColor: isSlideTyping ? activeKeyBg : keyBg,
+                borderWidth: isSlideTyping ? 1.5 : 1,
+              },
+            ]}
+            onPress={() => {
+              triggerHaptic();
+              setIsSlideTyping((prev) => !prev);
+            }}
+          >
+            <Text
+              style={[
+                styles.quickChipText,
+                {
+                  color: isSlideTyping ? (isAmoled ? "#ffffff" : (theme.accent || textColor)) : textColor,
+                  fontWeight: "700",
+                },
+              ]}
+            >
+              {isSlideTyping ? "✨ Slide ON" : "✨ Slide OFF"}
+            </Text>
+          </Pressable>
+
           {QUICK_PHRASES.map((phrase) => (
             <GlassChip
               key={phrase}
@@ -571,7 +715,63 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
 
       {/* 2. Main Keypad Rows */}
       {mode === "letters" && (
-        <View style={styles.keysSection}>
+        <View
+          ref={keysSectionRef}
+          onLayout={(e) => {
+            keypadDimensionsRef.current = {
+              width: e.nativeEvent.layout.width,
+              height: e.nativeEvent.layout.height,
+            };
+            updateSectionOffset();
+          }}
+          {...(isSlideTyping ? slidePanResponder.panHandlers : {})}
+          style={[styles.keysSection, { position: "relative" }]}
+        >
+          {/* Luminous Ribbon Trail following finger during slide typing */}
+          {trailPoints.length >= 2 && (
+            <Svg style={StyleSheet.absoluteFillObject} pointerEvents="none">
+              <Path
+                d={trailPoints.reduce(
+                  (acc, pt, idx) => `${acc} ${idx === 0 ? "M" : "L"} ${pt.x} ${pt.y}`,
+                  ""
+                )}
+                stroke={glowBorder}
+                strokeWidth={5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                opacity={0.85}
+              />
+              <Circle
+                cx={trailPoints[trailPoints.length - 1].x}
+                cy={trailPoints[trailPoints.length - 1].y}
+                r={7}
+                fill={glowColor}
+                opacity={0.9}
+              />
+            </Svg>
+          )}
+
+          {/* Floating Candidate Word Preview Pill */}
+          {slidePreviewWord && trailPoints.length > 0 && (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.slidePreviewPill,
+                {
+                  left: Math.max(8, Math.min(trailPoints[trailPoints.length - 1].x - 36, (keypadDimensionsRef.current.width || 300) - 72)),
+                  top: Math.max(-36, trailPoints[trailPoints.length - 1].y - 50),
+                  borderColor: glowBorder,
+                  backgroundColor: isAmoled ? "rgba(18, 18, 22, 0.96)" : "rgba(30, 32, 40, 0.94)",
+                },
+              ]}
+            >
+              <Text style={[styles.slidePreviewText, { color: "#ffffff" }]}>
+                {slidePreviewWord}
+              </Text>
+            </View>
+          )}
+
           {/* Row 1 */}
           <View style={styles.row}>
             {["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"].map((l) => renderKey(l))}
@@ -920,5 +1120,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
     opacity: 0.75,
+  },
+  slidePreviewPill: {
+    position: "absolute",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    zIndex: 99,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  slidePreviewText: {
+    fontSize: 14,
+    fontWeight: "700",
+    fontFamily: "Josefin Sans",
+    textAlign: "center",
   },
 });
