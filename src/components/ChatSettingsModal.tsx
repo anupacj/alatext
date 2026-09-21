@@ -2,13 +2,26 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform, TextInput } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as ImagePicker from "expo-image-picker";
-import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell } from "lucide-react-native";
+import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell, Sparkles, Heart, Moon, Sun, Check, RefreshCw, Layers, Edit3 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { uploadImageToR2, deleteFileFromR2ByUrl } from "../lib/r2";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "expo-router";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
 import { useTheme } from "../context/ThemeContext";
+import {
+  WallpaperSlot,
+  WallpaperDeckConfig,
+  DEFAULT_SLOTS,
+  createDefaultDeck,
+  loadDeckFromLocal,
+  saveDeckToLocal,
+  fetchDeckFromCloud,
+  persistDeckToCloud,
+  broadcastDeckUpdate,
+  getActiveSlot,
+  MoodTriggerType,
+} from "../utils/wallpaperDeck";
 
 const FONTS = [
   { name: "System", value: "system" },
@@ -150,6 +163,8 @@ export default function ChatSettingsModal({
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const [loading, setLoading] = useState(false);
+  const [deck, setDeck] = useState<WallpaperDeckConfig>(() => createDefaultDeck(currentSettings?.wallpaper_url, userId));
+  const [selectedSlotId, setSelectedSlotId] = useState<string>("slot_1");
   const [wallpaperUrl, setWallpaperUrl] = useState(currentSettings?.wallpaper_url || null);
   const [dim, setDim] = useState(currentSettings?.wallpaper_dim || 0);
   const [blur, setBlur] = useState(currentSettings?.wallpaper_blur || 0);
@@ -264,8 +279,39 @@ export default function ChatSettingsModal({
       if (currentSettings.nickname || currentSettings.partner_nickname) {
         setPartnerNickname(currentSettings.nickname || currentSettings.partner_nickname);
       }
+
+      // Load wallpaper deck from local cache and cloud
+      if (chatId) {
+        loadDeckFromLocal(chatId).then(localDeck => {
+          if (localDeck) {
+            setDeck(localDeck);
+            setSelectedSlotId(localDeck.activeSlotId || "slot_1");
+            const active = getActiveSlot(localDeck);
+            if (active.url) {
+              setWallpaperUrl(active.url);
+              setDim(active.dim);
+              setBlur(active.blur);
+              setZoom(active.zoom);
+            }
+          }
+        });
+        fetchDeckFromCloud(chatId).then(cloudDeck => {
+          if (cloudDeck) {
+            setDeck(cloudDeck);
+            setSelectedSlotId(cloudDeck.activeSlotId || "slot_1");
+            saveDeckToLocal(chatId, cloudDeck);
+            const active = getActiveSlot(cloudDeck);
+            if (active.url) {
+              setWallpaperUrl(active.url);
+              setDim(active.dim);
+              setBlur(active.blur);
+              setZoom(active.zoom);
+            }
+          }
+        });
+      }
     }
-  }, [visible, currentSettings]);
+  }, [visible, currentSettings, chatId]);
 
   const applyTheme = useCallback((selectedTheme: typeof THEMES[0]) => {
     setBubbleColorSent(selectedTheme.sent);
@@ -273,7 +319,48 @@ export default function ChatSettingsModal({
     setGradientEnabled(false);
   }, []);
 
-  const pickImage = async () => {
+  const selectedSlot = useMemo(() => {
+    return deck.slots.find(s => s.id === selectedSlotId) || deck.slots[0];
+  }, [deck.slots, selectedSlotId]);
+
+  const updateSlot = useCallback((slotId: string, patch: Partial<WallpaperSlot>) => {
+    setDeck(prev => {
+      const newSlots = prev.slots.map(s => s.id === slotId ? { ...s, ...patch } : s);
+      const isCurrentActive = prev.activeSlotId === slotId;
+      const updatedDeck = { ...prev, slots: newSlots, updatedAt: Date.now(), updatedBy: userId };
+      if (isCurrentActive) {
+        if (patch.url !== undefined) setWallpaperUrl(patch.url);
+        if (patch.dim !== undefined) setDim(patch.dim);
+        if (patch.blur !== undefined) setBlur(patch.blur);
+        if (patch.zoom !== undefined) setZoom(patch.zoom);
+        // Instant broadcast for partner
+        broadcastDeckUpdate(chatId, userId, updatedDeck);
+      }
+      saveDeckToLocal(chatId, updatedDeck);
+      return updatedDeck;
+    });
+  }, [chatId, userId]);
+
+  const handleSelectSlot = useCallback((slotId: string) => {
+    setSelectedSlotId(slotId);
+  }, []);
+
+  const handleSetActiveSlot = useCallback((slotId: string) => {
+    setDeck(prev => {
+      const slot = prev.slots.find(s => s.id === slotId) || prev.slots[0];
+      const updatedDeck = { ...prev, activeSlotId: slotId, updatedAt: Date.now(), updatedBy: userId };
+      setWallpaperUrl(slot.url);
+      setDim(slot.dim);
+      setBlur(slot.blur);
+      setZoom(slot.zoom);
+      saveDeckToLocal(chatId, updatedDeck);
+      persistDeckToCloud(chatId, userId, updatedDeck);
+      broadcastDeckUpdate(chatId, userId, updatedDeck);
+      return updatedDeck;
+    });
+  }, [chatId, userId]);
+
+  const pickImageForSlot = async (slotId: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true, quality: 0.8, base64: true,
@@ -285,21 +372,49 @@ export default function ChatSettingsModal({
         const mimeType = asset.mimeType || "image/jpeg";
         if (!asset.base64) throw new Error("Could not read image data");
         const url = await uploadImageToR2(`wallpapers/${chatId}/${userId}-${Date.now()}`, asset.base64, mimeType);
-        setWallpaperUrl(url);
+        
+        setDeck(prev => {
+          const updatedSlots = prev.slots.map(s => s.id === slotId ? { ...s, url } : s);
+          const isCurrentActive = prev.activeSlotId === slotId;
+          const updatedDeck = { ...prev, slots: updatedSlots, updatedAt: Date.now(), updatedBy: userId };
+          if (isCurrentActive) {
+            setWallpaperUrl(url);
+          }
+          saveDeckToLocal(chatId, updatedDeck);
+          persistDeckToCloud(chatId, userId, updatedDeck);
+          broadcastDeckUpdate(chatId, userId, updatedDeck);
+          return updatedDeck;
+        });
       } catch (e) { console.error("Failed to upload wallpaper", e); }
       finally { setLoading(false); }
     }
   };
 
+  const removeImageForSlot = useCallback((slotId: string) => {
+    setDeck(prev => {
+      const updatedSlots = prev.slots.map(s => s.id === slotId ? { ...s, url: null } : s);
+      const isCurrentActive = prev.activeSlotId === slotId;
+      const updatedDeck = { ...prev, slots: updatedSlots, updatedAt: Date.now(), updatedBy: userId };
+      if (isCurrentActive) {
+        setWallpaperUrl(null);
+      }
+      saveDeckToLocal(chatId, updatedDeck);
+      persistDeckToCloud(chatId, userId, updatedDeck);
+      broadcastDeckUpdate(chatId, userId, updatedDeck);
+      return updatedDeck;
+    });
+  }, [chatId, userId]);
+
   const saveSettings = async () => {
     setLoading(true);
     try {
       const newNick = partnerNickname.trim() || null;
+      const activeSlot = getActiveSlot(deck);
       const updates: any = {
-        wallpaper_url: wallpaperUrl,
-        wallpaper_dim: dim,
-        wallpaper_blur: blur,
-        wallpaper_zoom: zoom,
+        wallpaper_url: activeSlot.url,
+        wallpaper_dim: activeSlot.dim,
+        wallpaper_blur: activeSlot.blur,
+        wallpaper_zoom: activeSlot.zoom,
         font_family: fontFamily,
         bubble_color_sent: bubbleColorSent,
         bubble_color_received: bubbleColorReceived,
@@ -318,6 +433,11 @@ export default function ChatSettingsModal({
         await AsyncStorage.setItem(`chat_${chatId}_settings`, JSON.stringify(merged));
       } catch (e) {}
 
+      // Persist full deck and notify partner
+      await saveDeckToLocal(chatId, deck);
+      await persistDeckToCloud(chatId, userId, deck);
+      broadcastDeckUpdate(chatId, userId, deck);
+
       try {
         const { error } = await supabase.from("chat_participants").update(updates).eq("chat_id", chatId).eq("user_id", userId);
         if (error) {
@@ -328,9 +448,6 @@ export default function ChatSettingsModal({
         console.error(e);
       }
 
-      if (wallpaperUrl !== currentSettings?.wallpaper_url && wallpaperUrl) {
-        await supabase.from("messages").insert({ chat_id: chatId, sender_id: userId, content: "updated their chat wallpaper. Tap here to apply it too!", type: "system" });
-      }
       onSettingsSaved(updates);
       onClose();
     } catch (e) { console.error(e); }
@@ -516,8 +633,264 @@ export default function ChatSettingsModal({
               ))}
             </ScrollView>
 
-            {/* WALLPAPER */}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🖼 Wallpaper</Text>
+            {/* WALLPAPER DECK & SHARED SLOTS */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 20, marginBottom: 8 }}>
+              <Text style={styles.sectionTitle}>🖼️ Wallpaper Deck (Shared)</Text>
+              <View style={styles.syncBadge}>
+                <Sparkles size={12} color="#10b981" />
+                <Text style={styles.syncBadgeText}>Partner Sync Active</Text>
+              </View>
+            </View>
+
+            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
+              5 shared themed slots. Name your themes and customize wallpapers together in real time.
+            </Text>
+
+            {/* Horizontal Deck Slots Carousel */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              {deck.slots.map((slot, idx) => {
+                const isSelected = slot.id === selectedSlotId;
+                const isActive = slot.id === deck.activeSlotId;
+                return (
+                  <TouchableOpacity
+                    key={slot.id}
+                    style={[
+                      styles.deckSlotCard,
+                      isSelected && styles.deckSlotCardSelected,
+                    ]}
+                    onPress={() => handleSelectSlot(slot.id)}
+                    activeOpacity={0.8}
+                  >
+                    {slot.url ? (
+                      <Image source={{ uri: slot.url }} style={styles.deckSlotThumb} />
+                    ) : (
+                      <View style={styles.deckSlotThumbEmpty}>
+                        <ImageIcon size={22} color={theme.textMuted} />
+                      </View>
+                    )}
+                    
+                    {/* Top status badges */}
+                    <View style={styles.deckSlotHeader}>
+                      <Text style={styles.deckSlotNumber}>#{idx + 1}</Text>
+                      {isActive && (
+                        <View style={styles.activeDotBadge}>
+                          <View style={styles.activeDot} />
+                          <Text style={styles.activeDotText}>Active</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Bottom slot name & mood pill */}
+                    <View style={styles.deckSlotFooter}>
+                      <Text style={styles.deckSlotName} numberOfLines={1}>{slot.name || `Slot ${idx + 1}`}</Text>
+                      {slot.mood && slot.mood !== "none" && (
+                        <Text style={styles.deckSlotMoodTag}>
+                          {slot.mood === "love" ? "❤️ Love" : slot.mood === "night" ? "🌙 Night" : "☀️ Day"}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Selected Slot Customization Box */}
+            <View style={styles.slotCustomizerBox}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={[styles.slotNumberTitle, { color: theme.text }]}>
+                    Slot #{deck.slots.findIndex(s => s.id === selectedSlotId) + 1}
+                  </Text>
+                  {selectedSlot.id === deck.activeSlotId ? (
+                    <View style={styles.currentActiveBadge}>
+                      <Check size={12} color="#10b981" />
+                      <Text style={{ color: "#10b981", fontSize: 11, fontWeight: "700" }}>Currently Active</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.setAsActiveBtn}
+                      onPress={() => handleSetActiveSlot(selectedSlot.id)}
+                    >
+                      <Text style={styles.setAsActiveBtnText}>Set Active</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              {/* Editable Name */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={styles.sliderLabel}>Theme / Slot Name (Shared)</Text>
+                <View style={styles.slotNameInputRow}>
+                  <Edit3 size={16} color={theme.textMuted} style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={[styles.alertInput, { flex: 1, paddingVertical: 8, paddingHorizontal: 10, fontSize: 14 }]}
+                    value={selectedSlot.name}
+                    onChangeText={(val) => updateSlot(selectedSlot.id, { name: val })}
+                    placeholder="Give this wallpaper theme a name"
+                    placeholderTextColor={theme.textMuted}
+                    maxLength={30}
+                  />
+                </View>
+              </View>
+
+              {/* Mood Tag Selector */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={styles.sliderLabel}>Mood Trigger (Auto-Detect)</Text>
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                  {(["none", "love", "night", "day"] as MoodTriggerType[]).map((m) => {
+                    const isMoodSelected = selectedSlot.mood === m;
+                    const label = m === "none" ? "None" : m === "love" ? "❤️ Love" : m === "night" ? "🌙 Night" : "☀️ Day";
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        style={[
+                          styles.moodOptionPill,
+                          isMoodSelected && styles.moodOptionPillSelected,
+                        ]}
+                        onPress={() => updateSlot(selectedSlot.id, { mood: m })}
+                      >
+                        <Text style={[styles.moodOptionText, isMoodSelected && { color: "#fff", fontWeight: "700" }]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Slot Preview & Upload */}
+              <View style={styles.wallpaperPreviewContainer}>
+                {selectedSlot.url ? (
+                  <View style={styles.previewBox}>
+                    <Image
+                      source={{ uri: selectedSlot.url }}
+                      style={[styles.previewImage, { transform: [{ scale: selectedSlot.zoom }] }]}
+                      blurRadius={selectedSlot.blur * 20}
+                    />
+                    <View style={[styles.dimOverlay, { backgroundColor: `rgba(0,0,0,${selectedSlot.dim})` }]} />
+                  </View>
+                ) : (
+                  <View style={styles.emptyPreviewBox}>
+                    <ImageIcon size={44} color={theme.textMuted} />
+                    <Text style={styles.emptyText}>Empty Slot — Upload a Photo</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.wallpaperActions}>
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  onPress={() => pickImageForSlot(selectedSlot.id)}
+                  disabled={loading}
+                >
+                  {loading ? <ActivityIndicator size="small" color="#fff" /> : <Upload size={18} color="#fff" />}
+                  <Text style={styles.actionBtnText}>{selectedSlot.url ? "Change Photo" : "Upload Photo"}</Text>
+                </TouchableOpacity>
+                {selectedSlot.url && (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.removeBtn]}
+                    onPress={() => removeImageForSlot(selectedSlot.id)}
+                    disabled={loading}
+                  >
+                    <Trash2 size={18} color="#f23f43" />
+                    <Text style={[styles.actionBtnText, { color: "#f23f43" }]}>Clear Slot</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Sliders if photo present */}
+              {selectedSlot.url && (
+                <View style={styles.slidersContainer}>
+                  <View style={styles.sliderRow}>
+                    <Text style={styles.sliderLabel}>Dim ({Math.round(selectedSlot.dim * 100)}%)</Text>
+                    <Slider
+                      style={styles.slider}
+                      minimumValue={0}
+                      maximumValue={0.85}
+                      value={selectedSlot.dim}
+                      onValueChange={(val) => updateSlot(selectedSlot.id, { dim: val })}
+                      minimumTrackTintColor={theme.accent}
+                      maximumTrackTintColor={theme.border}
+                    />
+                  </View>
+                  <View style={styles.sliderRow}>
+                    <Text style={styles.sliderLabel}>Blur ({Math.round(selectedSlot.blur * 100)}%)</Text>
+                    <Slider
+                      style={styles.slider}
+                      minimumValue={0}
+                      maximumValue={1}
+                      value={selectedSlot.blur}
+                      onValueChange={(val) => updateSlot(selectedSlot.id, { blur: val })}
+                      minimumTrackTintColor={theme.accent}
+                      maximumTrackTintColor={theme.border}
+                    />
+                  </View>
+                  <View style={styles.sliderRow}>
+                    <Text style={styles.sliderLabel}>Zoom ({selectedSlot.zoom.toFixed(1)}x)</Text>
+                    <Slider
+                      style={styles.slider}
+                      minimumValue={1}
+                      maximumValue={2.5}
+                      value={selectedSlot.zoom}
+                      onValueChange={(val) => updateSlot(selectedSlot.id, { zoom: val })}
+                      minimumTrackTintColor={theme.accent}
+                      maximumTrackTintColor={theme.border}
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Smart Auto-Change Toggles */}
+            <View style={styles.smartOptionsContainer}>
+              <View style={styles.toggleRow}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={styles.toggleLabel}>Auto-Mood Dynamic Wallpaper</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                    Shifts to Romantic slot when sweet messages are sent, and Night slot late at night.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.toggle, deck.autoMoodEnabled && styles.toggleOn]}
+                  onPress={() => {
+                    const newAuto = !deck.autoMoodEnabled;
+                    setDeck(prev => {
+                      const updated = { ...prev, autoMoodEnabled: newAuto, updatedAt: Date.now(), updatedBy: userId };
+                      saveDeckToLocal(chatId, updated);
+                      persistDeckToCloud(chatId, userId, updated);
+                      broadcastDeckUpdate(chatId, userId, updated);
+                      return updated;
+                    });
+                  }}
+                >
+                  <View style={[styles.toggleThumb, deck.autoMoodEnabled && styles.toggleThumbOn]} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.toggleRow, { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 14 }]}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={styles.toggleLabel}>Rotate Each Chat Visit</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                    Cycles to your next named slot whenever you enter the chat for a fresh aesthetic.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.toggle, deck.autoRotateEnabled && styles.toggleOn]}
+                  onPress={() => {
+                    const newRotate = !deck.autoRotateEnabled;
+                    setDeck(prev => {
+                      const updated = { ...prev, autoRotateEnabled: newRotate, updatedAt: Date.now(), updatedBy: userId };
+                      saveDeckToLocal(chatId, updated);
+                      persistDeckToCloud(chatId, userId, updated);
+                      broadcastDeckUpdate(chatId, userId, updated);
+                      return updated;
+                    });
+                  }}
+                >
+                  <View style={[styles.toggleThumb, deck.autoRotateEnabled && styles.toggleThumbOn]} />
+                </TouchableOpacity>
+              </View>
+            </View>
             
             {isFeatureEnabled("wallpapers", activeProfile, activePublicFeatures) && (
               <>
@@ -534,48 +907,6 @@ export default function ChatSettingsModal({
                   ))}
                 </ScrollView>
               </>
-            )}
-
-            <View style={styles.wallpaperPreviewContainer}>
-              {wallpaperUrl ? (
-                <View style={styles.previewBox}>
-                  <Image source={{ uri: wallpaperUrl }} style={[styles.previewImage, { transform: [{ scale: zoom }] }]} blurRadius={blur * 20} />
-                  <View style={[styles.dimOverlay, { backgroundColor: `rgba(0,0,0,${dim})` }]} />
-                </View>
-              ) : (
-                <View style={styles.emptyPreviewBox}>
-                  <ImageIcon size={48} color={theme.textMuted} />
-                  <Text style={styles.emptyText}>No Wallpaper</Text>
-                </View>
-              )}
-            </View>
-            <View style={styles.wallpaperActions}>
-              <TouchableOpacity style={styles.actionBtn} onPress={pickImage} disabled={loading}>
-                {loading ? <ActivityIndicator size="small" color="#fff" /> : <Upload size={20} color="#fff" />}
-                <Text style={styles.actionBtnText}>Upload</Text>
-              </TouchableOpacity>
-              {wallpaperUrl && (
-                <TouchableOpacity style={[styles.actionBtn, styles.removeBtn]} onPress={() => setWallpaperUrl(null)} disabled={loading}>
-                  <Trash2 size={20} color="#f23f43" />
-                  <Text style={[styles.actionBtnText, { color: "#f23f43" }]}>Remove</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {wallpaperUrl && (
-              <View style={styles.slidersContainer}>
-                <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Dim ({Math.round(dim * 100)}%)</Text>
-                  <Slider style={styles.slider} minimumValue={0} maximumValue={0.9} value={dim} onValueChange={setDim} minimumTrackTintColor={theme.accent} maximumTrackTintColor={theme.border} />
-                </View>
-                <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Blur ({Math.round(blur * 100)}%)</Text>
-                  <Slider style={styles.slider} minimumValue={0} maximumValue={1} value={blur} onValueChange={setBlur} minimumTrackTintColor={theme.accent} maximumTrackTintColor={theme.border} />
-                </View>
-                <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Zoom ({zoom.toFixed(1)}x)</Text>
-                  <Slider style={styles.slider} minimumValue={1} maximumValue={3} value={zoom} onValueChange={setZoom} minimumTrackTintColor={theme.accent} maximumTrackTintColor={theme.border} />
-                </View>
-              </View>
             )}
 
             {/* CHAT PARTNER NICKNAME */}
@@ -916,6 +1247,173 @@ const createStyles = (theme: any) =>
       borderColor: theme.border,
     },
     modalCancelBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 6, justifyContent: "center", alignItems: "center" },
+    syncBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(16, 185, 129, 0.12)",
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "rgba(16, 185, 129, 0.3)",
+    },
+    syncBadgeText: {
+      color: "#10b981",
+      fontSize: 11,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    deckSlotCard: {
+      width: 108,
+      height: 148,
+      borderRadius: 10,
+      marginRight: 10,
+      backgroundColor: theme.background,
+      borderWidth: 2,
+      borderColor: theme.border,
+      overflow: "hidden",
+      justifyContent: "space-between",
+    },
+    deckSlotCardSelected: {
+      borderColor: theme.accent,
+      transform: [{ scale: 1.02 }],
+    },
+    deckSlotThumb: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: "100%",
+      height: "100%",
+      resizeMode: "cover",
+    },
+    deckSlotThumbEmpty: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: theme.background,
+    },
+    deckSlotHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: 6,
+      backgroundColor: "rgba(0,0,0,0.55)",
+    },
+    deckSlotNumber: {
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: "800",
+      fontFamily: "Josefin Sans",
+    },
+    activeDotBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      backgroundColor: "rgba(16, 185, 129, 0.95)",
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 8,
+    },
+    activeDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 2.5,
+      backgroundColor: "#fff",
+    },
+    activeDotText: {
+      color: "#fff",
+      fontSize: 9,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    deckSlotFooter: {
+      padding: 6,
+      backgroundColor: "rgba(0,0,0,0.72)",
+    },
+    deckSlotName: {
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    deckSlotMoodTag: {
+      color: "#e2e8f0",
+      fontSize: 9,
+      fontWeight: "600",
+      marginTop: 2,
+      fontFamily: "Josefin Sans",
+    },
+    slotCustomizerBox: {
+      backgroundColor: theme.background,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    slotNumberTitle: {
+      fontSize: 16,
+      fontWeight: "bold",
+      fontFamily: "Josefin Sans",
+    },
+    currentActiveBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(16, 185, 129, 0.15)",
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+    },
+    setAsActiveBtn: {
+      backgroundColor: theme.accent,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
+    setAsActiveBtnText: {
+      color: "#fff",
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    slotNameInputRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    moodOptionPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+    },
+    moodOptionPillSelected: {
+      borderColor: theme.accent,
+      backgroundColor: theme.accent,
+    },
+    moodOptionText: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    smartOptionsContainer: {
+      backgroundColor: theme.background,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
     footer: { padding: 20, borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.surface },
     saveBtn: { backgroundColor: "#23a559", paddingVertical: 14, borderRadius: 6, alignItems: "center" },
     saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "bold" },

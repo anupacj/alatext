@@ -22,6 +22,32 @@ export const ParallaxWallpaper: React.FC<ParallaxWallpaperProps> = React.memo(({
   dim = 0,
   scrollY,
 }) => {
+  // Cross-fade state between previous and active wallpaper
+  const [prevUri, setPrevUri] = React.useState<string | null>(null);
+  const [prevBlur, setPrevBlur] = React.useState<number>(blur);
+  const [prevDim, setPrevDim] = React.useState<number>(dim);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const currentUriRef = useRef(uri);
+
+  useEffect(() => {
+    if (uri && currentUriRef.current && uri !== currentUriRef.current) {
+      setPrevUri(currentUriRef.current);
+      setPrevBlur(blur);
+      setPrevDim(dim);
+      currentUriRef.current = uri;
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 550,
+        useNativeDriver: true,
+      }).start(() => {
+        setPrevUri(null);
+      });
+    } else if (uri) {
+      currentUriRef.current = uri;
+    }
+  }, [uri, blur, dim, fadeAnim]);
+
   // Motion offsets for cursor and device tilt
   const motionAnimX = useRef(new Animated.Value(0)).current;
   const motionAnimY = useRef(new Animated.Value(0)).current;
@@ -154,20 +180,58 @@ export const ParallaxWallpaper: React.FC<ParallaxWallpaperProps> = React.memo(({
           },
         ]}
       >
-        <Image
-          source={{ uri }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          blurRadius={blur * 20}
-        />
-        {dim > 0 && (
-          <View
+        {/* Outgoing previous wallpaper layer */}
+        {prevUri && (
+          <Animated.View
             style={[
               StyleSheet.absoluteFill,
-              { backgroundColor: `rgba(0,0,0,${dim})` },
+              {
+                opacity: fadeAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 0],
+                }),
+              },
             ]}
-          />
+          >
+            <Image
+              source={{ uri: prevUri }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+              blurRadius={prevBlur * 20}
+            />
+            {prevDim > 0 && (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  { backgroundColor: `rgba(0,0,0,${prevDim})` },
+                ]}
+              />
+            )}
+          </Animated.View>
         )}
+
+        {/* Incoming / active wallpaper layer */}
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFill,
+            { opacity: prevUri ? fadeAnim : 1 },
+          ]}
+        >
+          <Image
+            source={{ uri }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+            blurRadius={blur * 20}
+          />
+          {dim > 0 && (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: `rgba(0,0,0,${dim})` },
+              ]}
+            />
+          )}
+        </Animated.View>
       </Animated.View>
     </View>
   );
