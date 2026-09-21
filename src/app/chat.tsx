@@ -213,7 +213,6 @@ export default function ChatScreen() {
   const [chatBlockedByMsgId, setChatBlockedByMsgId] = useState<string | null>(null);
   const lastBlockTimeRef = useRef<number>(0);
   const cooldownUntilRef = useRef<number>(0);
-  const wallpaperScrollY = useRef(new RNAnimated.Value(0)).current;
   const currentChatId = (Array.isArray(id) ? id[0] : id) || "";
 
   // Realtime subscription and local persistence for chats table to keep both users in sync
@@ -2127,7 +2126,6 @@ export default function ChatScreen() {
           zoom={chatSettings?.wallpaper_zoom || 1}
           blur={chatSettings?.wallpaper_blur || 0}
           dim={chatSettings?.wallpaper_dim || 0}
-          scrollY={wallpaperScrollY}
         />
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
@@ -2596,12 +2594,8 @@ export default function ChatScreen() {
             keyExtractor={item => item.client_id || item.id}
             inverted
             initialNumToRender={20}
-            maxToRenderPerBatch={15}
-            windowSize={15}
-            updateCellsBatchingPeriod={25}
-            removeClippedSubviews={Platform.OS === 'android'}
-            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-            decelerationRate={Platform.OS === 'ios' ? 'normal' : 0.985}
+            windowSize={21}
+            removeClippedSubviews={false}
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             keyboardShouldPersistTaps="handled"
             onTouchStart={() => {
@@ -2611,7 +2605,7 @@ export default function ChatScreen() {
             onEndReached={loadOlderMessages}
             onEndReachedThreshold={0.3}
             ListFooterComponent={loadingOlder ? <ActivityIndicator size="small" color={theme.accent} style={{ marginVertical: 10 }} /> : null}
-            style={[{ flex: 1 }, Platform.OS === 'web' && ({ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as any)]}
+            style={[{ flex: 1 }, Platform.OS === 'web' && ({ overscrollBehaviorY: 'contain' } as any)]}
             contentContainerStyle={[
               styles.listContainer,
               isGlassKeyboardOpen && !isDesktop && {
@@ -2620,10 +2614,6 @@ export default function ChatScreen() {
             ]}
             showsVerticalScrollIndicator={false}
             extraData={highlightedMsgId}
-            onScroll={(e) => {
-              wallpaperScrollY.setValue(e.nativeEvent.contentOffset.y);
-            }}
-            scrollEventThrottle={16}
             onScrollToIndexFailed={(info) => {
               setTimeout(() => {
                 flatListRef.current?.scrollToIndex({
