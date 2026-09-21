@@ -3917,16 +3917,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     (item.type === "image" || item.type === "video") && { paddingHorizontal: 2, paddingVertical: 2 }, item.type === "sticker" && { paddingHorizontal: 0, paddingVertical: 0 },
     isLove && {
       backgroundColor: item.isMe ? "#f43f5e" : "#be123c",
-      borderWidth: 1.5,
-      borderColor: "rgba(255, 228, 230, 0.55)",
       shadowColor: "#f43f5e",
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.5,
       shadowRadius: 10,
     },
     isShimmer && {
-      borderWidth: 1.5,
-      borderColor: "rgba(255, 255, 255, 0.45)",
       shadowColor: "#ffffff",
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.35,

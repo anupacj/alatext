@@ -31,29 +31,31 @@
   filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, 0.45));
 }
 
-@keyframes heartbeatBounce {
+@keyframes rhythmicHeartbeat {
   0% {
     transform: scale(1);
   }
   14% {
-    transform: scale(1.3);
+    transform: scale(1.12);
   }
   28% {
-    transform: scale(1);
+    transform: scale(1.02);
   }
   42% {
-    transform: scale(1.24);
+    transform: scale(1.08);
   }
-  70%, 100% {
+  58%, 100% {
     transform: scale(1);
   }
 }
 
 .beating-heart-emoji {
   display: inline-block;
-  animation: heartbeatBounce 1.4s ease-in-out infinite;
-  filter: drop-shadow(0 0 5px rgba(244, 63, 94, 0.75));
+  animation: rhythmicHeartbeat 2.4s cubic-bezier(0.25, 0.8, 0.25, 1) infinite;
+  transform-origin: center center;
+  filter: drop-shadow(0 0 3.5px rgba(244, 63, 94, 0.45));
   vertical-align: baseline;
   margin: 0 1px;
+  will-change: transform;
 }
 

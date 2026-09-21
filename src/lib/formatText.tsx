@@ -1,5 +1,5 @@
-import React from "react";
-import { Text, Platform } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Text, Platform, Animated, Easing } from "react-native";
 import ShinyText from "../components/ShinyText";
 import { hasHeartEmojis } from "./loveDetector";
 import "../components/ShinyText.css";
@@ -14,6 +14,30 @@ export interface FormatOptions {
 }
 
 const HEART_SPLIT_REGEX = /(❤️|🩷|🧡|💛|💚|💙|🩵|💜|🤎|🖤|🤍|💔|❤️‍🔥|❤️‍🩹|❣️|💕|💞|💓|💗|💖|💘|💝|💟|💌|🫶)/u;
+
+const RhythmicHeartNative: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.12, duration: 340, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1.02, duration: 330, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1.08, duration: 330, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1, duration: 420, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.delay(980),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [scale]);
+
+  return (
+    <Animated.Text style={{ transform: [{ scale }], fontSize: 18 }}>
+      {children}
+    </Animated.Text>
+  );
+};
 
 function renderTextOrHearts(chunk: string, keyPrefix: string | number) {
   if (!chunk) return null;
@@ -33,9 +57,9 @@ function renderTextOrHearts(chunk: string, keyPrefix: string | number) {
         );
       }
       return (
-        <Text key={`${keyPrefix}-${idx}`} style={{ fontSize: 18 }}>
+        <RhythmicHeartNative key={`${keyPrefix}-${idx}`}>
           {sub}
-        </Text>
+        </RhythmicHeartNative>
       );
     }
     return sub;
