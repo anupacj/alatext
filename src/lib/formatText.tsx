@@ -66,13 +66,26 @@ function renderTextOrHearts(chunk: string, keyPrefix: string | number) {
   });
 }
 
+export function getSafeFontFamily(font?: string | null): string | undefined {
+  if (Platform.OS !== "web") {
+    return font && font !== "system" ? font : undefined;
+  }
+  const emojiFallbacks = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+  if (!font || font === "system") {
+    return emojiFallbacks;
+  }
+  const cleanFont = font.replace(/['"]/g, '').trim();
+  return `"${cleanFont}", ${emojiFallbacks}`;
+}
+
 export function renderFormattedContent(
   text: string,
   options: FormatOptions
 ) {
   if (!text) return null;
 
-  const fontStyle = options.fontFamily && options.fontFamily !== "system" ? { fontFamily: options.fontFamily } : {};
+  const safeFont = getSafeFontFamily(options.fontFamily);
+  const fontStyle = safeFont ? { fontFamily: safeFont } : {};
   const colorStyle = options.textColor ? { color: options.textColor } : {};
 
   // If entire message is marked as shimmer

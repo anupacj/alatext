@@ -84,7 +84,10 @@ export const ShinyText: React.FC<ShinyTextProps> = ({
   };
 
   const isJosefin = typeof safeFlatStyle.fontFamily === 'string' && safeFlatStyle.fontFamily.toLowerCase().includes('josefin');
-  const customFontFamily = isJosefin ? "'Josefin Sans', sans-serif" : safeFlatStyle.fontFamily;
+  const emojiStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Segoe UI Emoji', 'Segoe UI Symbol', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif";
+  const customFontFamily = isJosefin
+    ? `'Josefin Sans', ${emojiStack}`
+    : (safeFlatStyle.fontFamily ? `"${safeFlatStyle.fontFamily.replace(/['"]/g, '')}", ${emojiStack}` : emojiStack);
 
   return (
     <span

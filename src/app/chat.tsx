@@ -3307,7 +3307,7 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
   bubbleFlatTopLeft: { borderTopLeftRadius: 4 },
   bubbleFlatBottom: { borderBottomLeftRadius: 4 },
   bubbleFlatBottomRight: { borderBottomRightRadius: 4 },
-  messageText: { fontSize: 16, lineHeight: 22, fontFamily: Platform.OS === "web" ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' : undefined },
+  messageText: { fontSize: 16, lineHeight: 22, fontFamily: Platform.OS === "web" ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif' : undefined },
   messageTextLeft: { color: text },
   messageTextRight: { color: text },
   msgMeta: { flexDirection: "row", alignItems: "center", marginTop: 4 },
@@ -3329,8 +3329,52 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
   replyQuoteRight: { alignSelf: "flex-end" },
   replyQuoteSender: { color: text, fontSize: 12, fontWeight: "700", marginBottom: 2, fontFamily: "Josefin Sans" },
   replyQuoteText: { color: textMuted, fontSize: 13, fontFamily: "Josefin Sans" },
-  messageActions: { position: "absolute", top: -12, right: 10, backgroundColor: surface, borderRadius: 8, padding: 4, flexDirection: "row", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
-  actionIcon: { padding: 6 },
+  messageActions: {
+    position: "absolute",
+    top: -2,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: isAmoled
+      ? "rgba(18, 18, 22, 0.82)"
+      : (theme.id === "light"
+        ? "rgba(255, 255, 255, 0.85)"
+        : (theme.id === "pink"
+          ? "rgba(252, 231, 243, 0.85)"
+          : "rgba(35, 37, 43, 0.82)")),
+    borderWidth: 1,
+    borderColor: isAmoled
+      ? "rgba(255, 255, 255, 0.12)"
+      : (theme.id === "light"
+        ? "rgba(0, 0, 0, 0.08)"
+        : (theme.id === "pink"
+          ? "rgba(131, 24, 67, 0.12)"
+          : "rgba(255, 255, 255, 0.12)")),
+    borderRadius: 14,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    gap: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 8,
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    zIndex: 50,
+  } as any,
+  actionIcon: {
+    padding: 6,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    ...(Platform.OS === "web" ? { cursor: "pointer", transition: "all 0.15s ease" } : {}),
+  } as any,
+  actionIconHover: {
+    backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.16)" : (theme.id === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.14)"),
+  },
+  actionIconDeleteHover: {
+    backgroundColor: "rgba(242, 63, 67, 0.18)",
+  },
   typingBanner: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -3468,6 +3512,7 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     paddingHorizontal: 8,
     outlineStyle: "none" as any,
     textAlignVertical: "center",
+    fontFamily: Platform.OS === "web" ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif' : undefined,
   },
   circularSendBtn: {
     width: 46,
@@ -3655,6 +3700,107 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
   );
 });
 
+// --- Animated Glassmorphism Message Hover Action Bar ---
+const MessageHoverActions = ({
+  item,
+  isMe,
+  setReplyingTo,
+  handlePinMessage,
+  setHoveredMsg,
+  setEditingMsgId,
+  setInputText,
+  deleteMessage,
+  isAmoled,
+  theme,
+  styles,
+}: any) => {
+  const enterScale = useSharedValue(0.88);
+  const enterOpacity = useSharedValue(0);
+  const enterTranslateY = useSharedValue(4);
+
+  useEffect(() => {
+    enterScale.value = withSpring(1, { damping: 18, stiffness: 260, mass: 0.8 });
+    enterOpacity.value = withTiming(1, { duration: 160 });
+    enterTranslateY.value = withTiming(0, { duration: 160 });
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: enterOpacity.value,
+    transform: [
+      { scale: enterScale.value },
+      { translateY: enterTranslateY.value },
+    ],
+  }));
+
+  const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
+
+  return (
+    <Animated.View
+      style={[
+        styles.messageActions,
+        isMe ? { right: '100%', marginRight: 8, top: 0 } : { left: '100%', marginLeft: 8, top: 0, right: 'auto' },
+        animatedStyle,
+      ]}
+    >
+      <Pressable
+        onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })}
+        onHoverIn={() => setHoveredBtn("reply")}
+        onHoverOut={() => setHoveredBtn(null)}
+        style={({ pressed }) => [
+          styles.actionIcon,
+          hoveredBtn === "reply" && styles.actionIconHover,
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <Reply size={15} color={isAmoled ? "#ffffff" : (theme?.text || "#f2f3f5")} />
+      </Pressable>
+
+      <Pressable
+        onPress={() => { handlePinMessage(item); setHoveredMsg(null); }}
+        onHoverIn={() => setHoveredBtn("pin")}
+        onHoverOut={() => setHoveredBtn(null)}
+        style={({ pressed }) => [
+          styles.actionIcon,
+          hoveredBtn === "pin" && styles.actionIconHover,
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <Pin size={15} color={isAmoled ? "#ffffff" : (theme?.text || "#f2f3f5")} />
+      </Pressable>
+
+      {isMe && (
+        <>
+          <Pressable
+            onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }}
+            onHoverIn={() => setHoveredBtn("edit")}
+            onHoverOut={() => setHoveredBtn(null)}
+            style={({ pressed }) => [
+              styles.actionIcon,
+              hoveredBtn === "edit" && styles.actionIconHover,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Edit2 size={15} color={isAmoled ? "#ffffff" : (theme?.text || "#f2f3f5")} />
+          </Pressable>
+
+          <Pressable
+            onPress={() => deleteMessage(item.id)}
+            onHoverIn={() => setHoveredBtn("delete")}
+            onHoverOut={() => setHoveredBtn(null)}
+            style={({ pressed }) => [
+              styles.actionIcon,
+              hoveredBtn === "delete" && styles.actionIconDeleteHover,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Trash2 size={15} color="#f23f43" />
+          </Pressable>
+        </>
+      )}
+    </Animated.View>
+  );
+};
+
 // --- MessageRow Component for Animations & Gradients ---
 const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage }: any) => {
   if (item.type === "wallpaper_deck") return null;
@@ -3707,6 +3853,31 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     }
     lastPressRef.current = now;
   };
+
+  const hoverTimeoutRef = useRef<any>(null);
+
+  const handleHoverIn = useCallback(() => {
+    if (Platform.OS !== "web") return;
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredMsg(item.id);
+    }, 140);
+  }, [item.id, setHoveredMsg]);
+
+  const handleHoverOut = useCallback(() => {
+    if (Platform.OS !== "web") return;
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setHoveredMsg(null);
+  }, [setHoveredMsg]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
 
   const translateX = useSharedValue(0);
   const swipeProgress = useSharedValue(0);
@@ -4028,8 +4199,8 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       >
       <Pressable
         style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
-        onHoverIn={() => Platform.OS === "web" && setHoveredMsg(item.id)}
-        onHoverOut={() => Platform.OS === "web" && setHoveredMsg(null)}
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
         onPress={handlePress}
       >
         {!item.isMe && (
@@ -4134,24 +4305,19 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           {!item.isMe && showMeta && <Text style={[styles.timeText, { alignSelf: "flex-start", marginTop: 4 }]}>{item.time}</Text>}
           
           {hoveredMsg === item.id && (
-            <View style={[styles.messageActions, item.isMe ? { right: '100%', marginRight: 8, top: 0 } : { left: '100%', marginLeft: 8, top: 0, right: 'auto' }]}>
-              <TouchableOpacity onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })} style={styles.actionIcon}>
-                <Reply size={16} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { handlePinMessage(item); setHoveredMsg(null); }} style={styles.actionIcon}>
-                <Pin size={16} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} />
-              </TouchableOpacity>
-              {item.isMe && (
-                <>
-                  <TouchableOpacity onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }} style={styles.actionIcon}>
-                    <Edit2 size={16} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.actionIcon}>
-                    <Trash2 size={16} color="#f23f43" />
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
+            <MessageHoverActions
+              item={item}
+              isMe={item.isMe}
+              setReplyingTo={setReplyingTo}
+              handlePinMessage={handlePinMessage}
+              setHoveredMsg={setHoveredMsg}
+              setEditingMsgId={setEditingMsgId}
+              setInputText={setInputText}
+              deleteMessage={deleteMessage}
+              isAmoled={isAmoled}
+              theme={theme}
+              styles={styles}
+            />
           )}
         </View>
       </Pressable>
