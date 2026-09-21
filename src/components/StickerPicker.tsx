@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, FlatList, Image, Dimensions, TextInput } from "react-native";
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, FlatList, Image, Dimensions, TextInput, Platform, useWindowDimensions } from "react-native";
 import { X, Plus, Download, AlertCircle } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
@@ -16,6 +16,10 @@ interface StickerPickerProps {
 }
 
 export default function StickerPicker({ visible, onClose, chatId, userId, onSelectSticker }: StickerPickerProps) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isWeb = Platform.OS === "web";
+  const isDesktop = isWeb && windowWidth >= 768;
+
   const [packs, setPacks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
@@ -176,19 +180,35 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, isDesktop && styles.overlayDesktop]}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
-        <View style={styles.container}>
+        <View style={[
+          styles.container,
+          isWeb && {
+            width: "100%",
+            maxWidth: 440,
+            height: isDesktop ? Math.min(windowHeight * 0.62, 460) : Math.min(windowHeight * 0.6, 440),
+            borderRadius: 16,
+            marginBottom: isDesktop ? 0 : 0,
+            borderWidth: 1,
+            borderColor: "rgba(255, 255, 255, 0.08)",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.45,
+            shadowRadius: 20,
+            elevation: 15,
+          } as any
+        ]}>
           
           <View style={styles.header}>
             <Text style={styles.title}>{isImporting ? "Import Sticker Pack" : "Stickers"}</Text>
             <View style={{ flexDirection: "row", gap: 12 }}>
               {!isImporting && (
-                <TouchableOpacity onPress={() => setIsImporting(true)} style={styles.iconBtn}>
+                <TouchableOpacity onPress={() => setIsImporting(true)} style={[styles.iconBtn, isWeb && ({ cursor: "pointer" } as any)]}>
                   <Plus size={20} color="#f2f3f5" />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={() => isImporting ? setIsImporting(false) : onClose()} style={styles.iconBtn}>
+              <TouchableOpacity onPress={() => isImporting ? setIsImporting(false) : onClose()} style={[styles.iconBtn, isWeb && ({ cursor: "pointer" } as any)]}>
                 <X size={20} color="#b5bac1" />
               </TouchableOpacity>
             </View>
@@ -236,17 +256,23 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
           ) : (
             <View style={{ flex: 1 }}>
               <FlatList
+                key={isWeb ? "web-stickers-5" : "mobile-stickers-4"}
                 data={stickers}
                 keyExtractor={s => s.id}
-                numColumns={4}
-                contentContainerStyle={{ padding: 12, gap: 12 }}
-                columnWrapperStyle={{ gap: 12 }}
+                numColumns={isWeb ? 5 : 4}
+                contentContainerStyle={{ padding: 12, gap: 10 }}
+                columnWrapperStyle={{ gap: 10 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity 
-                    style={styles.stickerWrapper} 
+                    style={[
+                      styles.stickerWrapper,
+                      isWeb && { maxWidth: "18.2%", minHeight: 64, maxHeight: 80 },
+                      isWeb && ({ cursor: "pointer" } as any)
+                    ]} 
                     onPress={() => { onSelectSticker(item.file_url); onClose(); }}
+                    activeOpacity={0.7}
                   >
-                    <Image source={{ uri: getThumbnailUrl(item.file_url, 180, 180, 80) }} style={styles.stickerImg} resizeMode="contain" />
+                    <Image source={{ uri: getThumbnailUrl(item.file_url, 160, 160, 80) }} style={styles.stickerImg} resizeMode="contain" />
                   </TouchableOpacity>
                 )}
               />
@@ -261,7 +287,11 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
                   contentContainerStyle={{ paddingHorizontal: 12, gap: 8, paddingVertical: 8 }}
                   renderItem={({ item }) => (
                     <TouchableOpacity 
-                      style={[styles.tabBtn, selectedPackId === item.id && styles.tabBtnActive]}
+                      style={[
+                        styles.tabBtn, 
+                        selectedPackId === item.id && styles.tabBtnActive,
+                        isWeb && ({ cursor: "pointer" } as any)
+                      ]}
                       onPress={() => setSelectedPackId(item.id)}
                     >
                       {item.cover_url ? (
@@ -282,8 +312,9 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
-  container: { height: SCREEN_HEIGHT * 0.5, backgroundColor: "#2b2d31", borderTopLeftRadius: 16, borderTopRightRadius: 16, overflow: 'hidden' },
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end", alignItems: "center" },
+  overlayDesktop: { justifyContent: "center" },
+  container: { width: "100%", height: SCREEN_HEIGHT * 0.5, backgroundColor: "#2b2d31", borderTopLeftRadius: 16, borderTopRightRadius: 16, overflow: 'hidden' },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: "#1e1f22" },
   title: { color: "#f2f3f5", fontSize: 18, fontWeight: "bold" },
   iconBtn: { padding: 4, backgroundColor: "#1e1f22", borderRadius: 8 },
@@ -291,7 +322,7 @@ const styles = StyleSheet.create({
   emptyText: { color: "#949ba4", fontSize: 15, marginBottom: 16 },
   addBtn: { backgroundColor: "#5865F2", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
   addBtnText: { color: "#fff", fontWeight: "600" },
-  stickerWrapper: { flex: 1, aspectRatio: 1, maxWidth: "23%", backgroundColor: "#1e1f22", borderRadius: 8, padding: 4 },
+  stickerWrapper: { flex: 1, aspectRatio: 1, maxWidth: "23%", backgroundColor: "#1e1f22", borderRadius: 8, padding: 6, justifyContent: "center", alignItems: "center" },
   stickerImg: { width: "100%", height: "100%" },
   tabsContainer: { backgroundColor: "#1e1f22", borderTopWidth: 1, borderTopColor: "#1e1f22" },
   tabBtn: { width: 44, height: 44, borderRadius: 8, justifyContent: "center", alignItems: "center", backgroundColor: "#2b2d31" },

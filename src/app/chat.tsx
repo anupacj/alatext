@@ -2595,6 +2595,15 @@ export default function ChatScreen() {
             renderItem={renderMessage}
             keyExtractor={item => item.client_id || item.id}
             inverted
+            initialNumToRender={20}
+            maxToRenderPerBatch={15}
+            windowSize={15}
+            updateCellsBatchingPeriod={25}
+            removeClippedSubviews={Platform.OS === 'android'}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            decelerationRate={Platform.OS === 'ios' ? 'normal' : 0.985}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
             onTouchStart={() => {
               if (fontPickerOpen) setFontPickerOpen(false);
               if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
@@ -2602,6 +2611,7 @@ export default function ChatScreen() {
             onEndReached={loadOlderMessages}
             onEndReachedThreshold={0.3}
             ListFooterComponent={loadingOlder ? <ActivityIndicator size="small" color={theme.accent} style={{ marginVertical: 10 }} /> : null}
+            style={[{ flex: 1 }, Platform.OS === 'web' && ({ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as any)]}
             contentContainerStyle={[
               styles.listContainer,
               isGlassKeyboardOpen && !isDesktop && {
@@ -3942,7 +3952,10 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     if (isAlbumLeader && albumGroup.length > 1) {
       return <MediaAlbumGrid items={albumGroup} setImageViewerUrl={setImageViewerUrl} />;
     }
-    if (item.type === "sticker") return <Image source={{ uri: item.text }} style={{ width: 140, height: 140 }} resizeMode="contain" />;
+    if (item.type === "sticker") {
+      const stickerDim = Platform.OS === "web" ? 104 : 128;
+      return <Image source={{ uri: item.text }} style={{ width: stickerDim, height: stickerDim }} resizeMode="contain" />;
+    }
     if (item.type === "image") {
       return <DynamicImage uri={item.text} onPress={() => setImageViewerUrl(item.text)} />;
     }

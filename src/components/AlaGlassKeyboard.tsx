@@ -152,7 +152,7 @@ const GlassKey: React.FC<GlassKeyProps> = ({
         <Animated.View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             {
               borderRadius: 8,
               backgroundColor: glowColor,
@@ -261,7 +261,7 @@ const GlassChip: React.FC<GlassChipProps> = ({
         <Animated.View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             {
               borderRadius: 14,
               backgroundColor: glowColor,
@@ -349,7 +349,7 @@ const GlassIconButton: React.FC<GlassIconButtonProps> = ({
         <Animated.View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             {
               borderRadius: 14,
               backgroundColor: glowColor,
@@ -744,7 +744,7 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
         >
           {/* Luminous Ribbon Trail following finger during slide typing */}
           {trailPoints.length >= 2 && (
-            <Svg style={StyleSheet.absoluteFillObject} pointerEvents="none">
+            <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
               <Path
                 d={trailPoints.reduce(
                   (acc, pt, idx) => `${acc} ${idx === 0 ? "M" : "L"} ${pt.x} ${pt.y}`,
