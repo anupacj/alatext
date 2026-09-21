@@ -17,6 +17,10 @@ export const uploadAvatarToR2 = async (userId: string, base64Data: string, mimeT
   return uploadImageToR2(`avatars/${userId}-${Date.now()}`, base64Data, mimeType);
 };
 
+export const uploadChatAvatarToR2 = async (chatId: string, userId: string, base64Data: string, mimeType: string): Promise<string> => {
+  return uploadImageToR2(`chat-avatars/${chatId}/${userId}-${Date.now()}`, base64Data, mimeType);
+};
+
 export const uploadChatImageToR2 = async (chatId: string, base64Data: string, mimeType: string): Promise<string> => {
   return uploadImageToR2(`chat-images/${chatId}-${Date.now()}`, base64Data, mimeType);
 };

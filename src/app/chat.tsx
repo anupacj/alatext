@@ -53,6 +53,11 @@ import {
   getSlotByMood,
   createDefaultDeck,
 } from "../utils/wallpaperDeck";
+import {
+  ChatAvatarMap,
+  loadChatAvatarsFromLocal,
+  fetchChatAvatarsFromCloud,
+} from "../utils/chatAvatar";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -110,6 +115,7 @@ export default function ChatScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [infoVisible, setInfoVisible] = useState(false);
   const [chatSettings, setChatSettings] = useState<any>(null);
+  const [chatAvatars, setChatAvatars] = useState<ChatAvatarMap>({});
   const [wallpaperDeck, setWallpaperDeck] = useState<WallpaperDeckConfig | null>(null);
   const wallpaperDeckRef = useRef<WallpaperDeckConfig | null>(null);
   wallpaperDeckRef.current = wallpaperDeck;
@@ -1105,6 +1111,18 @@ export default function ChatScreen() {
         if (profile) setTargetUser({ ...profile, last_read_at: parts[0].last_read_at, nickname: savedNick });
         if (parts[0].nickname) setMyNicknameFromPartner(parts[0].nickname);
       }
+      if (id) {
+        loadChatAvatarsFromLocal(id as string).then(cached => {
+          if (cached && Object.keys(cached).length > 0) {
+            setChatAvatars(prev => ({ ...cached, ...prev }));
+          }
+        });
+        fetchChatAvatarsFromCloud(id as string).then(cloudAvatars => {
+          if (cloudAvatars && Object.keys(cloudAvatars).length > 0) {
+            setChatAvatars(prev => ({ ...prev, ...cloudAvatars }));
+          }
+        });
+      }
     };
     init();
 
@@ -1148,7 +1166,7 @@ export default function ChatScreen() {
           } catch (e) {}
         }
         
-        const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck");
+        const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar");
         const formatted = filtered.map(formatMsg);
         setMessages(formatted); 
         setHasMore(data.length === PAGE_SIZE); 
@@ -1178,6 +1196,14 @@ export default function ChatScreen() {
                   }));
                 }
               }
+            } catch (e) {}
+            return;
+          }
+          if (payload.new.type === "chat_avatar") {
+            try {
+              const parsed = typeof payload.new.content === "string" ? JSON.parse(payload.new.content) : payload.new.content;
+              const customUrl = parsed?.custom_avatar_url || null;
+              setChatAvatars(prev => ({ ...prev, [payload.new.sender_id]: customUrl }));
             } catch (e) {}
             return;
           }
@@ -1364,6 +1390,12 @@ export default function ChatScreen() {
       .on("broadcast", { event: "pin_update" }, (payload) => {
         setPinnedMessage(payload.payload.pinnedMessage || null);
       })
+      .on("broadcast", { event: "chat_avatar_sync" }, (payload: any) => {
+        if (payload.payload?.userId) {
+          const { userId, avatarUrl } = payload.payload;
+          setChatAvatars(prev => ({ ...prev, [userId]: avatarUrl || null }));
+        }
+      })
       .on("broadcast", { event: "wallpaper_sync" }, (payload: any) => {
         const p = payload?.payload;
         if (!p?.deck) return;
@@ -1430,7 +1462,11 @@ export default function ChatScreen() {
     const { data, error } = await supabase.from("messages")
       .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
       .eq("chat_id", id).lt("created_at", oldest.created_at).order("created_at", { ascending: false }).limit(PAGE_SIZE);
-    if (!error && data) { setMessages(prev => [...prev, ...data.map(formatMsg)]); setHasMore(data.length === PAGE_SIZE); }
+    if (!error && data) {
+      const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar");
+      setMessages(prev => [...prev, ...filtered.map(formatMsg)]);
+      setHasMore(data.length === PAGE_SIZE);
+    }
     setLoadingOlder(false);
   }, [loadingOlder, hasMore, messages, id, formatMsg]);
 
@@ -2085,9 +2121,10 @@ export default function ChatScreen() {
         handlePinMessage={handlePinMessage}
         isHighlighted={highlightedMsgId === item.id}
         onScrollToMessage={scrollToAndHighlightMessage}
+        chatAvatars={chatAvatars}
       />
     );
-  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage]);
+  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage, chatAvatars]);
 
   const screenRadius = (styles.container as any)?.borderRadius ?? theme.screenRadius ?? 0;
 
@@ -2185,8 +2222,8 @@ export default function ChatScreen() {
                   <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
                     <Users size={18} color="#fff" />
                   </View>
-                ) : targetUser?.avatar_url ? (
-                  <Image source={{ uri: targetUser.avatar_url }} style={styles.floatingAvatar} />
+                ) : ((targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url) ? (
+                  <Image source={{ uri: (targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url }} style={styles.floatingAvatar} />
                 ) : (
                   <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
                     <User size={18} color="#fff" />
@@ -3096,6 +3133,8 @@ export default function ChatScreen() {
           onSendAlert={handleSendAlert} 
           myProfile={myProfile}
           publicFeatures={publicFeatures}
+          chatAvatars={chatAvatars}
+          onChatAvatarUpdated={(uId, url) => setChatAvatars(prev => ({ ...prev, [uId]: url }))}
         />
       )}
       {infoVisible && user && (
@@ -3106,6 +3145,7 @@ export default function ChatScreen() {
           isGroup={isGroup} 
           targetUser={targetUser} 
           currentUserId={user.id}
+          chatAvatar={targetUser?.id ? chatAvatars[targetUser.id] : null}
           onGroupUpdated={(updated) => {
             setGroupChatData((prev: any) => ({ ...prev, ...updated }));
           }}
@@ -3802,8 +3842,8 @@ const MessageHoverActions = ({
 };
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage }: any) => {
-  if (item.type === "wallpaper_deck") return null;
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
+  if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
 
   // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
   const isLiveEntrance = useRef(
@@ -4205,8 +4245,8 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       >
         {!item.isMe && (
           <View style={styles.avatarSlot}>
-            {showMeta && (item.avatar
-              ? <Image source={{ uri: item.avatar }} style={styles.messageAvatar} />
+            {showMeta && (((item.sender_id && chatAvatars?.[item.sender_id]) || item.avatar)
+              ? <Image source={{ uri: (item.sender_id && chatAvatars?.[item.sender_id]) || item.avatar }} style={styles.messageAvatar} />
               : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} /></View>
             )}
           </View>

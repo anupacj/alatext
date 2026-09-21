@@ -20,6 +20,7 @@ interface ChatInfoModalProps {
   isGroup: boolean;
   targetUser?: any;
   currentUserId: string;
+  chatAvatar?: string | null;
   onGroupUpdated?: (updated: { name?: string; avatar_url?: string }) => void;
   onOpenImageViewer?: (url: string) => void;
 }
@@ -31,6 +32,7 @@ export default function ChatInfoModal({
   isGroup,
   targetUser,
   currentUserId,
+  chatAvatar,
   onGroupUpdated,
   onOpenImageViewer,
 }: ChatInfoModalProps) {
@@ -531,9 +533,14 @@ export default function ChatInfoModal({
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
               <View style={styles.dmProfile}>
                 <Image
-                  source={{ uri: targetUser?.avatar_url || "https://ui-avatars.com/api/?name=U" }}
+                  source={{ uri: chatAvatar || targetUser?.avatar_url || "https://ui-avatars.com/api/?name=U" }}
                   style={styles.hugeAvatar}
                 />
+                {chatAvatar && (
+                  <View style={{ backgroundColor: theme.accent || "#5865F2", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, marginTop: 6, alignSelf: "center" }}>
+                    <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>🔒 Secret Chat Avatar</Text>
+                  </View>
+                )}
                 <Text style={styles.hugeUsername}>{targetUser?.nickname || targetUser?.display_name || targetUser?.username}</Text>
                 {targetUser?.nickname && (
                   <Text style={{ color: theme.accent || "#5865F2", fontSize: 13, fontWeight: "600", marginTop: 2 }}>

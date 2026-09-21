@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform, TextInput } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as ImagePicker from "expo-image-picker";
-import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell, Sparkles, Heart, Moon, Sun, Check, RefreshCw, Layers, Edit3 } from "lucide-react-native";
+import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell, Sparkles, Heart, Moon, Sun, Check, RefreshCw, Layers, Edit3, Camera, RotateCcw, User, Lock } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { uploadImageToR2, deleteFileFromR2ByUrl } from "../lib/r2";
+import { uploadImageToR2, uploadChatAvatarToR2, deleteFileFromR2ByUrl } from "../lib/r2";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "expo-router";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
@@ -22,6 +22,12 @@ import {
   getActiveSlot,
   MoodTriggerType,
 } from "../utils/wallpaperDeck";
+import {
+  persistChatAvatarToCloud,
+  broadcastChatAvatarUpdate,
+  loadChatAvatarsFromLocal,
+  fetchChatAvatarsFromCloud,
+} from "../utils/chatAvatar";
 
 const FONTS = [
   { name: "System", value: "system" },
@@ -144,6 +150,8 @@ interface ChatSettingsModalProps {
   onSendAlert?: (alert: { title: string; message: string; actionText: string; cancelText: string }) => void;
   myProfile?: UserProfile | null;
   publicFeatures?: string[];
+  chatAvatars?: Record<string, string | null>;
+  onChatAvatarUpdated?: (userId: string, avatarUrl: string | null) => void;
 }
 
 export default function ChatSettingsModal({
@@ -157,6 +165,8 @@ export default function ChatSettingsModal({
   onSendAlert,
   myProfile: myProfileProp,
   publicFeatures: publicFeaturesProp,
+  chatAvatars,
+  onChatAvatarUpdated,
 }: ChatSettingsModalProps) {
   const router = useRouter();
   const { theme } = useTheme();
@@ -179,6 +189,11 @@ export default function ChatSettingsModal({
   const [anniversaryDate, setAnniversaryDate] = useState(currentSettings?.anniversary_date || null);
   const [sendButtonEmoji, setSendButtonEmoji] = useState(currentSettings?.send_button_emoji || "");
 
+  // Chat-Specific Profile Photo (Chat PFP) state
+  const [myChatAvatar, setMyChatAvatar] = useState<string | null>(() => chatAvatars?.[userId] || null);
+  const [partnerChatAvatar, setPartnerChatAvatar] = useState<string | null>(() => (targetUser?.id ? chatAvatars?.[targetUser.id] : null) || null);
+  const [uploadingChatAvatar, setUploadingChatAvatar] = useState(false);
+
   // Custom Alert Popup Modal State
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const [alertTitle, setAlertTitle] = useState("");
@@ -197,10 +212,54 @@ export default function ChatSettingsModal({
   const [partnerNickname, setPartnerNickname] = useState(targetUser?.nickname || currentSettings?.nickname || "");
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState("");
 
+  const pickAndUploadChatAvatar = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        setUploadingChatAvatar(true);
+        const mimeType = asset.mimeType || "image/jpeg";
+        if (!asset.base64) throw new Error("Could not read image data");
+        const url = await uploadChatAvatarToR2(chatId, userId, asset.base64, mimeType);
+        
+        setMyChatAvatar(url);
+        await persistChatAvatarToCloud(chatId, userId, url);
+        broadcastChatAvatarUpdate(chatId, userId, url);
+        if (onChatAvatarUpdated) onChatAvatarUpdated(userId, url);
+      }
+    } catch (e) {
+      console.error("Failed to upload chat avatar:", e);
+    } finally {
+      setUploadingChatAvatar(false);
+    }
+  };
+
+  const resetChatAvatarToDefault = async () => {
+    setUploadingChatAvatar(true);
+    try {
+      setMyChatAvatar(null);
+      await persistChatAvatarToCloud(chatId, userId, null);
+      broadcastChatAvatarUpdate(chatId, userId, null);
+      if (onChatAvatarUpdated) onChatAvatarUpdated(userId, null);
+    } catch (e) {
+      console.error("Failed to reset chat avatar:", e);
+    } finally {
+      setUploadingChatAvatar(false);
+    }
+  };
+
   useEffect(() => {
     if (!visible || !chatId || !userId) return;
 
     let syncChannel: any = null;
+    let avatarBroadcastChannel: any = null;
+
     if (userId && (myProfileProp === undefined || publicFeaturesProp === undefined)) {
       supabase.from("profiles").select("*").eq("id", userId).single().then(({ data }) => {
         if (data) setInternalProfile(data);
@@ -226,6 +285,27 @@ export default function ChatSettingsModal({
       setPartnerUser(targetUser);
       setPartnerNickname(targetUser.nickname || currentSettings?.nickname || "");
     }
+
+    // Load chat-specific avatars from local storage and cloud
+    loadChatAvatarsFromLocal(chatId).then(localAvatars => {
+      if (localAvatars[userId] !== undefined) setMyChatAvatar(localAvatars[userId]);
+      if (targetUser?.id && localAvatars[targetUser.id] !== undefined) setPartnerChatAvatar(localAvatars[targetUser.id]);
+    });
+    fetchChatAvatarsFromCloud(chatId).then(cloudAvatars => {
+      if (cloudAvatars[userId] !== undefined) setMyChatAvatar(cloudAvatars[userId]);
+      if (targetUser?.id && cloudAvatars[targetUser.id] !== undefined) setPartnerChatAvatar(cloudAvatars[targetUser.id]);
+    });
+
+    avatarBroadcastChannel = supabase.channel(`chat_broadcast_${chatId}`);
+    avatarBroadcastChannel
+      .on("broadcast", { event: "chat_avatar_sync" }, (payload: any) => {
+        if (payload.payload?.userId === targetUser?.id) {
+          setPartnerChatAvatar(payload.payload.avatarUrl || null);
+        } else if (payload.payload?.userId === userId) {
+          setMyChatAvatar(payload.payload.avatarUrl || null);
+        }
+      })
+      .subscribe();
 
     // Fetch nickname I set for my partner from my own participant row
     supabase.from("chat_participants")
@@ -257,6 +337,9 @@ export default function ChatSettingsModal({
     return () => {
       if (syncChannel) {
         try { supabase.removeChannel(syncChannel); } catch (e) {}
+      }
+      if (avatarBroadcastChannel) {
+        try { supabase.removeChannel(avatarBroadcastChannel); } catch (e) {}
       }
     };
   }, [visible, userId, chatId, targetUser]);
@@ -501,6 +584,78 @@ export default function ChatSettingsModal({
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+
+            {/* 🔒 CHAT-SPECIFIC PROFILE PHOTO (CHAT PFP) SECTION */}
+            <View style={styles.chatAvatarCard}>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+                <Lock size={16} color={theme.accent || "#5865F2"} style={{ marginRight: 6 }} />
+                <Text style={styles.sectionTitle}>Secret Chat Profile Photo</Text>
+              </View>
+              <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
+                Personalize how you appear in this 1-on-1 chat. This photo is strictly private and visible ONLY to you and your partner within this conversation. Outside this chat, your global profile photo remains visible.
+              </Text>
+
+              <View style={styles.chatAvatarRow}>
+                <View style={styles.chatAvatarPreviewWrapper}>
+                  {myChatAvatar ? (
+                    <Image source={{ uri: myChatAvatar }} style={styles.chatAvatarImage} />
+                  ) : activeProfile?.avatar_url ? (
+                    <Image source={{ uri: activeProfile.avatar_url }} style={styles.chatAvatarImage} />
+                  ) : (
+                    <View style={[styles.chatAvatarImage, styles.chatAvatarFallback]}>
+                      <User size={30} color={theme.textMuted} />
+                    </View>
+                  )}
+                  <View style={[styles.chatAvatarBadge, { backgroundColor: myChatAvatar ? (theme.accent || "#5865F2") : "rgba(255,255,255,0.18)" }]}>
+                    <Text style={styles.chatAvatarBadgeText}>{myChatAvatar ? "Chat PFP Active" : "Default Global PFP"}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.chatAvatarActions}>
+                  <TouchableOpacity
+                    style={styles.chatAvatarUploadBtn}
+                    onPress={pickAndUploadChatAvatar}
+                    disabled={uploadingChatAvatar}
+                    activeOpacity={0.75}
+                  >
+                    {uploadingChatAvatar ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Camera size={15} color="#fff" style={{ marginRight: 6 }} />
+                        <Text style={styles.chatAvatarUploadBtnText}>{myChatAvatar ? "Change Chat Photo" : "Upload Chat Photo"}</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {myChatAvatar && (
+                    <TouchableOpacity
+                      style={styles.chatAvatarResetBtn}
+                      onPress={resetChatAvatarToDefault}
+                      disabled={uploadingChatAvatar}
+                      activeOpacity={0.75}
+                    >
+                      <RotateCcw size={14} color={theme.textMuted} style={{ marginRight: 6 }} />
+                      <Text style={styles.chatAvatarResetBtnText}>Reset to Default</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              {partnerChatAvatar && (
+                <View style={styles.partnerChatAvatarCard}>
+                  <Image source={{ uri: partnerChatAvatar }} style={styles.partnerChatAvatarThumb} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: "600" }}>
+                      ✨ {partnerUser?.display_name || partnerUser?.username || "Partner"}'s Secret Chat PFP
+                    </Text>
+                    <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                      Set by your partner exclusively for this conversation.
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </View>
 
             {/* PARTNER NICKNAME SECTION */}
             <Text style={styles.sectionTitle}>🏷️ Chat Partner Nickname</Text>
@@ -1413,6 +1568,99 @@ const createStyles = (theme: any) =>
       marginBottom: 20,
       borderWidth: 1,
       borderColor: theme.border,
+    },
+    chatAvatarCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      padding: 16,
+      marginBottom: 24,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    chatAvatarRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 4,
+    },
+    chatAvatarPreviewWrapper: {
+      position: "relative",
+      marginRight: 16,
+      alignItems: "center",
+    },
+    chatAvatarImage: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: theme.background,
+    },
+    chatAvatarFallback: {
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    chatAvatarBadge: {
+      position: "absolute",
+      bottom: -6,
+      alignSelf: "center",
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 8,
+    },
+    chatAvatarBadgeText: {
+      color: "#fff",
+      fontSize: 9,
+      fontWeight: "700",
+      letterSpacing: 0.2,
+    },
+    chatAvatarActions: {
+      flex: 1,
+      justifyContent: "center",
+      gap: 8,
+    },
+    chatAvatarUploadBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.accent || "#5865F2",
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 10,
+    },
+    chatAvatarUploadBtnText: {
+      color: "#fff",
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    chatAvatarResetBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.background,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    chatAvatarResetBtnText: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "500",
+    },
+    partnerChatAvatarCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 14,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    partnerChatAvatarThumb: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.background,
     },
     footer: { padding: 20, borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.surface },
     saveBtn: { backgroundColor: "#23a559", paddingVertical: 14, borderRadius: 6, alignItems: "center" },
