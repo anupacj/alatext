@@ -461,11 +461,14 @@ export default function ChatSettingsModal({
   }, [deck.groups]);
 
   const handleSetActiveSlot = useCallback((slotId: string) => {
+    setSelectedSlotId(slotId);
     setDeck(prev => {
       const allSlots = getAllSlots(prev.groups || []);
       const slot = allSlots.find(s => s.id === slotId) || allSlots[0];
+      if (!slot) return prev;
       const targetGroup = (prev.groups || []).find(g => g.slots?.some(s => s.id === slotId));
       const activeGroupId = targetGroup?.id || prev.activeGroupId;
+      if (targetGroup) setSelectedGroupId(targetGroup.id);
 
       const smartColors = getSmartBubbleColors(slot);
       if (autoMatchBubbles && !personalColorOverride) {
@@ -482,10 +485,10 @@ export default function ChatSettingsModal({
         updatedBy: userId,
       };
 
-      setWallpaperUrl(slot.url);
-      setDim(slot.dim);
-      setBlur(slot.blur);
-      setZoom(slot.zoom);
+      setWallpaperUrl(slot.url || null);
+      setDim(slot.dim || 0);
+      setBlur(slot.blur || 0);
+      setZoom(slot.zoom || 1);
 
       saveDeckToLocal(chatId, updatedDeck);
       persistDeckToCloud(chatId, userId, updatedDeck);
@@ -510,10 +513,11 @@ export default function ChatSettingsModal({
         updatedBy: userId,
       };
       if (isCurrentActive) {
-        if (patch.url !== undefined) setWallpaperUrl(patch.url);
+        if (patch.url !== undefined) setWallpaperUrl(patch.url || null);
         if (patch.dim !== undefined) setDim(patch.dim);
         if (patch.blur !== undefined) setBlur(patch.blur);
         if (patch.zoom !== undefined) setZoom(patch.zoom);
+        persistDeckToCloud(chatId, userId, updatedDeck);
         broadcastDeckUpdate(chatId, userId, updatedDeck);
       }
       saveDeckToLocal(chatId, updatedDeck);
@@ -617,17 +621,15 @@ export default function ChatSettingsModal({
             slots: g.slots.map(s => s.id === slotId ? { ...s, url } : s),
           }));
           const allSlots = getAllSlots(updatedGroups);
-          const isCurrentActive = prev.activeSlotId === slotId;
           const updatedDeck: WallpaperDeckConfig = {
             ...prev,
+            activeSlotId: slotId,
             groups: updatedGroups,
             slots: allSlots,
             updatedAt: Date.now(),
             updatedBy: userId,
           };
-          if (isCurrentActive) {
-            setWallpaperUrl(url);
-          }
+          setWallpaperUrl(url);
           saveDeckToLocal(chatId, updatedDeck);
           persistDeckToCloud(chatId, userId, updatedDeck);
           broadcastDeckUpdate(chatId, userId, updatedDeck);
@@ -713,8 +715,17 @@ export default function ChatSettingsModal({
   const saveSettings = async () => {
     setLoading(true);
     try {
-      const activeSlot = getActiveSlot(deck);
-      const finalWallpaperUrl = activeSlot?.url || wallpaperUrl;
+      const allSlots = getAllSlots(deck.groups || []);
+      const currentActiveId = deck.activeSlotId || selectedSlotId;
+      const activeSlot = allSlots.find(s => s.id === currentActiveId) || allSlots[0];
+      const finalWallpaperUrl = activeSlot?.url !== undefined ? activeSlot.url : (wallpaperUrl || null);
+      const finalDeck: WallpaperDeckConfig = {
+        ...deck,
+        activeSlotId: activeSlot?.id || deck.activeSlotId,
+        autoMatchBubbles,
+        updatedAt: Date.now(),
+        updatedBy: userId,
+      };
 
       const updates: any = {
         font_family: fontFamily,
@@ -747,9 +758,9 @@ export default function ChatSettingsModal({
       } catch (e) {}
 
       // Persist full deck and notify partner in real-time
-      await saveDeckToLocal(chatId, deck);
-      await persistDeckToCloud(chatId, userId, deck);
-      broadcastDeckUpdate(chatId, userId, deck);
+      await saveDeckToLocal(chatId, finalDeck);
+      await persistDeckToCloud(chatId, userId, finalDeck);
+      broadcastDeckUpdate(chatId, userId, finalDeck);
 
       // Safe update to Supabase chat_participants
       try {
@@ -778,6 +789,7 @@ export default function ChatSettingsModal({
           ...updates,
           auto_match_bubbles: autoMatchBubbles,
           personal_color_override: personalColorOverride,
+          wallpaper_deck: finalDeck,
         });
       }
       onClose();
@@ -1162,8 +1174,9 @@ export default function ChatSettingsModal({
                   style={[
                     styles.deckSlotCard,
                     isSelected && styles.deckSlotCardSelected,
+                    isActive && styles.deckSlotCardActive,
                   ]}
-                  onPress={() => setSelectedSlotId(slot.id)}
+                  onPress={() => handleSetActiveSlot(slot.id)}
                   activeOpacity={0.8}
                 >
                   {slot.url ? (
@@ -2164,6 +2177,14 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       shadowColor: theme.accent || "#5865F2",
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.35,
+      shadowRadius: 8,
+    },
+    deckSlotCardActive: {
+      borderColor: "#10b981",
+      borderWidth: 2.5,
+      shadowColor: "#10b981",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.45,
       shadowRadius: 8,
     },
     deckSlotThumb: {

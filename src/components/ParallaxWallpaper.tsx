@@ -39,7 +39,7 @@ export const ParallaxWallpaper: React.FC<ParallaxWallpaperProps> = React.memo(({
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 550,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }).start(() => {
         setPrevUri(null);
       });

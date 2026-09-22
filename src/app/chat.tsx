@@ -52,6 +52,7 @@ import {
   getNextRotatedSlot,
   getSlotByMood,
   createDefaultDeck,
+  normalizeDeck,
   getSmartBubbleColors,
 } from "../utils/wallpaperDeck";
 import {
@@ -1013,91 +1014,71 @@ export default function ChatScreen() {
       if (st?.value && Array.isArray(st.value)) setPublicFeatures(st.value);
 
       const { data: mySettings } = await supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).single();
-      if (mySettings) {
-        const mergedSettings = { ...initialSettings, ...mySettings };
-        if (!mySettings.send_button_emoji && initialSettings.send_button_emoji) {
-          mergedSettings.send_button_emoji = initialSettings.send_button_emoji;
-        }
-
-        // Load or initialize Wallpaper Deck
-        let loadedDeck: WallpaperDeckConfig | null = await loadDeckFromLocal(id as string);
-        const cloudDeck = await fetchDeckFromCloud(id as string);
-        if (cloudDeck && (!loadedDeck || cloudDeck.updatedAt >= (loadedDeck.updatedAt || 0))) {
-          loadedDeck = cloudDeck;
-          saveDeckToLocal(id as string, cloudDeck);
-        }
-        if (!loadedDeck) {
-          loadedDeck = createDefaultDeck(mySettings?.wallpaper_url || initialSettings?.wallpaper_url, user.id);
-          saveDeckToLocal(id as string, loadedDeck);
-        }
-
-        // 1. Session Auto-Rotate
-        if (loadedDeck.autoRotateEnabled) {
-          const nextSlot = getNextRotatedSlot(loadedDeck);
-          if (nextSlot && nextSlot.id !== loadedDeck.activeSlotId) {
-            loadedDeck = {
-              ...loadedDeck,
-              activeSlotId: nextSlot.id,
-              updatedAt: Date.now(),
-              updatedBy: user.id,
-            };
-            saveDeckToLocal(id as string, loadedDeck);
-            persistDeckToCloud(id as string, user.id, loadedDeck);
-            broadcastDeckUpdate(id as string, user.id, loadedDeck);
-          }
-        }
-
-        // 2. Late Night / Morning Mood Auto-Switch
-        if (loadedDeck.autoMoodEnabled) {
-          const now = new Date();
-          const currentHour = now.getHours();
-          const currentMinute = now.getMinutes();
-          const isLateNight = currentHour >= 23 || currentHour < 6 || (currentHour === 22 && currentMinute >= 30);
-          if (isLateNight) {
-            const nightSlot = getSlotByMood(loadedDeck, "night");
-            if (nightSlot && nightSlot.url && loadedDeck.activeSlotId !== nightSlot.id) {
-              loadedDeck = {
-                ...loadedDeck,
-                activeSlotId: nightSlot.id,
-                updatedAt: Date.now(),
-                updatedBy: user.id,
-              };
-              saveDeckToLocal(id as string, loadedDeck);
-              persistDeckToCloud(id as string, user.id, loadedDeck);
-              broadcastDeckUpdate(id as string, user.id, loadedDeck);
-            }
-          } else if (currentHour >= 7 && currentHour < 20) {
-            const currentActive = getActiveSlot(loadedDeck);
-            if (currentActive.mood === "night") {
-              const daySlot = getSlotByMood(loadedDeck, "day");
-              if (daySlot && daySlot.url) {
-                loadedDeck = {
-                  ...loadedDeck,
-                  activeSlotId: daySlot.id,
-                  updatedAt: Date.now(),
-                  updatedBy: user.id,
-                };
-                saveDeckToLocal(id as string, loadedDeck);
-                persistDeckToCloud(id as string, user.id, loadedDeck);
-                broadcastDeckUpdate(id as string, user.id, loadedDeck);
-              }
-            }
-          }
-        }
-
-        setWallpaperDeck(loadedDeck);
-        wallpaperDeckRef.current = loadedDeck;
-        const activeSlot = getActiveSlot(loadedDeck);
-        if (activeSlot && activeSlot.url) {
-          mergedSettings.wallpaper_url = activeSlot.url;
-          mergedSettings.wallpaper_dim = activeSlot.dim;
-          mergedSettings.wallpaper_blur = activeSlot.blur;
-          mergedSettings.wallpaper_zoom = activeSlot.zoom;
-        }
-
-        setChatSettings(mergedSettings);
-        AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(mergedSettings)).catch(() => {});
+      const mergedSettings = { ...initialSettings, ...(mySettings || {}) };
+      if (!mySettings?.send_button_emoji && initialSettings?.send_button_emoji) {
+        mergedSettings.send_button_emoji = initialSettings.send_button_emoji;
       }
+
+      // Check partner's settings as fallback if wallpaper isn't in mySettings
+      let fallbackWallpaperUrl = mySettings?.wallpaper_url || initialSettings?.wallpaper_url;
+      if (!fallbackWallpaperUrl) {
+        const { data: partnerPart } = await supabase.from("chat_participants").select("wallpaper_url, wallpaper_dim, wallpaper_blur, wallpaper_zoom").eq("chat_id", id).neq("user_id", user.id).limit(1).maybeSingle();
+        if (partnerPart?.wallpaper_url) {
+          fallbackWallpaperUrl = partnerPart.wallpaper_url;
+          if (mergedSettings.wallpaper_url === undefined) {
+            mergedSettings.wallpaper_url = partnerPart.wallpaper_url;
+            mergedSettings.wallpaper_dim = partnerPart.wallpaper_dim || 0;
+            mergedSettings.wallpaper_blur = partnerPart.wallpaper_blur || 0;
+            mergedSettings.wallpaper_zoom = partnerPart.wallpaper_zoom || 1;
+          }
+        }
+      }
+
+      // Load or initialize Wallpaper Deck
+      let loadedDeck: WallpaperDeckConfig | null = await loadDeckFromLocal(id as string);
+      const cloudDeck = await fetchDeckFromCloud(id as string);
+      if (cloudDeck && (!loadedDeck || (cloudDeck.updatedAt || 0) >= (loadedDeck.updatedAt || 0))) {
+        loadedDeck = cloudDeck;
+        saveDeckToLocal(id as string, cloudDeck);
+      }
+      if (!loadedDeck) {
+        loadedDeck = createDefaultDeck(fallbackWallpaperUrl, user.id);
+        saveDeckToLocal(id as string, loadedDeck);
+      }
+
+      // 1. Session Auto-Rotate (if explicitly enabled)
+      if (loadedDeck.autoRotateEnabled) {
+        const nextSlot = getNextRotatedSlot(loadedDeck);
+        if (nextSlot && nextSlot.id !== loadedDeck.activeSlotId) {
+          loadedDeck = {
+            ...loadedDeck,
+            activeSlotId: nextSlot.id,
+            updatedAt: Date.now(),
+            updatedBy: user.id,
+          };
+          saveDeckToLocal(id as string, loadedDeck);
+          persistDeckToCloud(id as string, user.id, loadedDeck);
+          broadcastDeckUpdate(id as string, user.id, loadedDeck);
+        }
+      }
+
+      setWallpaperDeck(loadedDeck);
+      wallpaperDeckRef.current = loadedDeck;
+      const activeSlot = getActiveSlot(loadedDeck);
+      if (activeSlot) {
+        mergedSettings.wallpaper_url = activeSlot.url || null;
+        mergedSettings.wallpaper_dim = activeSlot.dim || 0;
+        mergedSettings.wallpaper_blur = activeSlot.blur || 0;
+        mergedSettings.wallpaper_zoom = activeSlot.zoom || 1;
+        if (loadedDeck.autoMatchBubbles !== false && !mergedSettings.personal_color_override) {
+          const colors = getSmartBubbleColors(activeSlot);
+          mergedSettings.bubble_color_sent = colors.sent;
+          mergedSettings.bubble_color_received = colors.received;
+        }
+      }
+
+      setChatSettings(mergedSettings);
+      AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(mergedSettings)).catch(() => {});
       const { data: chatData } = await supabase.from("chats").select("*").eq("id", id).single();
       if (chatData) {
         const isStillBlocked = chatData.blocked_until && new Date(chatData.blocked_until).getTime() > Date.now();
@@ -1197,19 +1178,29 @@ export default function ChatScreen() {
           if (payload.new.type === "wallpaper_deck") {
             try {
               const parsedDeck = typeof payload.new.content === "string" ? JSON.parse(payload.new.content) : payload.new.content;
-              if (parsedDeck && Array.isArray(parsedDeck.slots)) {
-                setWallpaperDeck(parsedDeck);
-                wallpaperDeckRef.current = parsedDeck;
-                saveDeckToLocal(id as string, parsedDeck);
-                const activeSlot = getActiveSlot(parsedDeck);
+              if (parsedDeck) {
+                const normDeck = normalizeDeck(parsedDeck);
+                setWallpaperDeck(normDeck);
+                wallpaperDeckRef.current = normDeck;
+                saveDeckToLocal(id as string, normDeck);
+                const activeSlot = getActiveSlot(normDeck);
                 if (activeSlot) {
-                  setChatSettings((prev: any) => ({
-                    ...(prev || {}),
-                    wallpaper_url: activeSlot.url,
-                    wallpaper_dim: activeSlot.dim,
-                    wallpaper_blur: activeSlot.blur,
-                    wallpaper_zoom: activeSlot.zoom,
-                  }));
+                  setChatSettings((prev: any) => {
+                    const nextSettings: any = {
+                      ...(prev || {}),
+                      wallpaper_url: activeSlot.url || null,
+                      wallpaper_dim: activeSlot.dim || 0,
+                      wallpaper_blur: activeSlot.blur || 0,
+                      wallpaper_zoom: activeSlot.zoom || 1,
+                    };
+                    if (normDeck.autoMatchBubbles !== false && !prev?.personal_color_override) {
+                      const colors = getSmartBubbleColors(activeSlot);
+                      nextSettings.bubble_color_sent = colors.sent;
+                      nextSettings.bubble_color_received = colors.received;
+                    }
+                    AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(nextSettings)).catch(() => {});
+                    return nextSettings;
+                  });
                 }
               }
             } catch (e) {}
@@ -1278,14 +1269,6 @@ export default function ChatScreen() {
           });
           checkLiveByeTrigger(nm, messagesRef.current);
           checkLiveLoveTrigger(nm);
-          // Daytime transition check: if currently night slot and daytime message arrives
-          const liveHour = new Date().getHours();
-          if (liveHour >= 7 && liveHour < 20 && wallpaperDeckRef.current?.autoMoodEnabled) {
-            const curActive = wallpaperDeckRef.current ? getActiveSlot(wallpaperDeckRef.current) : null;
-            if (curActive?.mood === "night") {
-              triggerMoodWallpaper("day");
-            }
-          }
         } else if (payload.eventType === "DELETE") {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           const delId = payload.old?.id;
@@ -1428,16 +1411,17 @@ export default function ChatScreen() {
           setChatSettings((prev: any) => {
             const nextSettings: any = {
               ...(prev || {}),
-              wallpaper_url: activeSlot.url,
-              wallpaper_dim: activeSlot.dim,
-              wallpaper_blur: activeSlot.blur,
-              wallpaper_zoom: activeSlot.zoom,
+              wallpaper_url: activeSlot.url || null,
+              wallpaper_dim: activeSlot.dim || 0,
+              wallpaper_blur: activeSlot.blur || 0,
+              wallpaper_zoom: activeSlot.zoom || 1,
             };
             if (incomingDeck.autoMatchBubbles !== false && !prev?.personal_color_override) {
               const colors = getSmartBubbleColors(activeSlot);
               nextSettings.bubble_color_sent = colors.sent;
               nextSettings.bubble_color_received = colors.received;
             }
+            AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(nextSettings)).catch(() => {});
             return nextSettings;
           });
         }
@@ -1816,13 +1800,6 @@ export default function ChatScreen() {
       setMessages(prev => [tempMsg, ...prev]);
       checkLiveByeTrigger(tempMsg, messagesRef.current);
       checkLiveLoveTrigger(tempMsg);
-      const sendHour = new Date().getHours();
-      if (sendHour >= 7 && sendHour < 20 && wallpaperDeckRef.current?.autoMoodEnabled) {
-        const curActive = wallpaperDeckRef.current ? getActiveSlot(wallpaperDeckRef.current) : null;
-        if (curActive?.mood === "night") {
-          triggerMoodWallpaper("day");
-        }
-      }
 
       const { data, error } = await supabase.from("messages").insert({
         chat_id: id, sender_id: user.id, content, type: "text",
@@ -3282,6 +3259,10 @@ export default function ChatScreen() {
           currentSettings={chatSettings} 
           onSettingsSaved={(newSettings) => {
             setChatSettings(newSettings);
+            if (newSettings.wallpaper_deck) {
+              setWallpaperDeck(newSettings.wallpaper_deck);
+              wallpaperDeckRef.current = newSettings.wallpaper_deck;
+            }
             if (newSettings.partner_nickname !== undefined || newSettings.nickname !== undefined) {
               const newNick = newSettings.partner_nickname || newSettings.nickname || null;
               setTargetUser((prev: any) => prev ? { ...prev, nickname: newNick } : prev);

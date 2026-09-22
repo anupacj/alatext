@@ -361,7 +361,7 @@ export function normalizeDeck(raw: any, fallbackUrl?: string | null, userId = "d
     version: 2,
     activeGroupId,
     activeSlotId,
-    autoMoodEnabled: raw.autoMoodEnabled ?? true,
+    autoMoodEnabled: raw.autoMoodEnabled ?? false,
     autoRotateEnabled: raw.autoRotateEnabled ?? false,
     autoMatchBubbles: raw.autoMatchBubbles ?? true,
     groups,
@@ -373,20 +373,28 @@ export function normalizeDeck(raw: any, fallbackUrl?: string | null, userId = "d
 
 export function createDefaultDeck(fallbackUrl?: string | null, userId = "default"): WallpaperDeckConfig {
   const groups: WallpaperGroup[] = JSON.parse(JSON.stringify(DEFAULT_GROUPS));
+  let activeSlotId = "slot_mountain_red_sun";
+  let activeGroupId = "group_art";
+
   if (fallbackUrl) {
     const daylight = groups.find(g => g.id === "group_nature")?.slots.find(s => s.id === "slot_daylight_glow");
-    if (daylight) daylight.url = fallbackUrl;
+    if (daylight) {
+      daylight.url = fallbackUrl;
+      // If user had an existing custom wallpaper, activate it
+      if (fallbackUrl !== mountainAssetUri) {
+        activeSlotId = daylight.id;
+        activeGroupId = "group_nature";
+      }
+    }
   }
 
   const allSlots = getAllSlots(groups);
-  const activeSlotId = "slot_mountain_red_sun";
-  const activeGroupId = "group_art";
 
   return {
     version: 2,
     activeGroupId,
     activeSlotId,
-    autoMoodEnabled: true,
+    autoMoodEnabled: false,
     autoRotateEnabled: false,
     autoMatchBubbles: true,
     groups,
@@ -444,41 +452,72 @@ export async function persistDeckToCloud(chatId: string, userId: string, deck: W
   try {
     const normalized = normalizeDeck(deck, undefined, userId);
     // 1. Save durable record into messages table
-    await supabase.from("messages").insert({
+    const { error: msgErr } = await supabase.from("messages").insert({
       chat_id: chatId,
       sender_id: userId,
       content: JSON.stringify(normalized),
       type: "wallpaper_deck",
     });
+    if (msgErr) {
+      console.warn("Could not insert wallpaper_deck message record:", msgErr);
+    }
 
     // 2. Update current participant's active wallpaper columns for standard compatibility
     const activeSlot = getActiveSlot(normalized);
     if (activeSlot) {
-      await supabase.from("chat_participants").update({
+      const { error: partErr } = await supabase.from("chat_participants").update({
         wallpaper_url: activeSlot.url || null,
         wallpaper_dim: activeSlot.dim || 0,
         wallpaper_blur: activeSlot.blur || 0,
         wallpaper_zoom: activeSlot.zoom || 1,
       }).eq("chat_id", chatId).eq("user_id", userId);
+      if (partErr) {
+        console.warn("Could not update chat_participants wallpaper:", partErr);
+      }
     }
   } catch (e) {
     console.error("Failed to persist wallpaper deck to cloud:", e);
   }
 }
 
-export function broadcastDeckUpdate(chatId: string, userId: string, deck: WallpaperDeckConfig): void {
+export function broadcastDeckUpdate(chatId: string, userId: string, deck: WallpaperDeckConfig, channelOverride?: any): void {
   try {
     const normalized = normalizeDeck(deck, undefined, userId);
     const broadcastTopic = `chat_broadcast_${chatId}`;
-    const channel = supabase.channel(broadcastTopic, { config: { broadcast: { self: false } } });
-    channel.send({
-      type: "broadcast",
+
+    const payload = {
+      type: "broadcast" as const,
       event: "wallpaper_sync",
       payload: {
         deck: normalized,
         sender_id: userId,
       },
-    });
+    };
+
+    // 1. Prefer explicitly passed channel if already joined
+    let channel = channelOverride;
+
+    // 2. Otherwise search existing Supabase channels for active joined broadcast channel
+    if (!channel) {
+      const existing = supabase.getChannels().find(c => 
+        c.topic === `realtime:${broadcastTopic}` || c.topic === broadcastTopic
+      );
+      if (existing) {
+        channel = existing;
+      }
+    }
+
+    if (channel && ((channel as any).state === "joined" || (channel as any).isJoined?.())) {
+      channel.send(payload);
+    } else {
+      // Subscribes before sending if no channel is currently joined
+      const newChan = supabase.channel(broadcastTopic, { config: { broadcast: { self: false } } });
+      newChan.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          newChan.send(payload);
+        }
+      });
+    }
   } catch (e) {
     console.error("Failed to broadcast wallpaper deck update:", e);
   }
