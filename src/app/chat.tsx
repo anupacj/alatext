@@ -52,6 +52,7 @@ import {
   getNextRotatedSlot,
   getSlotByMood,
   createDefaultDeck,
+  getSmartBubbleColors,
 } from "../utils/wallpaperDeck";
 import {
   ChatAvatarMap,
@@ -1424,13 +1425,21 @@ export default function ChatScreen() {
 
         const activeSlot = getActiveSlot(incomingDeck);
         if (activeSlot) {
-          setChatSettings((prev: any) => ({
-            ...(prev || {}),
-            wallpaper_url: activeSlot.url,
-            wallpaper_dim: activeSlot.dim,
-            wallpaper_blur: activeSlot.blur,
-            wallpaper_zoom: activeSlot.zoom,
-          }));
+          setChatSettings((prev: any) => {
+            const nextSettings: any = {
+              ...(prev || {}),
+              wallpaper_url: activeSlot.url,
+              wallpaper_dim: activeSlot.dim,
+              wallpaper_blur: activeSlot.blur,
+              wallpaper_zoom: activeSlot.zoom,
+            };
+            if (incomingDeck.autoMatchBubbles !== false && !prev?.personal_color_override) {
+              const colors = getSmartBubbleColors(activeSlot);
+              nextSettings.bubble_color_sent = colors.sent;
+              nextSettings.bubble_color_received = colors.received;
+            }
+            return nextSettings;
+          });
         }
       }).subscribe();
     typingChannelRef.current = tChannel;

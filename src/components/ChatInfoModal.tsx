@@ -858,27 +858,35 @@ const createStyles = (theme: any, isDesktop: boolean) =>
   StyleSheet.create({
     overlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.7)",
+      backgroundColor: Platform.OS === "web" ? "rgba(0,0,0,0.48)" : "rgba(0,0,0,0.7)",
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
       justifyContent: "center",
       alignItems: "center",
       padding: 16,
-    },
+    } as any,
     container: {
       width: "100%",
       maxWidth: isDesktop ? 960 : 520,
       height: isDesktop ? "82%" : "90%",
       maxHeight: isDesktop ? 680 : undefined,
-      backgroundColor: theme.background,
-      borderRadius: 20,
+      backgroundColor: Platform.OS === "web"
+        ? (theme.dark ? "rgba(22, 25, 32, 0.80)" : "rgba(255, 255, 255, 0.86)")
+        : theme.background,
+      borderRadius: 22,
       overflow: "hidden",
       borderWidth: 1,
-      borderColor: theme.border,
+      borderColor: Platform.OS === "web"
+        ? (theme.dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.1)")
+        : theme.border,
+      backdropFilter: "blur(32px) saturate(190%)",
+      WebkitBackdropFilter: "blur(32px) saturate(190%)",
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.35,
-      shadowRadius: 16,
-      elevation: 10,
-    },
+      shadowOffset: { width: 0, height: 16 },
+      shadowOpacity: 0.5,
+      shadowRadius: 32,
+      elevation: 16,
+    } as any,
     header: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -886,14 +894,18 @@ const createStyles = (theme: any, isDesktop: boolean) =>
       paddingHorizontal: 20,
       paddingVertical: 16,
       borderBottomWidth: 1,
-      borderBottomColor: theme.border,
-      backgroundColor: theme.surface,
-    },
+      borderBottomColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.border,
+      backgroundColor: Platform.OS === "web"
+        ? (theme.dark ? "rgba(25, 28, 36, 0.65)" : "rgba(255, 255, 255, 0.75)")
+        : theme.surface,
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+    } as any,
     headerTitle: { color: theme.text, fontSize: 18, fontWeight: "700" },
     desktopBadge: {
-      backgroundColor: theme.surface,
+      backgroundColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.surface,
       borderWidth: 1,
-      borderColor: theme.border,
+      borderColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.1)" : theme.border,
       paddingHorizontal: 8,
       paddingVertical: 2,
       borderRadius: 6,
@@ -917,21 +929,25 @@ const createStyles = (theme: any, isDesktop: boolean) =>
     desktopSidebar: {
       width: 320,
       borderRightWidth: 1,
-      borderRightColor: theme.border,
-      backgroundColor: theme.surface,
+      borderRightColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.border,
+      backgroundColor: Platform.OS === "web"
+        ? (theme.dark ? "rgba(16, 18, 24, 0.52)" : "rgba(245, 247, 250, 0.6)")
+        : theme.surface,
       display: "flex",
       flexDirection: "column",
-    },
+      backdropFilter: "blur(24px)",
+      WebkitBackdropFilter: "blur(24px)",
+    } as any,
     desktopSidebarScroll: {
       flex: 1,
       padding: 16,
     },
     desktopMainPane: {
       flex: 1,
-      backgroundColor: theme.background,
+      backgroundColor: Platform.OS === "web" ? "rgba(0, 0, 0, 0.06)" : theme.background,
       display: "flex",
       flexDirection: "column",
-    },
+    } as any,
     desktopContentHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -939,9 +955,13 @@ const createStyles = (theme: any, isDesktop: boolean) =>
       paddingHorizontal: 20,
       paddingVertical: 14,
       borderBottomWidth: 1,
-      borderBottomColor: theme.border,
-      backgroundColor: theme.surface,
-    },
+      borderBottomColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.border,
+      backgroundColor: Platform.OS === "web"
+        ? (theme.dark ? "rgba(25, 28, 36, 0.6)" : "rgba(255, 255, 255, 0.7)")
+        : theme.surface,
+      backdropFilter: "blur(16px)",
+      WebkitBackdropFilter: "blur(16px)",
+    } as any,
     desktopContentHeaderTitle: {
       color: theme.text,
       fontSize: 16,
