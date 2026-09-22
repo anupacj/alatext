@@ -22,6 +22,11 @@ import {
   Smartphone,
   ChevronDown,
   Sparkles,
+  Type,
+  Smile,
+  Sticker,
+  Bold,
+  Italic,
 } from "lucide-react-native";
 import { resolveSlideWord, getKeyAtCoordinate } from "../lib/slideTyping";
 
@@ -33,6 +38,13 @@ export interface AlaGlassKeyboardProps {
   onSwitchToSystem: () => void;
   theme: any;
   isAmoled: boolean;
+  onOpenFontPicker?: () => void;
+  onToggleShimmer?: () => void;
+  isShimmerActive?: boolean;
+  onOpenEmoji?: () => void;
+  onOpenStickers?: () => void;
+  onToggleBold?: () => void;
+  onToggleItalic?: () => void;
 }
 
 const QUICK_PHRASES = [
@@ -376,6 +388,13 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
   onSwitchToSystem,
   theme,
   isAmoled,
+  onOpenFontPicker,
+  onToggleShimmer,
+  isShimmerActive,
+  onOpenEmoji,
+  onOpenStickers,
+  onToggleBold,
+  onToggleItalic,
 }) => {
   const [mode, setMode] = useState<KeyboardMode>("letters");
   const [isShift, setIsShift] = useState(false);
@@ -660,6 +679,143 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.quickPhrasesList}
         >
+          {/* Effects / Custom Font Chip */}
+          {onOpenFontPicker && (
+            <Pressable
+              style={[
+                styles.quickChip,
+                {
+                  borderColor: keyBorder,
+                  backgroundColor: keyBg,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                },
+              ]}
+              onPress={() => {
+                triggerHaptic();
+                onOpenFontPicker();
+              }}
+            >
+              <Type size={13} color={textColor} />
+              <Text style={[styles.quickChipText, { color: textColor, fontWeight: "600" }]}>
+                Effects
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Shimmer Effect Toggle Chip */}
+          {onToggleShimmer && (
+            <Pressable
+              style={[
+                styles.quickChip,
+                {
+                  borderColor: isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : keyBorder,
+                  backgroundColor: isShimmerActive
+                    ? (theme.id === "pink" ? "rgba(244, 63, 94, 0.25)" : "rgba(192, 132, 252, 0.28)")
+                    : keyBg,
+                  borderWidth: isShimmerActive ? 1.5 : 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                },
+              ]}
+              onPress={() => {
+                triggerHaptic();
+                onToggleShimmer();
+              }}
+            >
+              <Sparkles size={13} color={isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : textColor} />
+              <Text
+                style={[
+                  styles.quickChipText,
+                  {
+                    color: isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : textColor,
+                    fontWeight: "700",
+                  },
+                ]}
+              >
+                {isShimmerActive ? "✨ Shimmer: ON" : "✨ Shimmer"}
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Emoji Picker Chip */}
+          {onOpenEmoji && (
+            <Pressable
+              style={[
+                styles.quickChip,
+                {
+                  borderColor: keyBorder,
+                  backgroundColor: keyBg,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                },
+              ]}
+              onPress={() => {
+                triggerHaptic();
+                onOpenEmoji();
+              }}
+            >
+              <Smile size={13} color={textColor} />
+              <Text style={[styles.quickChipText, { color: textColor, fontWeight: "600" }]}>
+                Emoji
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Stickers Picker Chip */}
+          {onOpenStickers && (
+            <Pressable
+              style={[
+                styles.quickChip,
+                {
+                  borderColor: keyBorder,
+                  backgroundColor: keyBg,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                },
+              ]}
+              onPress={() => {
+                triggerHaptic();
+                onOpenStickers();
+              }}
+            >
+              <Sticker size={13} color={textColor} />
+              <Text style={[styles.quickChipText, { color: textColor, fontWeight: "600" }]}>
+                Stickers
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Bold Format Chip */}
+          {onToggleBold && (
+            <Pressable
+              style={[styles.quickChip, { paddingHorizontal: 10, borderColor: keyBorder, backgroundColor: keyBg }]}
+              onPress={() => {
+                triggerHaptic();
+                onToggleBold();
+              }}
+            >
+              <Bold size={13} color={textColor} />
+            </Pressable>
+          )}
+
+          {/* Italic Format Chip */}
+          {onToggleItalic && (
+            <Pressable
+              style={[styles.quickChip, { paddingHorizontal: 10, borderColor: keyBorder, backgroundColor: keyBg }]}
+              onPress={() => {
+                triggerHaptic();
+                onToggleItalic();
+              }}
+            >
+              <Italic size={13} color={textColor} />
+            </Pressable>
+          )}
+
           {/* Slide Typing Toggle Chip */}
           <Pressable
             style={[

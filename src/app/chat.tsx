@@ -3041,112 +3041,6 @@ export default function ChatScreen() {
               isAmoled={isAmoled}
             />
 
-            {/* Mobile Keyboard Quick-Access Toolbar */}
-            {!isDesktop && (
-              <View style={styles.mobileAccessoryBar}>
-                {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
-                  <TouchableOpacity
-                    style={[
-                      styles.mobileAccessoryBtn,
-                      (fontPickerOpen || isShimmerActive) && styles.mobileAccessoryBtnActive,
-                    ]}
-                    onPress={() => {
-                      if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
-                      setFontPickerOpen(prev => !prev);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Type
-                      size={15}
-                      color={fontPickerOpen || isShimmerActive ? "#fff" : (theme.id === "pink" ? theme.accent : theme.textMuted)}
-                    />
-                    <Text
-                      style={[
-                        styles.mobileAccessoryText,
-                        (fontPickerOpen || isShimmerActive) && styles.mobileAccessoryTextActive,
-                      ]}
-                    >
-                      Effects
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  style={[
-                    styles.mobileAccessoryBtn,
-                    isShimmerActive && { backgroundColor: "rgba(192, 132, 252, 0.25)", borderColor: "#c084fc" },
-                  ]}
-                  onPress={() => setIsShimmerActive(prev => !prev)}
-                  activeOpacity={0.7}
-                >
-                  <Sparkles
-                    size={15}
-                    color={isShimmerActive ? "#c084fc" : (theme.id === "pink" ? theme.accent : theme.textMuted)}
-                  />
-                  <Text
-                    style={[
-                      styles.mobileAccessoryText,
-                      isShimmerActive && { color: "#c084fc", fontWeight: "700" },
-                    ]}
-                  >
-                    Shimmer
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.mobileAccessoryBtn}
-                  onPress={() => {
-                    if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
-                    setEmojiOpen(true);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Smile
-                    size={15}
-                    color={theme.id === "pink" ? theme.accent : theme.textMuted}
-                  />
-                  <Text style={styles.mobileAccessoryText}>Emoji</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.mobileAccessoryBtn}
-                  onPress={() => {
-                    if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
-                    setStickerPickerOpen(true);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Sticker
-                    size={15}
-                    color={theme.id === "pink" ? theme.accent : theme.textMuted}
-                  />
-                  <Text style={styles.mobileAccessoryText}>Stickers</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.mobileAccessoryBtn, { paddingHorizontal: 9 }]}
-                  onPress={toggleBold}
-                  activeOpacity={0.7}
-                >
-                  <Bold
-                    size={14}
-                    color={theme.id === "pink" ? theme.accent : theme.textMuted}
-                  />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.mobileAccessoryBtn, { paddingHorizontal: 9 }]}
-                  onPress={toggleItalic}
-                  activeOpacity={0.7}
-                >
-                  <Italic
-                    size={14}
-                    color={theme.id === "pink" ? theme.accent : theme.textMuted}
-                  />
-                </TouchableOpacity>
-              </View>
-            )}
-
             <View style={styles.inputAreaRow}>
               {isRecordingVoice ? (
                 <VoiceRecorder onSendAudio={handleSendVoiceMessage} onCancel={() => setIsRecordingVoice(false)} />
@@ -3191,17 +3085,15 @@ export default function ChatScreen() {
                         <Sticker size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                       </TouchableOpacity>
                     )}
-                    {isDesktop && (
-                      <TouchableOpacity 
-                        style={styles.inputIconButton} 
-                        onPress={() => {
-                          if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
-                          setEmojiOpen(true);
-                        }}
-                      >
-                        <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity 
+                      style={styles.inputIconButton} 
+                      onPress={() => {
+                        if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                        setEmojiOpen(true);
+                      }}
+                    >
+                      <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
+                    </TouchableOpacity>
                     {!isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
                       <TouchableOpacity 
                         style={styles.inputIconButton} 
@@ -3333,6 +3225,22 @@ export default function ChatScreen() {
                 }}
                 theme={theme}
                 isAmoled={isAmoled}
+                onOpenFontPicker={() => {
+                  setIsGlassKeyboardOpen(false);
+                  setFontPickerOpen(true);
+                }}
+                onToggleShimmer={() => setIsShimmerActive(prev => !prev)}
+                isShimmerActive={isShimmerActive}
+                onOpenEmoji={() => {
+                  setIsGlassKeyboardOpen(false);
+                  setEmojiOpen(true);
+                }}
+                onOpenStickers={() => {
+                  setIsGlassKeyboardOpen(false);
+                  setStickerPickerOpen(true);
+                }}
+                onToggleBold={toggleBold}
+                onToggleItalic={toggleItalic}
               />
             )}
           </View>
@@ -3744,39 +3652,6 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     right: 0,
     backgroundColor: "transparent",
     zIndex: 50,
-  },
-  mobileAccessoryBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    marginBottom: 6,
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  mobileAccessoryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: isAmoled ? "rgba(25, 25, 25, 0.85)" : (theme.id === "light" ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.08)"),
-    borderWidth: 1,
-    borderColor: isAmoled ? "#333333" : theme.border,
-  },
-  mobileAccessoryBtnActive: {
-    backgroundColor: theme.accent || "#5865F2",
-    borderColor: theme.accent || "#5865F2",
-  },
-  mobileAccessoryText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: isAmoled ? "#aaaaaa" : theme.textMuted,
-  },
-  mobileAccessoryTextActive: {
-    color: "#ffffff",
-    fontWeight: "700",
   },
   inputAreaRow: {
     flexDirection: "row",
