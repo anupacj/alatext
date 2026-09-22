@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform, TextInput } from "react-native";
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform, TextInput, useWindowDimensions } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as ImagePicker from "expo-image-picker";
 import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell, Sparkles, Heart, Moon, Sun, Check, RefreshCw, Layers, Edit3, Camera, RotateCcw, User, Lock, Volume2, Play, Pause, Music } from "lucide-react-native";
@@ -146,6 +146,16 @@ export const FONT_OPTIONS = [
   { label: "Silkscreen", value: "Silkscreen" },
 ];
 
+export type SettingsTab = "profile" | "appearance" | "wallpaper" | "sound" | "danger";
+
+export const SETTINGS_TABS: { id: SettingsTab; label: string; icon: any; subtitle: string }[] = [
+  { id: "profile", label: "Secret PFP & Name", icon: Lock, subtitle: "Chat photo & nickname" },
+  { id: "appearance", label: "Themes & Bubbles", icon: Sparkles, subtitle: "Colors, shapes & fonts" },
+  { id: "wallpaper", label: "Wallpaper Deck", icon: Layers, subtitle: "Slots, moods & effects" },
+  { id: "sound", label: "Sounds & Icons", icon: Volume2, subtitle: "Chimes & send button" },
+  { id: "danger", label: "Alerts & Danger", icon: AlertTriangle, subtitle: "Broadcast & delete" },
+];
+
 interface ChatSettingsModalProps {
   visible: boolean;
   onClose: () => void;
@@ -177,7 +187,10 @@ export default function ChatSettingsModal({
 }: ChatSettingsModalProps) {
   const router = useRouter();
   const { theme } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === "web" && width >= 768;
+  const styles = useMemo(() => createStyles(theme, isDesktop), [theme, isDesktop]);
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
 
   const [loading, setLoading] = useState(false);
   const [deck, setDeck] = useState<WallpaperDeckConfig>(() => createDefaultDeck(currentSettings?.wallpaper_url, userId));
@@ -642,698 +655,816 @@ export default function ChatSettingsModal({
 
   const shapeRadius = BUBBLE_SHAPES.find(s => s.value === bubbleShape)?.radius ?? 18;
 
+  // 1. Secret PFP & Chat Partner Nickname Tab
+  const renderProfileTab = () => (
+    <View>
+      {/* 🔒 CHAT-SPECIFIC PROFILE PHOTO (CHAT PFP) SECTION */}
+      <View style={styles.chatAvatarCard}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+          <Lock size={16} color={theme.accent || "#5865F2"} style={{ marginRight: 6 }} />
+          <Text style={styles.sectionTitle}>Secret Chat Profile Photo</Text>
+        </View>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
+          Personalize how you appear in this 1-on-1 chat. This photo is strictly private and visible ONLY to you and your partner within this conversation. Outside this chat, your global profile photo remains visible.
+        </Text>
+
+        <View style={styles.chatAvatarRow}>
+          <View style={styles.chatAvatarPreviewWrapper}>
+            {myChatAvatar ? (
+              <Image source={{ uri: myChatAvatar }} style={styles.chatAvatarImage} />
+            ) : activeProfile?.avatar_url ? (
+              <Image source={{ uri: activeProfile.avatar_url }} style={styles.chatAvatarImage} />
+            ) : (
+              <View style={[styles.chatAvatarImage, styles.chatAvatarFallback]}>
+                <User size={30} color={theme.textMuted} />
+              </View>
+            )}
+            <View style={[styles.chatAvatarBadge, { backgroundColor: myChatAvatar ? (theme.accent || "#5865F2") : "rgba(255,255,255,0.18)" }]}>
+              <Text style={styles.chatAvatarBadgeText}>{myChatAvatar ? "Chat PFP Active" : "Default Global PFP"}</Text>
+            </View>
+          </View>
+
+          <View style={styles.chatAvatarActions}>
+            <TouchableOpacity
+              style={styles.chatAvatarUploadBtn}
+              onPress={pickAndUploadChatAvatar}
+              disabled={uploadingChatAvatar}
+              activeOpacity={0.75}
+            >
+              {uploadingChatAvatar ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Camera size={15} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.chatAvatarUploadBtnText}>{myChatAvatar ? "Change Chat Photo" : "Upload Chat Photo"}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {myChatAvatar && (
+              <TouchableOpacity
+                style={styles.chatAvatarResetBtn}
+                onPress={resetChatAvatarToDefault}
+                disabled={uploadingChatAvatar}
+                activeOpacity={0.75}
+              >
+                <RotateCcw size={14} color={theme.textMuted} style={{ marginRight: 6 }} />
+                <Text style={styles.chatAvatarResetBtnText}>Reset to Default</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {partnerChatAvatar && (
+          <View style={styles.partnerChatAvatarCard}>
+            <Image source={{ uri: partnerChatAvatar }} style={styles.partnerChatAvatarThumb} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: "600" }}>
+                ✨ {partnerUser?.display_name || partnerUser?.username || "Partner"}'s Secret Chat PFP
+              </Text>
+              <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                Set by your partner exclusively for this conversation.
+              </Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* PARTNER NICKNAME SECTION */}
+      <View style={{ marginTop: 20 }}>
+        <Text style={styles.sectionTitle}>🏷️ Chat Partner Nickname</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 8 }}>
+          Set a custom nickname for {partnerUser?.profiles?.username ? `@${partnerUser.profiles.username}` : (partnerUser?.display_name || "your chat partner")}.
+        </Text>
+        <TextInput
+          style={{
+            backgroundColor: theme.surface,
+            color: theme.text,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.12)",
+            fontSize: 15,
+            marginBottom: 12,
+          }}
+          placeholder={`Nickname for ${partnerUser?.profiles?.username || "partner"}`}
+          placeholderTextColor={theme.textMuted}
+          value={partnerNickname}
+          onChangeText={setPartnerNickname}
+        />
+
+        {myNicknameFromPartner ? (
+          <View style={{ backgroundColor: "rgba(88,101,242,0.15)", borderRadius: 12, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: "rgba(88,101,242,0.3)" }}>
+            <Text style={{ color: theme.accent || "#5865F2", fontSize: 13, fontWeight: "600" }}>
+              ✨ {partnerUser?.profiles?.username || "Partner"} set your nickname to: "{myNicknameFromPartner}"
+            </Text>
+          </View>
+        ) : <View style={{ marginBottom: 12 }} />}
+      </View>
+    </View>
+  );
+
+  // 2. Themes & Bubbles Tab
+  const renderAppearanceTab = () => (
+    <View>
+      <Text style={styles.sectionTitle}>✨ Themes</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 24 }}>
+        {THEMES.map((t) => (
+          <TouchableOpacity key={t.name} style={styles.themeCard} onPress={() => applyTheme(t)}>
+            <View style={styles.themePreview}>
+              <View style={[styles.themeBubbleRight, { backgroundColor: t.sent }]} />
+              <View style={[styles.themeBubbleLeft, { backgroundColor: t.received }]} />
+            </View>
+            <Text style={styles.themeLabel}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* BUBBLE COLORS */}
+      <Text style={styles.sectionTitle}>💬 Sent Bubble Color</Text>
+      <View style={styles.colorGrid}>
+        {BUBBLE_COLORS.map((c) => (
+          <TouchableOpacity
+            key={c.color}
+            onPress={() => setBubbleColorSent(c.color)}
+            style={[styles.colorSwatch, { backgroundColor: c.color }, bubbleColorSent === c.color && styles.colorSwatchSelected]}
+          />
+        ))}
+      </View>
+
+      <Text style={[styles.sectionTitle, { marginTop: 16 }]}>📩 Received Bubble Color</Text>
+      <View style={styles.colorGrid}>
+        {RECEIVED_COLORS.map((c) => (
+          <TouchableOpacity
+            key={c.color}
+            onPress={() => setBubbleColorReceived(c.color)}
+            style={[styles.colorSwatch, { backgroundColor: c.color }, bubbleColorReceived === c.color && styles.colorSwatchSelected]}
+          />
+        ))}
+      </View>
+
+      {/* GRADIENT */}
+      <View style={styles.toggleRow}>
+        <Text style={styles.toggleLabel}>Gradient Bubbles</Text>
+        <TouchableOpacity
+          style={[styles.toggle, gradientEnabled && styles.toggleOn]}
+          onPress={() => setGradientEnabled(!gradientEnabled)}
+        >
+          <View style={[styles.toggleThumb, gradientEnabled && styles.toggleThumbOn]} />
+        </TouchableOpacity>
+      </View>
+      {gradientEnabled && (
+        <>
+          <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Gradient End Color</Text>
+          <View style={styles.colorGrid}>
+            {BUBBLE_COLORS.map((c) => (
+              <TouchableOpacity
+                key={c.color}
+                onPress={() => setGradientColor2(c.color)}
+                style={[styles.colorSwatch, { backgroundColor: c.color }, gradientColor2 === c.color && styles.colorSwatchSelected]}
+              />
+            ))}
+          </View>
+          <View style={[styles.gradientPreview, { borderRadius: shapeRadius }]}>
+            <Text style={styles.gradientPreviewText}>Preview gradient →</Text>
+          </View>
+        </>
+      )}
+
+      {/* BUBBLE SHAPE */}
+      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🫧 Bubble Shape</Text>
+      <View style={styles.shapeRow}>
+        {BUBBLE_SHAPES.map((s) => (
+          <TouchableOpacity
+            key={s.value}
+            style={[styles.shapeOption, bubbleShape === s.value && styles.shapeOptionSelected]}
+            onPress={() => setBubbleShape(s.value)}
+          >
+            <View style={[styles.shapeSampleBubble, { borderRadius: s.radius, backgroundColor: bubbleColorSent }]} />
+            <Text style={[styles.shapeLabel, bubbleShape === s.value && { color: theme.text }]}>{s.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* FONTS */}
+      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Font Style</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+        {FONT_OPTIONS.map((opt) => (
+          <TouchableOpacity
+            key={opt.value}
+            style={[styles.shapeOption, { width: 100, marginRight: 8, paddingVertical: 10 }, fontFamily === opt.value && styles.shapeOptionSelected]}
+            onPress={() => setFontFamily(opt.value)}
+          >
+            <Text
+              style={[
+                styles.shapeLabel,
+                { fontFamily: opt.value === "system" ? undefined : opt.value },
+                fontFamily === opt.value && { color: theme.text },
+              ]}
+            >
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  // 3. Wallpaper Deck Tab
+  const renderWallpaperTab = () => (
+    <View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <Text style={styles.sectionTitle}>🖼️ Wallpaper Deck (Shared)</Text>
+        <View style={styles.syncBadge}>
+          <Sparkles size={12} color="#10b981" />
+          <Text style={styles.syncBadgeText}>Partner Sync Active</Text>
+        </View>
+      </View>
+
+      <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
+        5 shared themed slots. Name your themes and customize wallpapers together in real time.
+      </Text>
+
+      {/* Horizontal Deck Slots Carousel */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+        {deck.slots.map((slot, idx) => {
+          const isSelected = slot.id === selectedSlotId;
+          const isActive = slot.id === deck.activeSlotId;
+          return (
+            <TouchableOpacity
+              key={slot.id}
+              style={[
+                styles.deckSlotCard,
+                isSelected && styles.deckSlotCardSelected,
+              ]}
+              onPress={() => setSelectedSlotId(slot.id)}
+              activeOpacity={0.8}
+            >
+              {slot.url ? (
+                <Image source={{ uri: slot.url }} style={styles.deckSlotThumb} />
+              ) : (
+                <View style={styles.deckSlotThumbEmpty}>
+                  <ImageIcon size={22} color={theme.textMuted} />
+                </View>
+              )}
+              
+              {/* Top status badges */}
+              <View style={styles.deckSlotHeader}>
+                <Text style={styles.deckSlotNumber}>#{idx + 1}</Text>
+                {isActive && (
+                  <View style={styles.activeDotBadge}>
+                    <View style={styles.activeDot} />
+                    <Text style={styles.activeDotText}>Active</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Bottom slot name & mood pill */}
+              <View style={styles.deckSlotFooter}>
+                <Text style={styles.deckSlotName} numberOfLines={1}>{slot.name || `Slot ${idx + 1}`}</Text>
+                {slot.mood && slot.mood !== "none" && (
+                  <Text style={styles.deckSlotMoodTag}>
+                    {slot.mood === "love" ? "❤️ Love" : slot.mood === "night" ? "🌙 Night" : "☀️ Day"}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Selected Slot Customization Box */}
+      <View style={styles.slotCustomizerBox}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={[styles.slotNumberTitle, { color: theme.text }]}>
+              Slot #{deck.slots.findIndex(s => s.id === selectedSlotId) + 1}
+            </Text>
+            {selectedSlot.id === deck.activeSlotId ? (
+              <View style={styles.currentActiveBadge}>
+                <Check size={12} color="#10b981" />
+                <Text style={{ color: "#10b981", fontSize: 11, fontWeight: "700" }}>Currently Active</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.setAsActiveBtn}
+                onPress={() => handleSetActiveSlot(selectedSlot.id)}
+              >
+                <Text style={styles.setAsActiveBtnText}>Set Active</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Editable Name */}
+        <View style={{ marginBottom: 14 }}>
+          <Text style={styles.sliderLabel}>Theme / Slot Name (Shared)</Text>
+          <View style={styles.slotNameInputRow}>
+            <Edit3 size={16} color={theme.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              style={[styles.alertInput, { flex: 1, paddingVertical: 8, paddingHorizontal: 10, fontSize: 14 }]}
+              value={selectedSlot.name}
+              onChangeText={(val) => updateSlot(selectedSlot.id, { name: val })}
+              placeholder="Give this wallpaper theme a name"
+              placeholderTextColor={theme.textMuted}
+              maxLength={30}
+            />
+          </View>
+        </View>
+
+        {/* Mood Tag Selector */}
+        <View style={{ marginBottom: 14 }}>
+          <Text style={styles.sliderLabel}>Mood Trigger (Auto-Detect)</Text>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {(["none", "love", "night", "day"] as MoodTriggerType[]).map((m) => {
+              const isMoodSelected = selectedSlot.mood === m;
+              const label = m === "none" ? "None" : m === "love" ? "❤️ Love" : m === "night" ? "🌙 Night" : "☀️ Day";
+              return (
+                <TouchableOpacity
+                  key={m}
+                  style={[
+                    styles.moodOptionPill,
+                    isMoodSelected && styles.moodOptionPillSelected,
+                  ]}
+                  onPress={() => updateSlot(selectedSlot.id, { mood: m })}
+                >
+                  <Text style={[styles.moodOptionText, isMoodSelected && { color: "#fff", fontWeight: "700" }]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Slot Preview & Upload */}
+        <View style={styles.wallpaperPreviewContainer}>
+          {selectedSlot.url ? (
+            <View style={styles.previewBox}>
+              <Image
+                source={{ uri: selectedSlot.url }}
+                style={[styles.previewImage, { transform: [{ scale: selectedSlot.zoom }] }]}
+                blurRadius={selectedSlot.blur * 20}
+              />
+              <View style={[styles.dimOverlay, { backgroundColor: `rgba(0,0,0,${selectedSlot.dim})` }]} />
+            </View>
+          ) : (
+            <View style={styles.emptyPreviewBox}>
+              <ImageIcon size={44} color={theme.textMuted} />
+              <Text style={styles.emptyText}>Empty Slot — Upload a Photo</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.wallpaperActions}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => pickImageForSlot(selectedSlot.id)}
+            disabled={loading}
+          >
+            {loading ? <ActivityIndicator size="small" color="#fff" /> : <Upload size={18} color="#fff" />}
+            <Text style={styles.actionBtnText}>{selectedSlot.url ? "Change Photo" : "Upload Photo"}</Text>
+          </TouchableOpacity>
+          {selectedSlot.url && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.removeBtn]}
+              onPress={() => removeImageForSlot(selectedSlot.id)}
+              disabled={loading}
+            >
+              <Trash2 size={18} color="#f23f43" />
+              <Text style={[styles.actionBtnText, { color: "#f23f43" }]}>Clear Slot</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Sliders if photo present */}
+        {selectedSlot.url && (
+          <View style={styles.slidersContainer}>
+            <View style={styles.sliderRow}>
+              <Text style={styles.sliderLabel}>Dim ({Math.round(selectedSlot.dim * 100)}%)</Text>
+              <Slider
+                style={styles.slider}
+                minimumValue={0}
+                maximumValue={0.85}
+                value={selectedSlot.dim}
+                onValueChange={(val) => updateSlot(selectedSlot.id, { dim: val })}
+                minimumTrackTintColor={theme.accent}
+                maximumTrackTintColor={theme.border}
+              />
+            </View>
+            <View style={styles.sliderRow}>
+              <Text style={styles.sliderLabel}>Blur ({Math.round(selectedSlot.blur * 100)}%)</Text>
+              <Slider
+                style={styles.slider}
+                minimumValue={0}
+                maximumValue={1}
+                value={selectedSlot.blur}
+                onValueChange={(val) => updateSlot(selectedSlot.id, { blur: val })}
+                minimumTrackTintColor={theme.accent}
+                maximumTrackTintColor={theme.border}
+              />
+            </View>
+            <View style={styles.sliderRow}>
+              <Text style={styles.sliderLabel}>Zoom ({selectedSlot.zoom.toFixed(1)}x)</Text>
+              <Slider
+                style={styles.slider}
+                minimumValue={1}
+                maximumValue={2.5}
+                value={selectedSlot.zoom}
+                onValueChange={(val) => updateSlot(selectedSlot.id, { zoom: val })}
+                minimumTrackTintColor={theme.accent}
+                maximumTrackTintColor={theme.border}
+              />
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Smart Auto-Change Toggles */}
+      <View style={styles.smartOptionsContainer}>
+        <View style={styles.toggleRow}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.toggleLabel}>Auto-Mood Dynamic Wallpaper</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+              Shifts to Romantic slot when sweet messages are sent, and Night slot late at night.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.toggle, deck.autoMoodEnabled && styles.toggleOn]}
+            onPress={() => {
+              const newAuto = !deck.autoMoodEnabled;
+              setDeck(prev => {
+                const updated = { ...prev, autoMoodEnabled: newAuto, updatedAt: Date.now(), updatedBy: userId };
+                saveDeckToLocal(chatId, updated);
+                persistDeckToCloud(chatId, userId, updated);
+                broadcastDeckUpdate(chatId, userId, updated);
+                return updated;
+              });
+            }}
+          >
+            <View style={[styles.toggleThumb, deck.autoMoodEnabled && styles.toggleThumbOn]} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.toggleRow, { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 14 }]}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.toggleLabel}>Rotate Each Chat Visit</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+              Cycles to your next named slot whenever you enter the chat for a fresh aesthetic.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.toggle, deck.autoRotateEnabled && styles.toggleOn]}
+            onPress={() => {
+              const newRotate = !deck.autoRotateEnabled;
+              setDeck(prev => {
+                const updated = { ...prev, autoRotateEnabled: newRotate, updatedAt: Date.now(), updatedBy: userId };
+                saveDeckToLocal(chatId, updated);
+                persistDeckToCloud(chatId, userId, updated);
+                broadcastDeckUpdate(chatId, userId, updated);
+                return updated;
+              });
+            }}
+          >
+            <View style={[styles.toggleThumb, deck.autoRotateEnabled && styles.toggleThumbOn]} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      {isFeatureEnabled("wallpapers", activeProfile, activePublicFeatures) && (
+        <View style={{ marginTop: 20 }}>
+          <Text style={[styles.sliderLabel, { marginBottom: 12 }]}>Doodle Overlay</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+            {DOODLE_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.shapeOption, { width: 80, marginRight: 8, paddingVertical: 10 }, wallpaperDoodle === opt.value && styles.shapeOptionSelected]}
+                onPress={() => setWallpaperDoodle(opt.value)}
+              >
+                <Text style={[styles.shapeLabel, wallpaperDoodle === opt.value && { color: theme.text }]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+
+  // 4. Sound & Send Button Icon Tab
+  const renderSoundTab = () => (
+    <View>
+      {/* SEND BUTTON ICON / EMOJI */}
+      <Text style={styles.sectionTitle}>🚀 Send Button Icon</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
+        Replace your send arrow button with a custom emoji icon for this chat.
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+        {SEND_EMOJI_PRESETS.map((item) => (
+          <TouchableOpacity
+            key={item.label}
+            style={[
+              styles.shapeOption,
+              { minWidth: 62, marginRight: 8, paddingVertical: 8, paddingHorizontal: 10, alignItems: "center" },
+              sendButtonEmoji === item.emoji && styles.shapeOptionSelected,
+            ]}
+            onPress={() => setSendButtonEmoji(item.emoji)}
+          >
+            <Text style={{ fontSize: item.emoji ? 20 : 16 }}>{item.emoji || "➤"}</Text>
+            <Text
+              style={[
+                styles.shapeLabel,
+                { fontSize: 11, marginTop: 4 },
+                sendButtonEmoji === item.emoji && { color: theme.accent, fontWeight: "bold" },
+              ]}
+            >
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
+        <Text style={{ color: theme.text, fontSize: 13 }}>Or type custom emoji:</Text>
+        <TextInput
+          style={[styles.alertInput, { width: 70, textAlign: "center", fontSize: 18, paddingVertical: 6 }]}
+          value={sendButtonEmoji}
+          onChangeText={setSendButtonEmoji}
+          placeholder="🛸"
+          placeholderTextColor={theme.textMuted}
+          maxLength={4}
+        />
+        {sendButtonEmoji ? (
+          <TouchableOpacity onPress={() => setSendButtonEmoji("")} style={{ padding: 6 }}>
+            <Text style={{ color: "#f43f5e", fontSize: 12, fontWeight: "600" }}>Reset to Arrow</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {/* 🔔 NOTIFICATION CHIME SECTION */}
+      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🔔 Notification Chime</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
+        Choose or customize the chime played when new messages arrive. You can preview presets or upload a custom sound.
+      </Text>
+
+      <View style={{ gap: 8, marginBottom: 16 }}>
+        {SOUND_PRESETS.map((preset) => {
+          const isSelected = soundConfig.soundId === preset.id;
+          const isPlaying = playingSoundId === preset.id;
+
+          return (
+            <TouchableOpacity
+              key={preset.id}
+              onPress={() => handleSelectSound(preset.id)}
+              style={[
+                styles.soundOptionCard,
+                isSelected && styles.soundOptionCardSelected,
+              ]}
+              activeOpacity={0.75}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                <View style={[
+                  styles.soundRadioCircle,
+                  isSelected && { borderColor: theme.accent || "#5865F2" }
+                ]}>
+                  {isSelected && <View style={[styles.soundRadioInner, { backgroundColor: theme.accent || "#5865F2" }]} />}
+                </View>
+
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={[styles.soundOptionName, isSelected && { color: theme.text, fontWeight: "700" }]}>
+                      {preset.name}
+                    </Text>
+                    {preset.id === "universfield" && (
+                      <View style={styles.soundDefaultBadge}>
+                        <Text style={styles.soundDefaultBadgeText}>DEFAULT</Text>
+                      </View>
+                    )}
+                    {preset.id === "custom" && soundConfig.customUrl && (
+                      <View style={[styles.soundDefaultBadge, { backgroundColor: "rgba(168, 85, 247, 0.2)" }]}>
+                        <Text style={[styles.soundDefaultBadgeText, { color: "#c084fc" }]}>UPLOADED</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.soundOptionDesc}>{preset.description}</Text>
+                </View>
+              </View>
+
+              {preset.id !== "none" && (
+                <TouchableOpacity
+                  style={[
+                    styles.soundPlayPreviewBtn,
+                    isPlaying && { backgroundColor: theme.accent || "#5865F2" }
+                  ]}
+                  onPress={(e: any) => {
+                    e?.stopPropagation?.();
+                    handleTestSound(preset.id, preset.url);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  {isPlaying ? (
+                    <Volume2 size={15} color="#fff" />
+                  ) : (
+                    <Play size={15} color={isSelected ? (theme.accent || "#5865F2") : theme.textMuted} />
+                  )}
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Custom Audio Upload Button */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
+        <TouchableOpacity
+          style={styles.uploadChimeBtn}
+          onPress={handleUploadCustomChime}
+          disabled={uploadingChime}
+          activeOpacity={0.8}
+        >
+          {uploadingChime ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Upload size={14} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.uploadChimeBtnText}>Upload Custom Sound (.mp3 / .wav)</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {soundConfig.customUrl && (
+          <TouchableOpacity
+            onPress={() => handleSelectSound("universfield")}
+            style={{ padding: 6 }}
+          >
+            <Text style={{ color: "#f43f5e", fontSize: 12, fontWeight: "600" }}>Reset Sound</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+
+  // 5. Danger Zone & Alerts Tab
+  const renderDangerTab = () => (
+    <View>
+      {isFeatureEnabled("custom_alerts", activeProfile, activePublicFeatures) && (
+        <View style={{ marginBottom: 28 }}>
+          <Text style={styles.sectionTitle}>🚨 Custom Alerts</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
+            Send an instant alert pop-up to online members of this chat.
+          </Text>
+          <TouchableOpacity
+            style={styles.alertTriggerBtn}
+            onPress={() => setAlertModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Bell size={18} color="#ffffff" />
+            <Text style={styles.alertTriggerBtnText}>Create Custom Alert...</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <Text style={[styles.sectionTitle, { color: "#f43f5e" }]}>⚠️ Danger Zone</Text>
+      <View style={{ padding: 16, backgroundColor: "rgba(244,63,94,0.08)", borderRadius: 14, borderWidth: 1, borderColor: "rgba(244,63,94,0.25)", marginBottom: 16 }}>
+        <Text style={{ color: theme.text, fontSize: 14, fontWeight: "700", marginBottom: 6 }}>
+          Permanently Delete This Conversation
+        </Text>
+        <Text style={{ color: theme.textMuted, fontSize: 13, lineHeight: 18, marginBottom: 16 }}>
+          Deleting this chat will erase all messages, media links, and custom settings for everyone in this conversation. This action cannot be undone.
+        </Text>
+        <TouchableOpacity
+          style={[styles.deleteBtn, { alignSelf: "flex-start", marginTop: 0 }]}
+          onPress={handleDeleteChat}
+          disabled={loading}
+        >
+          <AlertTriangle size={16} color="#f43f5e" style={{ marginRight: 6 }} />
+          <Text style={styles.deleteBtnText}>Delete Chat Forever</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.container}>
+          {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Chat Customization</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Sparkles size={20} color={theme.accent || "#5865F2"} />
+              <Text style={styles.title}>Chat Customization</Text>
+            </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <X size={24} color={theme.textMuted} />
+              <X size={20} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-
-            {/* 🔒 CHAT-SPECIFIC PROFILE PHOTO (CHAT PFP) SECTION */}
-            <View style={styles.chatAvatarCard}>
-              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
-                <Lock size={16} color={theme.accent || "#5865F2"} style={{ marginRight: 6 }} />
-                <Text style={styles.sectionTitle}>Secret Chat Profile Photo</Text>
-              </View>
-              <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
-                Personalize how you appear in this 1-on-1 chat. This photo is strictly private and visible ONLY to you and your partner within this conversation. Outside this chat, your global profile photo remains visible.
-              </Text>
-
-              <View style={styles.chatAvatarRow}>
-                <View style={styles.chatAvatarPreviewWrapper}>
-                  {myChatAvatar ? (
-                    <Image source={{ uri: myChatAvatar }} style={styles.chatAvatarImage} />
-                  ) : activeProfile?.avatar_url ? (
-                    <Image source={{ uri: activeProfile.avatar_url }} style={styles.chatAvatarImage} />
-                  ) : (
-                    <View style={[styles.chatAvatarImage, styles.chatAvatarFallback]}>
-                      <User size={30} color={theme.textMuted} />
-                    </View>
-                  )}
-                  <View style={[styles.chatAvatarBadge, { backgroundColor: myChatAvatar ? (theme.accent || "#5865F2") : "rgba(255,255,255,0.18)" }]}>
-                    <Text style={styles.chatAvatarBadgeText}>{myChatAvatar ? "Chat PFP Active" : "Default Global PFP"}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.chatAvatarActions}>
-                  <TouchableOpacity
-                    style={styles.chatAvatarUploadBtn}
-                    onPress={pickAndUploadChatAvatar}
-                    disabled={uploadingChatAvatar}
-                    activeOpacity={0.75}
-                  >
-                    {uploadingChatAvatar ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <>
-                        <Camera size={15} color="#fff" style={{ marginRight: 6 }} />
-                        <Text style={styles.chatAvatarUploadBtnText}>{myChatAvatar ? "Change Chat Photo" : "Upload Chat Photo"}</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-
-                  {myChatAvatar && (
-                    <TouchableOpacity
-                      style={styles.chatAvatarResetBtn}
-                      onPress={resetChatAvatarToDefault}
-                      disabled={uploadingChatAvatar}
-                      activeOpacity={0.75}
-                    >
-                      <RotateCcw size={14} color={theme.textMuted} style={{ marginRight: 6 }} />
-                      <Text style={styles.chatAvatarResetBtnText}>Reset to Default</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-
-              {partnerChatAvatar && (
-                <View style={styles.partnerChatAvatarCard}>
-                  <Image source={{ uri: partnerChatAvatar }} style={styles.partnerChatAvatarThumb} />
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: "600" }}>
-                      ✨ {partnerUser?.display_name || partnerUser?.username || "Partner"}'s Secret Chat PFP
-                    </Text>
-                    <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-                      Set by your partner exclusively for this conversation.
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
-
-            {/* PARTNER NICKNAME SECTION */}
-            <Text style={styles.sectionTitle}>🏷️ Chat Partner Nickname</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 8 }}>
-              Set a custom nickname for {partnerUser?.profiles?.username ? `@${partnerUser.profiles.username}` : "your chat partner"}.
-            </Text>
-            <TextInput
-              style={{
-                backgroundColor: theme.surface,
-                color: theme.text,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.12)",
-                fontSize: 15,
-                marginBottom: 12,
-              }}
-              placeholder={`Nickname for ${partnerUser?.profiles?.username || "partner"}`}
-              placeholderTextColor={theme.textMuted}
-              value={partnerNickname}
-              onChangeText={setPartnerNickname}
-            />
-
-            {myNicknameFromPartner ? (
-              <View style={{ backgroundColor: "rgba(88,101,242,0.15)", borderRadius: 12, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: "rgba(88,101,242,0.3)" }}>
-                <Text style={{ color: theme.accent || "#5865F2", fontSize: 13, fontWeight: "600" }}>
-                  ✨ {partnerUser?.profiles?.username || "Partner"} set your nickname to: "{myNicknameFromPartner}"
-                </Text>
-              </View>
-            ) : <View style={{ marginBottom: 12 }} />}
-            <Text style={styles.sectionTitle}>✨ Themes</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 24 }}>
-              {THEMES.map((t) => (
-                <TouchableOpacity key={t.name} style={styles.themeCard} onPress={() => applyTheme(t)}>
-                  <View style={styles.themePreview}>
-                    <View style={[styles.themeBubbleRight, { backgroundColor: t.sent }]} />
-                    <View style={[styles.themeBubbleLeft, { backgroundColor: t.received }]} />
-                  </View>
-                  <Text style={styles.themeLabel}>{t.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* BUBBLE COLORS */}
-            <Text style={styles.sectionTitle}>💬 Sent Bubble Color</Text>
-            <View style={styles.colorGrid}>
-              {BUBBLE_COLORS.map((c) => (
-                <TouchableOpacity
-                  key={c.color}
-                  onPress={() => setBubbleColorSent(c.color)}
-                  style={[styles.colorSwatch, { backgroundColor: c.color }, bubbleColorSent === c.color && styles.colorSwatchSelected]}
-                />
-              ))}
-            </View>
-
-            <Text style={[styles.sectionTitle, { marginTop: 16 }]}>📩 Received Bubble Color</Text>
-            <View style={styles.colorGrid}>
-              {RECEIVED_COLORS.map((c) => (
-                <TouchableOpacity
-                  key={c.color}
-                  onPress={() => setBubbleColorReceived(c.color)}
-                  style={[styles.colorSwatch, { backgroundColor: c.color }, bubbleColorReceived === c.color && styles.colorSwatchSelected]}
-                />
-              ))}
-            </View>
-
-            {/* GRADIENT */}
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Gradient Bubbles</Text>
-              <TouchableOpacity
-                style={[styles.toggle, gradientEnabled && styles.toggleOn]}
-                onPress={() => setGradientEnabled(!gradientEnabled)}
-              >
-                <View style={[styles.toggleThumb, gradientEnabled && styles.toggleThumbOn]} />
-              </TouchableOpacity>
-            </View>
-            {gradientEnabled && (
-              <>
-                <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Gradient End Color</Text>
-                <View style={styles.colorGrid}>
-                  {BUBBLE_COLORS.map((c) => (
-                    <TouchableOpacity
-                      key={c.color}
-                      onPress={() => setGradientColor2(c.color)}
-                      style={[styles.colorSwatch, { backgroundColor: c.color }, gradientColor2 === c.color && styles.colorSwatchSelected]}
-                    />
-                  ))}
-                </View>
-                <View style={[styles.gradientPreview, { borderRadius: shapeRadius }]}>
-                  <Text style={styles.gradientPreviewText}>Preview gradient →</Text>
-                </View>
-              </>
-            )}
-
-            {/* BUBBLE SHAPE */}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🫧 Bubble Shape</Text>
-            <View style={styles.shapeRow}>
-              {BUBBLE_SHAPES.map((s) => (
-                <TouchableOpacity
-                  key={s.value}
-                  style={[styles.shapeOption, bubbleShape === s.value && styles.shapeOptionSelected]}
-                  onPress={() => setBubbleShape(s.value)}
-                >
-                  <View style={[styles.shapeSampleBubble, { borderRadius: s.radius, backgroundColor: bubbleColorSent }]} />
-                  <Text style={[styles.shapeLabel, bubbleShape === s.value && { color: theme.text }]}>{s.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* FONTS */}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>🔤 Font Style</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-              {FONT_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[styles.shapeOption, { width: 100, marginRight: 8, paddingVertical: 10 }, fontFamily === opt.value && styles.shapeOptionSelected]}
-                  onPress={() => setFontFamily(opt.value)}
-                >
-                  <Text
-                    style={[
-                      styles.shapeLabel,
-                      { fontFamily: opt.value === "system" ? undefined : opt.value },
-                      fontFamily === opt.value && { color: theme.text },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* WALLPAPER DECK & SHARED SLOTS */}
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 20, marginBottom: 8 }}>
-              <Text style={styles.sectionTitle}>🖼️ Wallpaper Deck (Shared)</Text>
-              <View style={styles.syncBadge}>
-                <Sparkles size={12} color="#10b981" />
-                <Text style={styles.syncBadgeText}>Partner Sync Active</Text>
-              </View>
-            </View>
-
-            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
-              5 shared themed slots. Name your themes and customize wallpapers together in real time.
-            </Text>
-
-            {/* Horizontal Deck Slots Carousel */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-              {deck.slots.map((slot, idx) => {
-                const isSelected = slot.id === selectedSlotId;
-                const isActive = slot.id === deck.activeSlotId;
-                return (
-                  <TouchableOpacity
-                    key={slot.id}
-                    style={[
-                      styles.deckSlotCard,
-                      isSelected && styles.deckSlotCardSelected,
-                    ]}
-                    onPress={() => handleSelectSlot(slot.id)}
-                    activeOpacity={0.8}
-                  >
-                    {slot.url ? (
-                      <Image source={{ uri: slot.url }} style={styles.deckSlotThumb} />
-                    ) : (
-                      <View style={styles.deckSlotThumbEmpty}>
-                        <ImageIcon size={22} color={theme.textMuted} />
-                      </View>
-                    )}
-                    
-                    {/* Top status badges */}
-                    <View style={styles.deckSlotHeader}>
-                      <Text style={styles.deckSlotNumber}>#{idx + 1}</Text>
-                      {isActive && (
-                        <View style={styles.activeDotBadge}>
-                          <View style={styles.activeDot} />
-                          <Text style={styles.activeDotText}>Active</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Bottom slot name & mood pill */}
-                    <View style={styles.deckSlotFooter}>
-                      <Text style={styles.deckSlotName} numberOfLines={1}>{slot.name || `Slot ${idx + 1}`}</Text>
-                      {slot.mood && slot.mood !== "none" && (
-                        <Text style={styles.deckSlotMoodTag}>
-                          {slot.mood === "love" ? "❤️ Love" : slot.mood === "night" ? "🌙 Night" : "☀️ Day"}
-                        </Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {/* Selected Slot Customization Box */}
-            <View style={styles.slotCustomizerBox}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={[styles.slotNumberTitle, { color: theme.text }]}>
-                    Slot #{deck.slots.findIndex(s => s.id === selectedSlotId) + 1}
-                  </Text>
-                  {selectedSlot.id === deck.activeSlotId ? (
-                    <View style={styles.currentActiveBadge}>
-                      <Check size={12} color="#10b981" />
-                      <Text style={{ color: "#10b981", fontSize: 11, fontWeight: "700" }}>Currently Active</Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.setAsActiveBtn}
-                      onPress={() => handleSetActiveSlot(selectedSlot.id)}
-                    >
-                      <Text style={styles.setAsActiveBtnText}>Set Active</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-
-              {/* Editable Name */}
-              <View style={{ marginBottom: 14 }}>
-                <Text style={styles.sliderLabel}>Theme / Slot Name (Shared)</Text>
-                <View style={styles.slotNameInputRow}>
-                  <Edit3 size={16} color={theme.textMuted} style={{ marginRight: 8 }} />
-                  <TextInput
-                    style={[styles.alertInput, { flex: 1, paddingVertical: 8, paddingHorizontal: 10, fontSize: 14 }]}
-                    value={selectedSlot.name}
-                    onChangeText={(val) => updateSlot(selectedSlot.id, { name: val })}
-                    placeholder="Give this wallpaper theme a name"
-                    placeholderTextColor={theme.textMuted}
-                    maxLength={30}
-                  />
-                </View>
-              </View>
-
-              {/* Mood Tag Selector */}
-              <View style={{ marginBottom: 14 }}>
-                <Text style={styles.sliderLabel}>Mood Trigger (Auto-Detect)</Text>
-                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                  {(["none", "love", "night", "day"] as MoodTriggerType[]).map((m) => {
-                    const isMoodSelected = selectedSlot.mood === m;
-                    const label = m === "none" ? "None" : m === "love" ? "❤️ Love" : m === "night" ? "🌙 Night" : "☀️ Day";
+          {isDesktop ? (
+            /* DESKTOP IPAD-STYLE HORIZONTAL SPLIT WITH VERTICAL TABS */
+            <View style={styles.bodySplit}>
+              {/* Left Sidebar Navigation */}
+              <View style={styles.sidebar}>
+                <View style={styles.tabList}>
+                  {SETTINGS_TABS.map((tab) => {
+                    const IconComponent = tab.icon;
+                    const isActive = activeTab === tab.id;
                     return (
                       <TouchableOpacity
-                        key={m}
-                        style={[
-                          styles.moodOptionPill,
-                          isMoodSelected && styles.moodOptionPillSelected,
-                        ]}
-                        onPress={() => updateSlot(selectedSlot.id, { mood: m })}
+                        key={tab.id}
+                        style={[styles.tabItem, isActive && styles.tabItemActive]}
+                        onPress={() => setActiveTab(tab.id)}
+                        activeOpacity={0.7}
                       >
-                        <Text style={[styles.moodOptionText, isMoodSelected && { color: "#fff", fontWeight: "700" }]}>
-                          {label}
-                        </Text>
+                        <View style={[styles.tabIconBox, isActive && styles.tabIconBoxActive]}>
+                          <IconComponent size={16} color={isActive ? "#ffffff" : theme.textMuted} />
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={[styles.tabItemLabel, isActive && styles.tabItemLabelActive]}>
+                            {tab.label}
+                          </Text>
+                          <Text style={[styles.tabItemSubtitle, isActive && styles.tabItemSubtitleActive]} numberOfLines={1}>
+                            {tab.subtitle}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
-              </View>
 
-              {/* Slot Preview & Upload */}
-              <View style={styles.wallpaperPreviewContainer}>
-                {selectedSlot.url ? (
-                  <View style={styles.previewBox}>
-                    <Image
-                      source={{ uri: selectedSlot.url }}
-                      style={[styles.previewImage, { transform: [{ scale: selectedSlot.zoom }] }]}
-                      blurRadius={selectedSlot.blur * 20}
-                    />
-                    <View style={[styles.dimOverlay, { backgroundColor: `rgba(0,0,0,${selectedSlot.dim})` }]} />
-                  </View>
-                ) : (
-                  <View style={styles.emptyPreviewBox}>
-                    <ImageIcon size={44} color={theme.textMuted} />
-                    <Text style={styles.emptyText}>Empty Slot — Upload a Photo</Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.wallpaperActions}>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => pickImageForSlot(selectedSlot.id)}
-                  disabled={loading}
-                >
-                  {loading ? <ActivityIndicator size="small" color="#fff" /> : <Upload size={18} color="#fff" />}
-                  <Text style={styles.actionBtnText}>{selectedSlot.url ? "Change Photo" : "Upload Photo"}</Text>
-                </TouchableOpacity>
-                {selectedSlot.url && (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.removeBtn]}
-                    onPress={() => removeImageForSlot(selectedSlot.id)}
-                    disabled={loading}
-                  >
-                    <Trash2 size={18} color="#f23f43" />
-                    <Text style={[styles.actionBtnText, { color: "#f23f43" }]}>Clear Slot</Text>
+                <View style={styles.sidebarFooter}>
+                  <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} disabled={loading}>
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Settings</Text>}
                   </TouchableOpacity>
-                )}
+                </View>
               </View>
 
-              {/* Sliders if photo present */}
-              {selectedSlot.url && (
-                <View style={styles.slidersContainer}>
-                  <View style={styles.sliderRow}>
-                    <Text style={styles.sliderLabel}>Dim ({Math.round(selectedSlot.dim * 100)}%)</Text>
-                    <Slider
-                      style={styles.slider}
-                      minimumValue={0}
-                      maximumValue={0.85}
-                      value={selectedSlot.dim}
-                      onValueChange={(val) => updateSlot(selectedSlot.id, { dim: val })}
-                      minimumTrackTintColor={theme.accent}
-                      maximumTrackTintColor={theme.border}
-                    />
-                  </View>
-                  <View style={styles.sliderRow}>
-                    <Text style={styles.sliderLabel}>Blur ({Math.round(selectedSlot.blur * 100)}%)</Text>
-                    <Slider
-                      style={styles.slider}
-                      minimumValue={0}
-                      maximumValue={1}
-                      value={selectedSlot.blur}
-                      onValueChange={(val) => updateSlot(selectedSlot.id, { blur: val })}
-                      minimumTrackTintColor={theme.accent}
-                      maximumTrackTintColor={theme.border}
-                    />
-                  </View>
-                  <View style={styles.sliderRow}>
-                    <Text style={styles.sliderLabel}>Zoom ({selectedSlot.zoom.toFixed(1)}x)</Text>
-                    <Slider
-                      style={styles.slider}
-                      minimumValue={1}
-                      maximumValue={2.5}
-                      value={selectedSlot.zoom}
-                      onValueChange={(val) => updateSlot(selectedSlot.id, { zoom: val })}
-                      minimumTrackTintColor={theme.accent}
-                      maximumTrackTintColor={theme.border}
-                    />
-                  </View>
-                </View>
-              )}
-            </View>
-
-            {/* Smart Auto-Change Toggles */}
-            <View style={styles.smartOptionsContainer}>
-              <View style={styles.toggleRow}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={styles.toggleLabel}>Auto-Mood Dynamic Wallpaper</Text>
-                  <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-                    Shifts to Romantic slot when sweet messages are sent, and Night slot late at night.
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.toggle, deck.autoMoodEnabled && styles.toggleOn]}
-                  onPress={() => {
-                    const newAuto = !deck.autoMoodEnabled;
-                    setDeck(prev => {
-                      const updated = { ...prev, autoMoodEnabled: newAuto, updatedAt: Date.now(), updatedBy: userId };
-                      saveDeckToLocal(chatId, updated);
-                      persistDeckToCloud(chatId, userId, updated);
-                      broadcastDeckUpdate(chatId, userId, updated);
-                      return updated;
-                    });
-                  }}
-                >
-                  <View style={[styles.toggleThumb, deck.autoMoodEnabled && styles.toggleThumbOn]} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={[styles.toggleRow, { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 14 }]}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={styles.toggleLabel}>Rotate Each Chat Visit</Text>
-                  <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-                    Cycles to your next named slot whenever you enter the chat for a fresh aesthetic.
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.toggle, deck.autoRotateEnabled && styles.toggleOn]}
-                  onPress={() => {
-                    const newRotate = !deck.autoRotateEnabled;
-                    setDeck(prev => {
-                      const updated = { ...prev, autoRotateEnabled: newRotate, updatedAt: Date.now(), updatedBy: userId };
-                      saveDeckToLocal(chatId, updated);
-                      persistDeckToCloud(chatId, userId, updated);
-                      broadcastDeckUpdate(chatId, userId, updated);
-                      return updated;
-                    });
-                  }}
-                >
-                  <View style={[styles.toggleThumb, deck.autoRotateEnabled && styles.toggleThumbOn]} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            
-            {isFeatureEnabled("wallpapers", activeProfile, activePublicFeatures) && (
-              <>
-                <Text style={[styles.sliderLabel, { marginBottom: 12 }]}>Doodle Overlay</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                  {DOODLE_OPTIONS.map((opt) => (
-                    <TouchableOpacity
-                      key={opt.value}
-                      style={[styles.shapeOption, { width: 80, marginRight: 8, paddingVertical: 10 }, wallpaperDoodle === opt.value && styles.shapeOptionSelected]}
-                      onPress={() => setWallpaperDoodle(opt.value)}
-                    >
-                      <Text style={[styles.shapeLabel, wallpaperDoodle === opt.value && { color: theme.text }]}>{opt.label}</Text>
-                    </TouchableOpacity>
-                  ))}
+              {/* Right Content Pane */}
+              <View style={styles.rightContentArea}>
+                <ScrollView style={styles.contentScroll} showsVerticalScrollIndicator={false}>
+                  {activeTab === "profile" && renderProfileTab()}
+                  {activeTab === "appearance" && renderAppearanceTab()}
+                  {activeTab === "wallpaper" && renderWallpaperTab()}
+                  {activeTab === "sound" && renderSoundTab()}
+                  {activeTab === "danger" && renderDangerTab()}
+                  <View style={{ height: 40 }} />
                 </ScrollView>
-              </>
-            )}
 
-            {/* CHAT PARTNER NICKNAME */}
-            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🏷️ Chat Partner Nickname</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 10 }}>
-              Set a custom nickname for {partnerUser?.display_name || partnerUser?.username || "your chat partner"}. Only visible to you.
-            </Text>
-            <TextInput
-              style={[styles.alertInput, { fontSize: 15, paddingVertical: 10, paddingHorizontal: 14 }]}
-              value={partnerNickname}
-              onChangeText={setPartnerNickname}
-              placeholder={`Nickname for ${partnerUser?.display_name || partnerUser?.username || "partner"}`}
-              placeholderTextColor={theme.textMuted}
-              maxLength={30}
-            />
-            {myNicknameFromPartner ? (
-              <View style={{ marginTop: 8, padding: 10, backgroundColor: theme.surface, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}>
-                <Text style={{ color: theme.accent || "#5865F2", fontSize: 12, fontWeight: "600" }}>
-                  💡 {partnerUser?.display_name || partnerUser?.username || "Partner"} set your nickname to: "{myNicknameFromPartner}"
-                </Text>
-              </View>
-            ) : null}
-
-            {/* SEND BUTTON ICON / EMOJI */}
-            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚀 Send Button Icon</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
-              Replace your send arrow button with a custom emoji icon for this chat.
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-              {SEND_EMOJI_PRESETS.map((item) => (
-                <TouchableOpacity
-                  key={item.label}
-                  style={[
-                    styles.shapeOption,
-                    { minWidth: 62, marginRight: 8, paddingVertical: 8, paddingHorizontal: 10, alignItems: "center" },
-                    sendButtonEmoji === item.emoji && styles.shapeOptionSelected,
-                  ]}
-                  onPress={() => setSendButtonEmoji(item.emoji)}
-                >
-                  <Text style={{ fontSize: item.emoji ? 20 : 16 }}>{item.emoji || "➤"}</Text>
-                  <Text
-                    style={[
-                      styles.shapeLabel,
-                      { fontSize: 11, marginTop: 4 },
-                      sendButtonEmoji === item.emoji && { color: theme.accent, fontWeight: "bold" },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
-              <Text style={{ color: theme.text, fontSize: 13 }}>Or type custom emoji:</Text>
-              <TextInput
-                style={[styles.alertInput, { width: 70, textAlign: "center", fontSize: 18, paddingVertical: 6 }]}
-                value={sendButtonEmoji}
-                onChangeText={setSendButtonEmoji}
-                placeholder="🛸"
-                placeholderTextColor={theme.textMuted}
-                maxLength={4}
-              />
-              {sendButtonEmoji ? (
-                <TouchableOpacity onPress={() => setSendButtonEmoji("")} style={{ padding: 6 }}>
-                  <Text style={{ color: "#f43f5e", fontSize: 12, fontWeight: "600" }}>Reset to Arrow</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-
-            {/* 🔔 NOTIFICATION CHIME SECTION */}
-            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🔔 Notification Chime</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
-              Choose or customize the chime played when new messages arrive. You can preview presets or upload a custom sound.
-            </Text>
-
-            <View style={{ gap: 8, marginBottom: 16 }}>
-              {SOUND_PRESETS.map((preset) => {
-                const isSelected = soundConfig.soundId === preset.id;
-                const isPlaying = playingSoundId === preset.id;
-
-                return (
-                  <TouchableOpacity
-                    key={preset.id}
-                    onPress={() => handleSelectSound(preset.id)}
-                    style={[
-                      styles.soundOptionCard,
-                      isSelected && styles.soundOptionCardSelected,
-                    ]}
-                    activeOpacity={0.75}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                      <View style={[
-                        styles.soundRadioCircle,
-                        isSelected && { borderColor: theme.accent || "#5865F2" }
-                      ]}>
-                        {isSelected && <View style={[styles.soundRadioInner, { backgroundColor: theme.accent || "#5865F2" }]} />}
-                      </View>
-
-                      <View style={{ marginLeft: 12, flex: 1 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Text style={[styles.soundOptionName, isSelected && { color: theme.text, fontWeight: "700" }]}>
-                            {preset.name}
-                          </Text>
-                          {preset.id === "universfield" && (
-                            <View style={styles.soundDefaultBadge}>
-                              <Text style={styles.soundDefaultBadgeText}>DEFAULT</Text>
-                            </View>
-                          )}
-                          {preset.id === "custom" && soundConfig.customUrl && (
-                            <View style={[styles.soundDefaultBadge, { backgroundColor: "rgba(168, 85, 247, 0.2)" }]}>
-                              <Text style={[styles.soundDefaultBadgeText, { color: "#c084fc" }]}>UPLOADED</Text>
-                            </View>
-                          )}
-                        </View>
-                        <Text style={styles.soundOptionDesc}>{preset.description}</Text>
-                      </View>
-                    </View>
-
-                    {preset.id !== "none" && (
-                      <TouchableOpacity
-                        style={[
-                          styles.soundPlayPreviewBtn,
-                          isPlaying && { backgroundColor: theme.accent || "#5865F2" }
-                        ]}
-                        onPress={(e: any) => {
-                          e?.stopPropagation?.();
-                          handleTestSound(preset.id, preset.url);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        {isPlaying ? (
-                          <Volume2 size={15} color="#fff" />
-                        ) : (
-                          <Play size={15} color={isSelected ? (theme.accent || "#5865F2") : theme.textMuted} />
-                        )}
-                      </TouchableOpacity>
-                    )}
+                <View style={styles.contentFooter}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                    <Text style={{ color: theme.textMuted, fontWeight: "600", fontFamily: "Josefin Sans" }}>Close</Text>
                   </TouchableOpacity>
-                );
-              })}
+                  <TouchableOpacity style={[styles.saveBtn, { width: "auto", paddingHorizontal: 28 }]} onPress={saveSettings} disabled={loading}>
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Settings</Text>}
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
+          ) : (
+            /* MOBILE LAYOUT WITH TOP HORIZONTAL TAB PILLS */
+            <View style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+              <View style={{ borderBottomWidth: 1, borderBottomColor: theme.border, backgroundColor: theme.surface }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}>
+                  {SETTINGS_TABS.map((tab) => {
+                    const IconComponent = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <TouchableOpacity
+                        key={tab.id}
+                        style={[styles.mobileTabPill, isActive && styles.mobileTabPillActive]}
+                        onPress={() => setActiveTab(tab.id)}
+                      >
+                        <IconComponent size={14} color={isActive ? "#ffffff" : theme.textMuted} />
+                        <Text style={[styles.mobileTabPillText, isActive && styles.mobileTabPillTextActive]}>
+                          {tab.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
 
-            {/* Custom Audio Upload Button */}
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
-              <TouchableOpacity
-                style={styles.uploadChimeBtn}
-                onPress={handleUploadCustomChime}
-                disabled={uploadingChime}
-                activeOpacity={0.8}
-              >
-                {uploadingChime ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Upload size={14} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={styles.uploadChimeBtnText}>Upload Custom Sound (.mp3 / .wav)</Text>
-                  </>
+              <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                {activeTab === "profile" && renderProfileTab()}
+                {activeTab === "appearance" && renderAppearanceTab()}
+                {activeTab === "wallpaper" && renderWallpaperTab()}
+                {activeTab === "sound" && renderSoundTab()}
+                {activeTab === "danger" && renderDangerTab()}
+                <View style={{ height: 40 }} />
+              </ScrollView>
+
+              <View style={styles.footer}>
+                <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} disabled={loading}>
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Settings</Text>}
+                </TouchableOpacity>
+                {activeTab === "danger" && (
+                  <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteChat} disabled={loading}>
+                    <AlertTriangle size={16} color="#f43f5e" style={{ marginRight: 6 }} />
+                    <Text style={styles.deleteBtnText}>Delete Chat Forever</Text>
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
-
-              {soundConfig.customUrl && (
-                <TouchableOpacity
-                  onPress={() => handleSelectSound("universfield")}
-                  style={{ padding: 6 }}
-                >
-                  <Text style={{ color: "#f43f5e", fontSize: 12, fontWeight: "600" }}>Reset Sound</Text>
-                </TouchableOpacity>
-              )}
+              </View>
             </View>
-
-            {/* CUSTOM ALERT TRIGGER BUTTON */}
-            {isFeatureEnabled("custom_alerts", activeProfile, activePublicFeatures) && (
-              <>
-                <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🚨 Custom Alerts</Text>
-                <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
-                  Send an instant alert pop-up to online members of this chat.
-                </Text>
-                <TouchableOpacity
-                  style={styles.alertTriggerBtn}
-                  onPress={() => setAlertModalVisible(true)}
-                  activeOpacity={0.8}
-                >
-                  <Bell size={18} color="#ffffff" />
-                  <Text style={styles.alertTriggerBtnText}>Create Custom Alert...</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            <View style={{ height: 40 }} />
-          </ScrollView>
-
-          <View style={styles.footer}>
-            <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Settings</Text>}
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteChat} disabled={loading}>
-              <AlertTriangle size={16} color="#f43f5e" style={{ marginRight: 6 }} />
-              <Text style={styles.deleteBtnText}>Delete Chat Forever</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
       </View>
 
@@ -1439,30 +1570,162 @@ export default function ChatSettingsModal({
   );
 }
 
-const createStyles = (theme: any) =>
+const createStyles = (theme: any, isDesktop: boolean = false) =>
   StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" },
+    overlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: isDesktop ? "center" : "flex-end",
+      alignItems: isDesktop ? "center" : "stretch",
+      padding: isDesktop ? 20 : 0,
+    },
     container: {
       backgroundColor: theme.surface,
+      borderRadius: isDesktop ? 20 : 16,
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,
-      height: "90%",
-      maxWidth: Platform.OS === "web" ? 600 : ("100%" as any),
+      borderBottomLeftRadius: isDesktop ? 20 : 0,
+      borderBottomRightRadius: isDesktop ? 20 : 0,
+      height: isDesktop ? "86%" : "92%",
+      maxHeight: isDesktop ? 760 : undefined,
+      maxWidth: isDesktop ? 980 : Platform.OS === "web" ? 600 : ("100%" as any),
       width: "100%",
       alignSelf: "center",
       borderWidth: theme.id === "black" ? 0 : 1,
       borderColor: theme.border,
+      overflow: "hidden",
+      display: "flex",
+      flexDirection: "column",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.4,
+      shadowRadius: 24,
+      elevation: 12,
     },
     header: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      padding: 20,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
       borderBottomWidth: 1,
       borderBottomColor: theme.border,
+      backgroundColor: theme.surface,
     },
-    title: { color: theme.text, fontSize: 20, fontWeight: "bold", fontFamily: "Josefin Sans" },
-    closeBtn: { padding: 4 },
+    title: { color: theme.text, fontSize: 18, fontWeight: "bold", fontFamily: "Josefin Sans" },
+    closeBtn: { padding: 6, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.06)" },
+    bodySplit: {
+      flex: 1,
+      flexDirection: "row",
+      overflow: "hidden",
+    },
+    sidebar: {
+      width: 250,
+      borderRightWidth: 1,
+      borderRightColor: theme.border,
+      backgroundColor: theme.surface,
+      padding: 12,
+      justifyContent: "space-between",
+    },
+    tabList: {
+      gap: 6,
+    },
+    tabItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+    },
+    tabItemActive: {
+      backgroundColor: theme.accent || "#5865F2",
+    },
+    tabIconBox: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: "rgba(255,255,255,0.06)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    tabIconBoxActive: {
+      backgroundColor: "rgba(255,255,255,0.22)",
+    },
+    tabItemLabel: {
+      color: theme.text,
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    tabItemLabelActive: {
+      color: "#ffffff",
+    },
+    tabItemSubtitle: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontFamily: "Josefin Sans",
+      marginTop: 2,
+    },
+    tabItemSubtitleActive: {
+      color: "rgba(255,255,255,0.8)",
+    },
+    sidebarFooter: {
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    rightContentArea: {
+      flex: 1,
+      backgroundColor: theme.background,
+      display: "flex",
+      flexDirection: "column",
+    },
+    contentScroll: {
+      flex: 1,
+      padding: 24,
+    },
+    contentFooter: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+      backgroundColor: theme.surface,
+    },
+    cancelBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    mobileTabPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: theme.background,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    mobileTabPillActive: {
+      backgroundColor: theme.accent || "#5865F2",
+      borderColor: theme.accent || "#5865F2",
+    },
+    mobileTabPillText: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+      marginLeft: 6,
+      fontFamily: "Josefin Sans",
+    },
+    mobileTabPillTextActive: {
+      color: "#ffffff",
+    },
     content: { padding: 20 },
     alertInput: {
       backgroundColor: theme.background,
