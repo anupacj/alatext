@@ -11,28 +11,34 @@ export type AppTheme = {
   accent: string;
   border: string;
   screenRadius?: number | string;
+  isDark?: boolean;
 };
 
 export const THEMES: Record<string, AppTheme> = {
   dark: {
     id: 'dark', name: 'Discord Dark',
-    background: '#313338', surface: '#2b2d31', text: '#ffffff', textMuted: '#b5bac1', accent: '#5865F2', border: '#1e1f22'
+    background: '#313338', surface: '#2b2d31', text: '#ffffff', textMuted: '#b5bac1', accent: '#5865F2', border: '#1e1f22',
+    isDark: true,
   },
   black: {
     id: 'black', name: 'AMOLED Black',
-    background: '#000000', surface: '#000000', text: '#ffffff', textMuted: '#888888', accent: '#ffffff', border: '#000000'
+    background: '#000000', surface: '#000000', text: '#ffffff', textMuted: '#888888', accent: '#ffffff', border: '#000000',
+    isDark: true,
   },
   light: {
     id: 'light', name: 'Clean Light',
-    background: '#f2f3f5', surface: '#ffffff', text: '#060607', textMuted: '#4e5058', accent: '#5865F2', border: '#e3e5e8'
+    background: '#f2f3f5', surface: '#ffffff', text: '#060607', textMuted: '#4e5058', accent: '#5865F2', border: '#e3e5e8',
+    isDark: false,
   },
   pink: {
     id: 'pink', name: 'Cherry Blossom',
-    background: '#fdf2f8', surface: '#fce7f3', text: '#831843', textMuted: '#be185d', accent: '#db2777', border: '#fbcfe8'
+    background: '#fdf2f8', surface: '#fce7f3', text: '#831843', textMuted: '#be185d', accent: '#db2777', border: '#fbcfe8',
+    isDark: false,
   },
   hacker: {
     id: 'hacker', name: 'Hacker Terminal',
-    background: '#0a0a0a', surface: '#111111', text: '#22c55e', textMuted: '#166534', accent: '#4ade80', border: '#14532d'
+    background: '#0a0a0a', surface: '#111111', text: '#22c55e', textMuted: '#166534', accent: '#4ade80', border: '#14532d',
+    isDark: true,
   }
 };
 

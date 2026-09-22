@@ -716,9 +716,7 @@ export default function ChatSettingsModal({
       const activeSlot = getActiveSlot(deck);
       const finalWallpaperUrl = activeSlot?.url || wallpaperUrl;
 
-      const payload = {
-        chat_id: chatId,
-        user_id: userId,
+      const updates: any = {
         font_family: fontFamily,
         bubble_color_sent: bubbleColorSent,
         bubble_color_received: bubbleColorReceived,
@@ -731,36 +729,60 @@ export default function ChatSettingsModal({
         wallpaper_zoom: activeSlot?.zoom ?? zoom,
         wallpaper_doodle: wallpaperDoodle,
         anniversary_date: anniversaryDate,
-        send_button_emoji: sendButtonEmoji,
-        auto_match_bubbles: autoMatchBubbles,
-        personal_color_override: personalColorOverride,
+        send_button_emoji: sendButtonEmoji || "",
+        partner_nickname: partnerNickname || null,
+        nickname: partnerNickname || null,
         updated_at: new Date().toISOString(),
       };
 
-      await supabase.from("chat_participants").upsert(payload, { onConflict: "chat_id,user_id" });
+      try {
+        const cached = await AsyncStorage.getItem(`chat_${chatId}_settings`);
+        const merged = {
+          ...(cached ? JSON.parse(cached) : {}),
+          ...updates,
+          auto_match_bubbles: autoMatchBubbles,
+          personal_color_override: personalColorOverride,
+        };
+        await AsyncStorage.setItem(`chat_${chatId}_settings`, JSON.stringify(merged));
+      } catch (e) {}
 
-      if (partnerNickname !== (targetUser?.nickname || "")) {
-        await supabase
-          .from("chat_participants")
-          .update({ partner_nickname: partnerNickname || null })
-          .eq("chat_id", chatId)
-          .eq("user_id", userId);
-      }
-
+      // Persist full deck and notify partner in real-time
       await saveDeckToLocal(chatId, deck);
       await persistDeckToCloud(chatId, userId, deck);
       broadcastDeckUpdate(chatId, userId, deck);
 
+      // Safe update to Supabase chat_participants
+      try {
+        const { error } = await supabase
+          .from("chat_participants")
+          .update(updates)
+          .eq("chat_id", chatId)
+          .eq("user_id", userId);
+
+        if (error) {
+          console.warn("Retrying chat_participants update without optional columns:", error);
+          const { send_button_emoji, anniversary_date, partner_nickname, ...restUpdates } = updates;
+          await supabase
+            .from("chat_participants")
+            .update(restUpdates)
+            .eq("chat_id", chatId)
+            .eq("user_id", userId);
+        }
+      } catch (e) {
+        console.error("Supabase update error:", e);
+      }
+
       if (onSettingsSaved) {
         onSettingsSaved({
           ...currentSettings,
-          ...payload,
-          partner_nickname: partnerNickname,
+          ...updates,
+          auto_match_bubbles: autoMatchBubbles,
+          personal_color_override: personalColorOverride,
         });
       }
       onClose();
     } catch (e) {
-      console.error(e);
+      console.error("Save settings error:", e);
       if (Platform.OS === "web") alert("Failed to save settings");
     } finally {
       setLoading(false);
@@ -855,7 +877,20 @@ export default function ChatSettingsModal({
               ✨ {partnerUser?.profiles?.username || "Partner"} set your nickname to: "{myNicknameFromPartner}"
             </Text>
           </View>
-        ) : <View style={{ marginBottom: 12 }} />}
+        ) : null}
+      </View>
+
+      {/* Private Chat Space Informational Card */}
+      <View style={[styles.sectionCard, { marginTop: 14, flexDirection: "row", alignItems: "flex-start", gap: 12 }]}>
+        <Sparkles size={18} color={theme.accent || "#5865F2"} style={{ marginTop: 2 }} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: "700", marginBottom: 4 }}>
+            Private 1-on-1 Chat Space
+          </Text>
+          <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 17 }}>
+            Your custom secret photo, partner nickname, wallpaper deck, and synced bubble colors belong strictly to this conversation and stay completely private between the two of you.
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -1601,7 +1636,12 @@ export default function ChatSettingsModal({
           ) : (
             /* MOBILE SINGLE-COLUMN VIEW WITH TOP TAB BAR */
             <View style={styles.mobileBody}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mobileTabBar}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.mobileTabBar}
+                contentContainerStyle={styles.mobileTabBarContent}
+              >
                 {SETTINGS_TABS.map((tab) => {
                   const isActive = activeTab === tab.id;
                   return (
@@ -1618,7 +1658,7 @@ export default function ChatSettingsModal({
                 })}
               </ScrollView>
 
-              <ScrollView style={styles.mobileScrollContent} showsVerticalScrollIndicator={false}>
+              <ScrollView style={styles.mobileScrollContent} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
                 {activeTab === "profile" && renderProfileTab()}
                 {activeTab === "appearance" && renderAppearanceTab()}
                 {activeTab === "wallpaper" && renderWallpaperTab()}
@@ -1810,8 +1850,9 @@ export default function ChatSettingsModal({
   );
 }
 
-const createStyles = (theme: any, isDesktop: boolean = false) =>
-  StyleSheet.create({
+const createStyles = (theme: any, isDesktop: boolean = false) => {
+  const isDark = theme.isDark ?? (theme.id !== "light" && theme.id !== "pink");
+  return StyleSheet.create({
     overlay: {
       flex: 1,
       backgroundColor: Platform.OS === "web" ? "rgba(0,0,0,0.48)" : "rgba(0,0,0,0.75)",
@@ -1823,21 +1864,22 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
     } as any,
     container: {
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(22, 25, 32, 0.80)" : "rgba(255, 255, 255, 0.86)")
+        ? (isDark ? "rgba(22, 25, 32, 0.88)" : "rgba(255, 255, 255, 0.94)")
         : theme.surface,
       borderRadius: isDesktop ? 22 : 16,
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,
       borderBottomLeftRadius: isDesktop ? 22 : 0,
       borderBottomRightRadius: isDesktop ? 22 : 0,
-      height: isDesktop ? "86%" : "92%",
-      maxHeight: isDesktop ? 760 : undefined,
+      height: isDesktop ? "86%" : undefined,
+      maxHeight: isDesktop ? 760 : "92%",
+      minHeight: isDesktop ? undefined : 400,
       maxWidth: isDesktop ? 980 : Platform.OS === "web" ? 600 : ("100%" as any),
       width: "100%",
       alignSelf: "center",
       borderWidth: 1,
       borderColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.1)")
+        ? (isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)")
         : theme.border,
       overflow: "hidden",
       display: "flex",
@@ -1857,9 +1899,9 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
       paddingHorizontal: 20,
       paddingVertical: 16,
       borderBottomWidth: 1,
-      borderBottomColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.border,
+      borderBottomColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(25, 28, 36, 0.65)" : "rgba(255, 255, 255, 0.75)")
+        ? (isDark ? "rgba(25, 28, 36, 0.75)" : "rgba(255, 255, 255, 0.90)")
         : theme.surface,
       backdropFilter: "blur(20px)",
       WebkitBackdropFilter: "blur(20px)",
@@ -1874,9 +1916,9 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
     sidebar: {
       width: 250,
       borderRightWidth: 1,
-      borderRightColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.border,
+      borderRightColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(16, 18, 24, 0.52)" : "rgba(245, 247, 250, 0.6)")
+        ? (isDark ? "rgba(16, 18, 24, 0.65)" : "rgba(245, 247, 250, 0.8)")
         : theme.surface,
       padding: 12,
       justifyContent: "space-between",
@@ -1928,11 +1970,11 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
     sidebarFooter: {
       paddingTop: 12,
       borderTopWidth: 1,
-      borderTopColor: Platform.OS === "web" ? "rgba(255,255,255,0.08)" : theme.border,
+      borderTopColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
     },
     rightContentArea: {
       flex: 1,
-      backgroundColor: Platform.OS === "web" ? "rgba(0, 0, 0, 0.06)" : theme.background,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(0, 0, 0, 0.15)" : "rgba(0, 0, 0, 0.02)") : theme.background,
       display: "flex",
       flexDirection: "column",
     } as any,
@@ -1947,9 +1989,9 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
       paddingHorizontal: 20,
       paddingVertical: 14,
       borderTopWidth: 1,
-      borderTopColor: Platform.OS === "web" ? "rgba(255,255,255,0.08)" : theme.border,
+      borderTopColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(20, 22, 28, 0.7)" : "rgba(255, 255, 255, 0.75)")
+        ? (isDark ? "rgba(20, 22, 28, 0.75)" : "rgba(255, 255, 255, 0.90)")
         : theme.surface,
       gap: 12,
       backdropFilter: "blur(16px)",
@@ -1964,27 +2006,41 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
       flex: 1,
       display: "flex",
       flexDirection: "column",
-    },
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(0, 0, 0, 0.15)" : "rgba(0, 0, 0, 0.02)") : theme.background,
+    } as any,
     mobileTabBar: {
       flexGrow: 0,
       borderBottomWidth: 1,
-      borderBottomColor: theme.border,
-      backgroundColor: theme.surface,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
+      borderBottomColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
+      backgroundColor: Platform.OS === "web"
+        ? (isDark ? "rgba(20, 22, 28, 0.75)" : "rgba(250, 250, 252, 0.85)")
+        : theme.surface,
+    },
+    mobileTabBarContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 8,
     },
     mobileTabPill: {
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 20,
-      marginRight: 8,
-      backgroundColor: "rgba(255,255,255,0.05)",
+      backgroundColor: Platform.OS === "web"
+        ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.05)")
+        : theme.surface,
+      borderWidth: 1,
+      borderColor: Platform.OS === "web"
+        ? (isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.06)")
+        : theme.border,
     },
     mobileTabPillActive: {
       backgroundColor: theme.accent || "#5865F2",
+      borderColor: theme.accent || "#5865F2",
     },
     mobileTabPillText: {
-      color: theme.textMuted,
+      color: isDark ? theme.textMuted : "#4e5058",
       fontSize: 13,
       fontWeight: "600",
     },
@@ -2033,9 +2089,9 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
       paddingVertical: 8,
       paddingHorizontal: 12,
       borderRadius: 14,
-      backgroundColor: Platform.OS === "web" ? "rgba(255,255,255,0.05)" : theme.surface,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)") : theme.surface,
       borderWidth: 1,
-      borderColor: Platform.OS === "web" ? "rgba(255,255,255,0.08)" : theme.border,
+      borderColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)") : theme.border,
       gap: 6,
       cursor: "pointer" as any,
     },
@@ -2211,10 +2267,10 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
 
     // Customizer Box
     slotCustomizerBox: {
-      backgroundColor: Platform.OS === "web" ? "rgba(255,255,255,0.04)" : theme.surface,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.75)") : theme.surface,
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: Platform.OS === "web" ? "rgba(255,255,255,0.08)" : theme.border,
+      borderColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)") : theme.border,
       padding: 16,
       marginBottom: 16,
     },
@@ -2237,12 +2293,12 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
     },
     setAsActiveBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
     matchedThemeBox: {
-      backgroundColor: Platform.OS === "web" ? "rgba(255,255,255,0.03)" : theme.background,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)") : theme.background,
       borderRadius: 12,
       padding: 12,
       marginBottom: 14,
       borderWidth: 1,
-      borderColor: Platform.OS === "web" ? "rgba(255,255,255,0.06)" : theme.border,
+      borderColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)") : theme.border,
     },
     matchedThemeTitle: {
       color: theme.text,
@@ -2583,10 +2639,10 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
 
     // Secret Profile Card
     sectionCard: {
-      backgroundColor: Platform.OS === "web" ? "rgba(255,255,255,0.03)" : theme.surface,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.75)") : theme.surface,
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: Platform.OS === "web" ? "rgba(255,255,255,0.08)" : theme.border,
+      borderColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)") : theme.border,
       padding: 16,
     },
     sectionCardTitle: { color: theme.text, fontSize: 14, fontWeight: "700", fontFamily: "Josefin Sans" },
@@ -2664,19 +2720,19 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
     },
     deleteBtnText: { color: "#f43f5e", fontSize: 13, fontWeight: "700" },
     alertInput: {
-      backgroundColor: theme.background,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(0, 0, 0, 0.25)" : "rgba(0, 0, 0, 0.04)") : theme.background,
       color: theme.text,
       fontSize: 14,
       paddingHorizontal: 12,
       paddingVertical: 10,
       borderRadius: 10,
       borderWidth: 1,
-      borderColor: theme.border,
+      borderColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.12)") : theme.border,
       outlineStyle: "none" as any,
     },
     saveBtn: {
       width: "100%",
-      backgroundColor: "#22c55e",
+      backgroundColor: theme.accent || "#5865F2",
       paddingVertical: 12,
       borderRadius: 12,
       alignItems: "center",
@@ -2686,10 +2742,14 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
     footer: {
       padding: 16,
       borderTopWidth: 1,
-      borderTopColor: theme.border,
-      backgroundColor: theme.surface,
+      borderTopColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
+      backgroundColor: Platform.OS === "web"
+        ? (isDark ? "rgba(20, 22, 28, 0.85)" : "rgba(255, 255, 255, 0.92)")
+        : theme.surface,
       gap: 10,
-    },
+      backdropFilter: "blur(16px)",
+      WebkitBackdropFilter: "blur(16px)",
+    } as any,
 
     // Sub Modal overlays
     modalSubOverlay: {
@@ -2705,12 +2765,12 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
       width: "100%",
       maxWidth: 480,
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(28, 30, 38, 0.9)" : "rgba(255, 255, 255, 0.95)")
+        ? (isDark ? "rgba(28, 30, 38, 0.92)" : "rgba(255, 255, 255, 0.96)")
         : theme.surface,
       borderRadius: 20,
       padding: 20,
       borderWidth: 1,
-      borderColor: Platform.OS === "web" ? "rgba(255,255,255,0.12)" : theme.border,
+      borderColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)") : theme.border,
       backdropFilter: "blur(28px)",
       WebkitBackdropFilter: "blur(28px)",
       shadowColor: "#000",
@@ -2740,3 +2800,4 @@ const createStyles = (theme: any, isDesktop: boolean = false) =>
       backgroundColor: "rgba(88,101,242,0.15)",
     },
   });
+};

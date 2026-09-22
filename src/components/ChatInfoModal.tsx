@@ -854,8 +854,9 @@ export default function ChatInfoModal({
   );
 }
 
-const createStyles = (theme: any, isDesktop: boolean) =>
-  StyleSheet.create({
+const createStyles = (theme: any, isDesktop: boolean) => {
+  const isDark = theme.isDark ?? (theme.id !== "light" && theme.id !== "pink");
+  return StyleSheet.create({
     overlay: {
       flex: 1,
       backgroundColor: Platform.OS === "web" ? "rgba(0,0,0,0.48)" : "rgba(0,0,0,0.7)",
@@ -871,13 +872,13 @@ const createStyles = (theme: any, isDesktop: boolean) =>
       height: isDesktop ? "82%" : "90%",
       maxHeight: isDesktop ? 680 : undefined,
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(22, 25, 32, 0.80)" : "rgba(255, 255, 255, 0.86)")
+        ? (isDark ? "rgba(22, 25, 32, 0.85)" : "rgba(255, 255, 255, 0.92)")
         : theme.background,
       borderRadius: 22,
       overflow: "hidden",
       borderWidth: 1,
       borderColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.1)")
+        ? (isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)")
         : theme.border,
       backdropFilter: "blur(32px) saturate(190%)",
       WebkitBackdropFilter: "blur(32px) saturate(190%)",
@@ -894,18 +895,18 @@ const createStyles = (theme: any, isDesktop: boolean) =>
       paddingHorizontal: 20,
       paddingVertical: 16,
       borderBottomWidth: 1,
-      borderBottomColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.border,
+      borderBottomColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(25, 28, 36, 0.65)" : "rgba(255, 255, 255, 0.75)")
+        ? (isDark ? "rgba(25, 28, 36, 0.75)" : "rgba(255, 255, 255, 0.85)")
         : theme.surface,
       backdropFilter: "blur(20px)",
       WebkitBackdropFilter: "blur(20px)",
     } as any,
     headerTitle: { color: theme.text, fontSize: 18, fontWeight: "700" },
     desktopBadge: {
-      backgroundColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.surface,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.05)") : theme.surface,
       borderWidth: 1,
-      borderColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.1)" : theme.border,
+      borderColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)") : theme.border,
       paddingHorizontal: 8,
       paddingVertical: 2,
       borderRadius: 6,
@@ -929,9 +930,9 @@ const createStyles = (theme: any, isDesktop: boolean) =>
     desktopSidebar: {
       width: 320,
       borderRightWidth: 1,
-      borderRightColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.border,
+      borderRightColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(16, 18, 24, 0.52)" : "rgba(245, 247, 250, 0.6)")
+        ? (isDark ? "rgba(16, 18, 24, 0.65)" : "rgba(245, 247, 250, 0.8)")
         : theme.surface,
       display: "flex",
       flexDirection: "column",
@@ -944,7 +945,7 @@ const createStyles = (theme: any, isDesktop: boolean) =>
     },
     desktopMainPane: {
       flex: 1,
-      backgroundColor: Platform.OS === "web" ? "rgba(0, 0, 0, 0.06)" : theme.background,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(0, 0, 0, 0.15)" : "rgba(0, 0, 0, 0.02)") : theme.background,
       display: "flex",
       flexDirection: "column",
     } as any,
@@ -955,9 +956,9 @@ const createStyles = (theme: any, isDesktop: boolean) =>
       paddingHorizontal: 20,
       paddingVertical: 14,
       borderBottomWidth: 1,
-      borderBottomColor: Platform.OS === "web" ? "rgba(255, 255, 255, 0.08)" : theme.border,
+      borderBottomColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)") : theme.border,
       backgroundColor: Platform.OS === "web"
-        ? (theme.dark ? "rgba(25, 28, 36, 0.6)" : "rgba(255, 255, 255, 0.7)")
+        ? (isDark ? "rgba(25, 28, 36, 0.75)" : "rgba(255, 255, 255, 0.85)")
         : theme.surface,
       backdropFilter: "blur(16px)",
       WebkitBackdropFilter: "blur(16px)",
@@ -1257,3 +1258,4 @@ const createStyles = (theme: any, isDesktop: boolean) =>
     fullImage: { width: "100%", height: "85%" },
     previewClose: { position: "absolute", top: 40, right: 20, padding: 8, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 20 },
   });
+};
