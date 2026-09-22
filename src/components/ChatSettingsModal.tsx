@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Image, ScrollView, Platform, TextInput } from "react-native";
 import Slider from "@react-native-community/slider";
 import * as ImagePicker from "expo-image-picker";
-import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell, Sparkles, Heart, Moon, Sun, Check, RefreshCw, Layers, Edit3, Camera, RotateCcw, User, Lock } from "lucide-react-native";
+import { X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell, Sparkles, Heart, Moon, Sun, Check, RefreshCw, Layers, Edit3, Camera, RotateCcw, User, Lock, Volume2, Play, Pause, Music } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { uploadImageToR2, uploadChatAvatarToR2, deleteFileFromR2ByUrl } from "../lib/r2";
+import { uploadImageToR2, uploadChatAvatarToR2, uploadCustomChimeToR2, deleteFileFromR2ByUrl } from "../lib/r2";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "expo-router";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
@@ -28,6 +28,13 @@ import {
   loadChatAvatarsFromLocal,
   fetchChatAvatarsFromCloud,
 } from "../utils/chatAvatar";
+import {
+  SOUND_PRESETS,
+  getSoundConfig,
+  saveSoundConfig,
+  playNotificationChime,
+  SoundConfig,
+} from "../utils/soundManager";
 
 const FONTS = [
   { name: "System", value: "system" },
@@ -251,6 +258,69 @@ export default function ChatSettingsModal({
       console.error("Failed to reset chat avatar:", e);
     } finally {
       setUploadingChatAvatar(false);
+    }
+  };
+
+  // Notification Chime State
+  const [soundConfig, setSoundConfig] = useState<SoundConfig>({
+    soundId: "universfield",
+    customUrl: null,
+    volume: 0.85,
+    enabled: true,
+  });
+  const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
+  const [uploadingChime, setUploadingChime] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      getSoundConfig().then(cfg => setSoundConfig(cfg));
+    }
+  }, [visible]);
+
+  const handleSelectSound = async (soundId: string) => {
+    const updated = await saveSoundConfig({ soundId });
+    setSoundConfig(updated);
+    playNotificationChime(soundId, updated.customUrl || undefined);
+  };
+
+  const handleTestSound = (soundId: string, url?: string) => {
+    setPlayingSoundId(soundId);
+    playNotificationChime(soundId, url || soundConfig.customUrl || undefined);
+    setTimeout(() => setPlayingSoundId(null), 1400);
+  };
+
+  const handleUploadCustomChime = async () => {
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "audio/*";
+      input.onchange = async (e: any) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploadingChime(true);
+        try {
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const base64 = (reader.result as string).split(",")[1];
+              const mime = file.type || "audio/mpeg";
+              const publicUrl = await uploadCustomChimeToR2(userId, base64, mime);
+              const updated = await saveSoundConfig({ soundId: "custom", customUrl: publicUrl });
+              setSoundConfig(updated);
+              playNotificationChime("custom", publicUrl);
+            } catch (err) {
+              console.error("Failed to upload chime:", err);
+            } finally {
+              setUploadingChime(false);
+            }
+          };
+          reader.readAsDataURL(file);
+        } catch (err) {
+          console.error(err);
+          setUploadingChime(false);
+        }
+      };
+      input.click();
     }
   };
 
@@ -1132,6 +1202,107 @@ export default function ChatSettingsModal({
               ) : null}
             </View>
 
+            {/* 🔔 NOTIFICATION CHIME SECTION */}
+            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>🔔 Notification Chime</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 }}>
+              Choose or customize the chime played when new messages arrive. You can preview presets or upload a custom sound.
+            </Text>
+
+            <View style={{ gap: 8, marginBottom: 16 }}>
+              {SOUND_PRESETS.map((preset) => {
+                const isSelected = soundConfig.soundId === preset.id;
+                const isPlaying = playingSoundId === preset.id;
+
+                return (
+                  <TouchableOpacity
+                    key={preset.id}
+                    onPress={() => handleSelectSound(preset.id)}
+                    style={[
+                      styles.soundOptionCard,
+                      isSelected && styles.soundOptionCardSelected,
+                    ]}
+                    activeOpacity={0.75}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                      <View style={[
+                        styles.soundRadioCircle,
+                        isSelected && { borderColor: theme.accent || "#5865F2" }
+                      ]}>
+                        {isSelected && <View style={[styles.soundRadioInner, { backgroundColor: theme.accent || "#5865F2" }]} />}
+                      </View>
+
+                      <View style={{ marginLeft: 12, flex: 1 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={[styles.soundOptionName, isSelected && { color: theme.text, fontWeight: "700" }]}>
+                            {preset.name}
+                          </Text>
+                          {preset.id === "universfield" && (
+                            <View style={styles.soundDefaultBadge}>
+                              <Text style={styles.soundDefaultBadgeText}>DEFAULT</Text>
+                            </View>
+                          )}
+                          {preset.id === "custom" && soundConfig.customUrl && (
+                            <View style={[styles.soundDefaultBadge, { backgroundColor: "rgba(168, 85, 247, 0.2)" }]}>
+                              <Text style={[styles.soundDefaultBadgeText, { color: "#c084fc" }]}>UPLOADED</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.soundOptionDesc}>{preset.description}</Text>
+                      </View>
+                    </View>
+
+                    {preset.id !== "none" && (
+                      <TouchableOpacity
+                        style={[
+                          styles.soundPlayPreviewBtn,
+                          isPlaying && { backgroundColor: theme.accent || "#5865F2" }
+                        ]}
+                        onPress={(e: any) => {
+                          e?.stopPropagation?.();
+                          handleTestSound(preset.id, preset.url);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        {isPlaying ? (
+                          <Volume2 size={15} color="#fff" />
+                        ) : (
+                          <Play size={15} color={isSelected ? (theme.accent || "#5865F2") : theme.textMuted} />
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Custom Audio Upload Button */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
+              <TouchableOpacity
+                style={styles.uploadChimeBtn}
+                onPress={handleUploadCustomChime}
+                disabled={uploadingChime}
+                activeOpacity={0.8}
+              >
+                {uploadingChime ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Upload size={14} color="#fff" style={{ marginRight: 6 }} />
+                    <Text style={styles.uploadChimeBtnText}>Upload Custom Sound (.mp3 / .wav)</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {soundConfig.customUrl && (
+                <TouchableOpacity
+                  onPress={() => handleSelectSound("universfield")}
+                  style={{ padding: 6 }}
+                >
+                  <Text style={{ color: "#f43f5e", fontSize: 12, fontWeight: "600" }}>Reset Sound</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
             {/* CUSTOM ALERT TRIGGER BUTTON */}
             {isFeatureEnabled("custom_alerts", activeProfile, activePublicFeatures) && (
               <>
@@ -1661,6 +1832,79 @@ const createStyles = (theme: any) =>
       height: 36,
       borderRadius: 18,
       backgroundColor: theme.background,
+    },
+    soundOptionCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    soundOptionCardSelected: {
+      borderColor: theme.accent || "#5865F2",
+      backgroundColor: "rgba(88, 101, 242, 0.08)",
+    },
+    soundRadioCircle: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 2,
+      borderColor: theme.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    soundRadioInner: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    soundOptionName: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.text,
+    },
+    soundOptionDesc: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 2,
+    },
+    soundDefaultBadge: {
+      backgroundColor: "rgba(35, 165, 89, 0.15)",
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    soundDefaultBadgeText: {
+      fontSize: 9,
+      fontWeight: "700",
+      color: "#23a559",
+      letterSpacing: 0.5,
+    },
+    soundPlayPreviewBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: theme.background,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    uploadChimeBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.accent || "#5865F2",
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 8,
+    },
+    uploadChimeBtnText: {
+      color: "#fff",
+      fontSize: 12,
+      fontWeight: "600",
     },
     footer: { padding: 20, borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.surface },
     saveBtn: { backgroundColor: "#23a559", paddingVertical: 14, borderRadius: 6, alignItems: "center" },

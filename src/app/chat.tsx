@@ -58,6 +58,9 @@ import {
   loadChatAvatarsFromLocal,
   fetchChatAvatarsFromCloud,
 } from "../utils/chatAvatar";
+import { tabTitleManager } from "../utils/tabTitleManager";
+import { playNotificationChime } from "../utils/soundManager";
+import { EmojiAutocomplete, searchEmojis, EmojiMatch } from "../components/EmojiAutocomplete";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -175,6 +178,8 @@ export default function ChatScreen() {
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [messageFont, setMessageFont] = useState<string | null>(null);
   const [isShimmerActive, setIsShimmerActive] = useState(false);
+  const [emojiMatches, setEmojiMatches] = useState<EmojiMatch[]>([]);
+  const [selectedEmojiIdx, setSelectedEmojiIdx] = useState(0);
   const [viewerToast, setViewerToast] = useState<string | null>(null);
   const [customAlert, setCustomAlert] = useState<any>(null);
   const [pingVisible, setPingVisible] = useState(false);
@@ -1126,6 +1131,16 @@ export default function ChatScreen() {
     };
     init();
 
+    // Browser Tab Title: dynamic base title & unread counter
+    useEffect(() => {
+      const displayName = targetUser?.nickname || (name as string) || targetUser?.username || "Chat";
+      tabTitleManager.setBaseTitle(`${displayName} • Alatext`);
+      return () => {
+        tabTitleManager.setBaseTitle("Alatext");
+        tabTitleManager.clearUnread();
+      };
+    }, [targetUser?.nickname, targetUser?.username, name]);
+
     const syncChannel = supabase.channel("app_settings_sync");
     syncChannel
       .on("broadcast", { event: "settings_updated" }, (payload: any) => {
@@ -1243,6 +1258,9 @@ export default function ChatScreen() {
               clearTimeout(typingTimeoutRef.current);
               typingTimeoutRef.current = null;
             }
+            playNotificationChime();
+            const senderDisplayName = nm.sender || targetUser?.nickname || (name as string) || "New message";
+            tabTitleManager.incrementUnread(senderDisplayName);
           }
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setMessages(prev => {
@@ -1550,8 +1568,79 @@ export default function ChatScreen() {
     setTimeout(() => textInputRef.current?.focus(), 50);
   }, []);
 
+  const toggleBold = useCallback(() => applyTextFormat("**"), [applyTextFormat]);
+  const toggleItalic = useCallback(() => applyTextFormat("*"), [applyTextFormat]);
+
+  const handleSelectAutocompleteEmoji = useCallback((emoji: string) => {
+    setInputText(prev => {
+      return prev.replace(/(?:^|\s):([a-zA-Z0-9_]{1,15})$/, (fullMatch) => {
+        const prefix = fullMatch.startsWith(" ") ? " " : "";
+        return prefix + emoji + " ";
+      });
+    });
+    setEmojiMatches([]);
+    setSelectedEmojiIdx(0);
+    setTimeout(() => textInputRef.current?.focus(), 50);
+  }, []);
+
+  // PC Keyboard Shortcuts (Ctrl/Cmd + E/S/Shift+F/B/I/H)
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const key = e.key.toLowerCase();
+
+      if (key === "e" && !e.shiftKey) {
+        e.preventDefault();
+        setEmojiOpen(prev => !prev);
+        return;
+      }
+      if (key === "s" && !e.shiftKey) {
+        e.preventDefault();
+        setStickerPickerOpen(prev => !prev);
+        return;
+      }
+      if (key === "f" && e.shiftKey) {
+        e.preventDefault();
+        setFontPickerOpen(prev => !prev);
+        return;
+      }
+      if (key === "b" && !e.shiftKey) {
+        e.preventDefault();
+        applyTextFormat("**");
+        return;
+      }
+      if (key === "i" && !e.shiftKey) {
+        e.preventDefault();
+        applyTextFormat("*");
+        return;
+      }
+      if ((key === "s" && e.shiftKey) || (key === "h" && !e.shiftKey)) {
+        e.preventDefault();
+        setIsShimmerActive(prev => !prev);
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [applyTextFormat]);
+
   const handleInputChange = useCallback((text: string) => {
     setInputText(text);
+    tabTitleManager.clearUnread();
+
+    // Check for Discord-style colon emoji search: e.g. ":smi", ":heart", ":fire"
+    const colonMatch = text.match(/(?:^|\s):([a-zA-Z0-9_]{1,15})$/);
+    if (colonMatch) {
+      const q = colonMatch[1];
+      const results = searchEmojis(q);
+      setEmojiMatches(results);
+      setSelectedEmojiIdx(0);
+    } else {
+      setEmojiMatches(prev => (prev.length > 0 ? [] : prev));
+    }
 
     if (!typingChannelRef.current || !user) return;
     const trimmed = text.trim();
@@ -1653,6 +1742,8 @@ export default function ChatScreen() {
   }, [user, myNicknameFromPartner]);
 
   const sendMessage = useCallback(async () => {
+    tabTitleManager.clearUnread();
+    setEmojiMatches([]);
     if (!inputText.trim() || !user || !id) return;
     const content = inputText.trim();
     const curEdit = editingMsgId; const curReply = replyingTo; 
@@ -2932,6 +3023,121 @@ export default function ChatScreen() {
               </View>
             )}
 
+            {/* Discord-style colon emoji search autocomplete */}
+            <EmojiAutocomplete
+              matches={emojiMatches}
+              selectedIndex={selectedEmojiIdx}
+              onSelect={handleSelectAutocompleteEmoji}
+              theme={theme}
+              isAmoled={isAmoled}
+            />
+
+            {/* Mobile Keyboard Quick-Access Toolbar */}
+            {!isDesktop && (
+              <View style={styles.mobileAccessoryBar}>
+                {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
+                  <TouchableOpacity
+                    style={[
+                      styles.mobileAccessoryBtn,
+                      (fontPickerOpen || isShimmerActive) && styles.mobileAccessoryBtnActive,
+                    ]}
+                    onPress={() => {
+                      if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                      setFontPickerOpen(prev => !prev);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Type
+                      size={15}
+                      color={fontPickerOpen || isShimmerActive ? "#fff" : (theme.id === "pink" ? theme.accent : theme.textMuted)}
+                    />
+                    <Text
+                      style={[
+                        styles.mobileAccessoryText,
+                        (fontPickerOpen || isShimmerActive) && styles.mobileAccessoryTextActive,
+                      ]}
+                    >
+                      Effects
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[
+                    styles.mobileAccessoryBtn,
+                    isShimmerActive && { backgroundColor: "rgba(192, 132, 252, 0.25)", borderColor: "#c084fc" },
+                  ]}
+                  onPress={() => setIsShimmerActive(prev => !prev)}
+                  activeOpacity={0.7}
+                >
+                  <Sparkles
+                    size={15}
+                    color={isShimmerActive ? "#c084fc" : (theme.id === "pink" ? theme.accent : theme.textMuted)}
+                  />
+                  <Text
+                    style={[
+                      styles.mobileAccessoryText,
+                      isShimmerActive && { color: "#c084fc", fontWeight: "700" },
+                    ]}
+                  >
+                    Shimmer
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.mobileAccessoryBtn}
+                  onPress={() => {
+                    if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                    setEmojiOpen(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Smile
+                    size={15}
+                    color={theme.id === "pink" ? theme.accent : theme.textMuted}
+                  />
+                  <Text style={styles.mobileAccessoryText}>Emoji</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.mobileAccessoryBtn}
+                  onPress={() => {
+                    if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                    setStickerPickerOpen(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Sticker
+                    size={15}
+                    color={theme.id === "pink" ? theme.accent : theme.textMuted}
+                  />
+                  <Text style={styles.mobileAccessoryText}>Stickers</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.mobileAccessoryBtn, { paddingHorizontal: 9 }]}
+                  onPress={toggleBold}
+                  activeOpacity={0.7}
+                >
+                  <Bold
+                    size={14}
+                    color={theme.id === "pink" ? theme.accent : theme.textMuted}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.mobileAccessoryBtn, { paddingHorizontal: 9 }]}
+                  onPress={toggleItalic}
+                  activeOpacity={0.7}
+                >
+                  <Italic
+                    size={14}
+                    color={theme.id === "pink" ? theme.accent : theme.textMuted}
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.inputAreaRow}>
               {isRecordingVoice ? (
                 <VoiceRecorder onSendAudio={handleSendVoiceMessage} onCancel={() => setIsRecordingVoice(false)} />
@@ -2952,7 +3158,7 @@ export default function ChatScreen() {
                     {Platform.OS === "web" && (
                       <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
                     )}
-                    {isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
+                    {isDesktop && isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
                       <TouchableOpacity 
                         nativeID="font-picker-trigger"
                         {...({ id: "font-picker-trigger" } as any)}
@@ -2965,24 +3171,28 @@ export default function ChatScreen() {
                         <Type size={20} color={fontPickerOpen || isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} />
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity 
-                      style={styles.inputIconButton} 
-                      onPress={() => {
-                        if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
-                        setStickerPickerOpen(true);
-                      }}
-                    >
-                      <Sticker size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={styles.inputIconButton} 
-                      onPress={() => {
-                        if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
-                        setEmojiOpen(true);
-                      }}
-                    >
-                      <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
-                    </TouchableOpacity>
+                    {isDesktop && (
+                      <TouchableOpacity 
+                        style={styles.inputIconButton} 
+                        onPress={() => {
+                          if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                          setStickerPickerOpen(true);
+                        }}
+                      >
+                        <Sticker size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
+                      </TouchableOpacity>
+                    )}
+                    {isDesktop && (
+                      <TouchableOpacity 
+                        style={styles.inputIconButton} 
+                        onPress={() => {
+                          if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
+                          setEmojiOpen(true);
+                        }}
+                      >
+                        <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
+                      </TouchableOpacity>
+                    )}
                     {!isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
                       <TouchableOpacity 
                         style={styles.inputIconButton} 
@@ -3024,6 +3234,7 @@ export default function ChatScreen() {
                       value={inputText}
                       onChangeText={handleInputChange}
                       onFocus={() => {
+                        tabTitleManager.clearUnread();
                         if (Platform.OS === "web" && typeof window !== "undefined") {
                           setTimeout(() => {
                             window.scrollTo(0, 0);
@@ -3033,7 +3244,36 @@ export default function ChatScreen() {
                         }
                       }}
                       onKeyPress={(e: any) => {
-                        if (Platform.OS === "web" && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey) { e.preventDefault(); sendMessage(); }
+                        if (emojiMatches.length > 0) {
+                          if (e.nativeEvent.key === "ArrowDown") {
+                            e.preventDefault?.();
+                            setSelectedEmojiIdx(prev => (prev + 1) % emojiMatches.length);
+                            return;
+                          }
+                          if (e.nativeEvent.key === "ArrowUp") {
+                            e.preventDefault?.();
+                            setSelectedEmojiIdx(prev => (prev - 1 + emojiMatches.length) % emojiMatches.length);
+                            return;
+                          }
+                          if (e.nativeEvent.key === "Tab" || (e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey)) {
+                            e.preventDefault?.();
+                            const chosen = emojiMatches[selectedEmojiIdx];
+                            if (chosen) {
+                              handleSelectAutocompleteEmoji(chosen.emoji);
+                              return;
+                            }
+                          }
+                          if (e.nativeEvent.key === "Escape") {
+                            e.preventDefault?.();
+                            setEmojiMatches([]);
+                            return;
+                          }
+                        }
+
+                        if (Platform.OS === "web" && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey) {
+                          e.preventDefault();
+                          sendMessage();
+                        }
                       }}
                       multiline />
                   </View>
@@ -3495,6 +3735,39 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     right: 0,
     backgroundColor: "transparent",
     zIndex: 50,
+  },
+  mobileAccessoryBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    marginBottom: 6,
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  mobileAccessoryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: isAmoled ? "rgba(25, 25, 25, 0.85)" : (theme.id === "light" ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.08)"),
+    borderWidth: 1,
+    borderColor: isAmoled ? "#333333" : theme.border,
+  },
+  mobileAccessoryBtnActive: {
+    backgroundColor: theme.accent || "#5865F2",
+    borderColor: theme.accent || "#5865F2",
+  },
+  mobileAccessoryText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: isAmoled ? "#aaaaaa" : theme.textMuted,
+  },
+  mobileAccessoryTextActive: {
+    color: "#ffffff",
+    fontWeight: "700",
   },
   inputAreaRow: {
     flexDirection: "row",

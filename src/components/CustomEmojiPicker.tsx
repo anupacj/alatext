@@ -17,7 +17,7 @@ import { useTheme } from "../context/ThemeContext";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-interface EmojiItem {
+export interface EmojiItem {
   emoji: string;
   name: string;
   category: string;
@@ -35,7 +35,7 @@ const CATEGORIES = [
   { id: "symbols", label: "Symbols", icon: Hash },
 ];
 
-const EMOJI_DATABASE: EmojiItem[] = [
+export const EMOJI_DATABASE: EmojiItem[] = [
   // Smileys & Emotion
   { emoji: "😀", name: "grinning face happy smile", category: "smileys" },
   { emoji: "😃", name: "grinning face with big eyes happy smile", category: "smileys" },

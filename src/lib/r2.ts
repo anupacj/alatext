@@ -62,6 +62,11 @@ export const uploadAudioToR2 = async (chatId: string, base64Data: string, mimeTy
   return uploadImageToR2(`voice-messages/${chatId}-${Date.now()}`, base64Data, cleanMime);
 };
 
+export const uploadCustomChimeToR2 = async (userId: string, base64Data: string, mimeType: string): Promise<string> => {
+  const cleanMime = mimeType.split(";")[0].trim() || "audio/mpeg";
+  return uploadImageToR2(`custom-chimes/${userId}-${Date.now()}`, base64Data, cleanMime);
+};
+
 export const uploadVideoToR2 = async (chatId: string, base64Data: string, mimeType: string): Promise<string> => {
   const cleanMime = mimeType.split(";")[0].trim() || "video/mp4";
   return uploadImageToR2(`chat-videos/${chatId}-${Date.now()}`, base64Data, cleanMime);

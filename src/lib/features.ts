@@ -16,7 +16,9 @@ export interface UserProfile {
   is_banned?: boolean;
   awarded_features?: string[];
   created_at?: string;
+  updated_at?: string;
   last_seen_at?: string;
+  notification_preference?: string | null;
 }
 
 export const DEFAULT_PUBLIC_FEATURES: FeatureKey[] = [
