@@ -68,29 +68,31 @@ function getAudioContext() {
 
 // Unlock audio on first user interaction
 if (Platform.OS === "web" && typeof window !== "undefined") {
-  const unlockAudio = () => {
-    if (isAudioUnlocked) return;
-    const ctx = getAudioContext();
-    if (ctx) {
-      ctx.resume().then(() => {
+  try {
+    const unlockAudio = () => {
+      if (isAudioUnlocked) return;
+      const ctx = getAudioContext();
+      if (ctx) {
+        ctx.resume().then(() => {
+          isAudioUnlocked = true;
+        }).catch(() => {});
+      }
+      // Also warm up an Audio element
+      try {
+        const dummy = new Audio();
+        dummy.play().catch(() => {});
         isAudioUnlocked = true;
-      }).catch(() => {});
-    }
-    // Also warm up an Audio element
-    try {
-      const dummy = new Audio();
-      dummy.play().catch(() => {});
-      isAudioUnlocked = true;
-    } catch (e) {}
+      } catch (e) {}
 
-    window.removeEventListener("click", unlockAudio);
-    window.removeEventListener("keydown", unlockAudio);
-    window.removeEventListener("touchstart", unlockAudio);
-  };
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
 
-  window.addEventListener("click", unlockAudio, { passive: true });
-  window.addEventListener("keydown", unlockAudio, { passive: true });
-  window.addEventListener("touchstart", unlockAudio, { passive: true });
+    window.addEventListener("click", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio, { passive: true });
+    window.addEventListener("touchstart", unlockAudio, { passive: true });
+  } catch (e) {}
 }
 
 /**

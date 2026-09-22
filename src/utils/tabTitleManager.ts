@@ -8,18 +8,24 @@ export class TabTitleManager {
 
   constructor() {
     if (Platform.OS === "web" && typeof window !== "undefined" && typeof document !== "undefined") {
-      this.isWindowFocused = document.hasFocus();
-      document.title = this.baseTitle;
-
-      window.addEventListener("focus", () => this.handleFocus());
-      window.addEventListener("blur", () => this.handleBlur());
-      document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) {
-          this.handleFocus();
-        } else {
-          this.handleBlur();
+      try {
+        this.isWindowFocused = typeof document.hasFocus === "function" ? document.hasFocus() : true;
+        if (document.title) {
+          this.baseTitle = document.title;
         }
-      });
+
+        window.addEventListener("focus", () => this.handleFocus());
+        window.addEventListener("blur", () => this.handleBlur());
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) {
+            this.handleFocus();
+          } else {
+            this.handleBlur();
+          }
+        });
+      } catch (e) {
+        console.warn("TabTitleManager constructor error:", e);
+      }
     }
   }
 

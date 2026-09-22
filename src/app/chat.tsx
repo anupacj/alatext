@@ -974,6 +974,16 @@ export default function ChatScreen() {
     scrollToAndHighlightMessage(searchMatches[prev].id);
   }, [searchMatches, currentMatchIdx, scrollToAndHighlightMessage]);
 
+  // Browser Tab Title: dynamic base title & unread counter
+  useEffect(() => {
+    const displayName = targetUser?.nickname || (name as string) || targetUser?.username || "Chat";
+    tabTitleManager.setBaseTitle(`${displayName} • Alatext`);
+    return () => {
+      tabTitleManager.setBaseTitle("Alatext");
+      tabTitleManager.clearUnread();
+    };
+  }, [targetUser?.nickname, targetUser?.username, name]);
+
   useEffect(() => {
     if (!id || !user) return;
     setMessages([]); setHasMore(true); setEditingMsgId(null); setReplyingTo(null); setHoveredMsg(null);
@@ -1130,16 +1140,6 @@ export default function ChatScreen() {
       }
     };
     init();
-
-    // Browser Tab Title: dynamic base title & unread counter
-    useEffect(() => {
-      const displayName = targetUser?.nickname || (name as string) || targetUser?.username || "Chat";
-      tabTitleManager.setBaseTitle(`${displayName} • Alatext`);
-      return () => {
-        tabTitleManager.setBaseTitle("Alatext");
-        tabTitleManager.clearUnread();
-      };
-    }, [targetUser?.nickname, targetUser?.username, name]);
 
     const syncChannel = supabase.channel("app_settings_sync");
     syncChannel

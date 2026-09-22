@@ -121,14 +121,14 @@ export const EmojiAutocomplete: React.FC<EmojiAutocompleteProps> = ({
         styles.container,
         isAmoled
           ? styles.amoledContainer
-          : { backgroundColor: theme.surface, borderColor: theme.border },
+          : { backgroundColor: theme?.surface || "#2b2d31", borderColor: theme?.border || "rgba(255,255,255,0.1)" },
         Platform.OS === "web"
           ? ({ backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" } as any)
           : {},
       ]}
     >
       <View style={styles.header}>
-        <Text style={[styles.headerText, { color: theme.textMuted }]}>
+        <Text style={[styles.headerText, { color: theme?.textMuted || "#949ba4" }]}>
           EMOJI MATCHES (TAB or ↵ to select)
         </Text>
       </View>
@@ -140,7 +140,7 @@ export const EmojiAutocomplete: React.FC<EmojiAutocompleteProps> = ({
             style={[
               styles.itemRow,
               isSelected && {
-                backgroundColor: theme.accent ? `${theme.accent}25` : "rgba(88, 101, 242, 0.18)",
+                backgroundColor: theme?.accent ? `${theme.accent}25` : "rgba(88, 101, 242, 0.18)",
               },
             ]}
             onPress={() => onSelect(item.emoji)}
@@ -150,13 +150,13 @@ export const EmojiAutocomplete: React.FC<EmojiAutocompleteProps> = ({
             <Text
               style={[
                 styles.shortcodeText,
-                { color: isSelected ? (theme.accent || "#5865F2") : theme.text },
+                { color: isSelected ? (theme?.accent || "#5865F2") : (theme?.text || "#dbdee1") },
               ]}
             >
               :{item.shortcode}:
             </Text>
             <Text
-              style={[styles.descText, { color: theme.textMuted }]}
+              style={[styles.descText, { color: theme?.textMuted || "#949ba4" }]}
               numberOfLines={1}
             >
               {item.name}
