@@ -58,6 +58,7 @@ import {
 import {
   ChatAvatarMap,
   loadChatAvatarsFromLocal,
+  saveChatAvatarToLocal,
   fetchChatAvatarsFromCloud,
 } from "../utils/chatAvatar";
 import { tabTitleManager } from "../utils/tabTitleManager";
@@ -1019,10 +1020,16 @@ export default function ChatScreen() {
         mergedSettings.send_button_emoji = initialSettings.send_button_emoji;
       }
 
+      if (mySettings?.custom_avatar_url) {
+        setChatAvatars(prev => ({ ...prev, [user.id]: mySettings.custom_avatar_url }));
+      }
+
       // Check partner's settings as fallback if wallpaper isn't in mySettings
       let fallbackWallpaperUrl = mySettings?.wallpaper_url || initialSettings?.wallpaper_url;
+      let partnerPartData: any = null;
       if (!fallbackWallpaperUrl) {
-        const { data: partnerPart } = await supabase.from("chat_participants").select("wallpaper_url, wallpaper_dim, wallpaper_blur, wallpaper_zoom").eq("chat_id", id).neq("user_id", user.id).limit(1).maybeSingle();
+        const { data: partnerPart } = await supabase.from("chat_participants").select("wallpaper_url, wallpaper_dim, wallpaper_blur, wallpaper_zoom, wallpaper_deck, custom_avatar_url").eq("chat_id", id).neq("user_id", user.id).limit(1).maybeSingle();
+        partnerPartData = partnerPart;
         if (partnerPart?.wallpaper_url) {
           fallbackWallpaperUrl = partnerPart.wallpaper_url;
           if (mergedSettings.wallpaper_url === undefined) {
@@ -1036,7 +1043,15 @@ export default function ChatScreen() {
 
       // Load or initialize Wallpaper Deck
       let loadedDeck: WallpaperDeckConfig | null = await loadDeckFromLocal(id as string);
-      const cloudDeck = await fetchDeckFromCloud(id as string);
+      let cloudDeck: WallpaperDeckConfig | null = null;
+      if (mySettings?.wallpaper_deck) {
+        cloudDeck = normalizeDeck(mySettings.wallpaper_deck, fallbackWallpaperUrl, user.id);
+      } else if (partnerPartData?.wallpaper_deck) {
+        cloudDeck = normalizeDeck(partnerPartData.wallpaper_deck, fallbackWallpaperUrl, user.id);
+      }
+      if (!cloudDeck) {
+        cloudDeck = await fetchDeckFromCloud(id as string);
+      }
       if (cloudDeck && (!loadedDeck || (cloudDeck.updatedAt || 0) >= (loadedDeck.updatedAt || 0))) {
         loadedDeck = cloudDeck;
         saveDeckToLocal(id as string, cloudDeck);
@@ -1101,12 +1116,15 @@ export default function ChatScreen() {
         const { count } = await supabase.from("chat_participants").select("*", { count: "exact", head: true }).eq("chat_id", id);
         if (count) setGroupMemberCount(count);
       }
-      const { data: parts } = await supabase.from("chat_participants").select("user_id, last_read_at, nickname").eq("chat_id", id).neq("user_id", user.id).limit(1);
+      const { data: parts } = await supabase.from("chat_participants").select("user_id, last_read_at, nickname, custom_avatar_url").eq("chat_id", id).neq("user_id", user.id).limit(1);
       if (parts && parts.length > 0) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("id", parts[0].user_id).single();
         const savedNick = mySettings?.nickname || mySettings?.partner_nickname || null;
         if (profile) setTargetUser({ ...profile, last_read_at: parts[0].last_read_at, nickname: savedNick });
         if (parts[0].nickname) setMyNicknameFromPartner(parts[0].nickname);
+        if (parts[0].custom_avatar_url) {
+          setChatAvatars(prev => ({ ...prev, [parts[0].user_id]: parts[0].custom_avatar_url }));
+        }
       }
       if (id) {
         loadChatAvatarsFromLocal(id as string).then(cached => {
@@ -1292,8 +1310,53 @@ export default function ChatScreen() {
       }).subscribe();
 
     const pChannel = supabase.channel(`participants_${sessionToken}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chat_participants", filter: `chat_id=eq.${id}` }, (payload) => {
-        if (payload.new.user_id !== user.id) setTargetUser((prev: any) => prev ? { ...prev, last_read_at: payload.new.last_read_at } : prev);
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chat_participants", filter: `chat_id=eq.${id}` }, (payload: any) => {
+        if (!payload.new) return;
+        if (payload.new.user_id !== user.id) {
+          setTargetUser((prev: any) => prev ? { ...prev, last_read_at: payload.new.last_read_at } : prev);
+        }
+        if (payload.new.custom_avatar_url !== undefined) {
+          const newAvatar = payload.new.custom_avatar_url || null;
+          setChatAvatars(prev => ({ ...prev, [payload.new.user_id]: newAvatar }));
+          saveChatAvatarToLocal(id as string, payload.new.user_id, newAvatar);
+        }
+        if (payload.new.wallpaper_deck) {
+          const normDeck = normalizeDeck(payload.new.wallpaper_deck, payload.new.wallpaper_url, user.id);
+          setWallpaperDeck(normDeck);
+          wallpaperDeckRef.current = normDeck;
+          saveDeckToLocal(id as string, normDeck);
+          const activeSlot = getActiveSlot(normDeck);
+          if (activeSlot) {
+            setChatSettings((prev: any) => {
+              const updated = {
+                ...(prev || {}),
+                wallpaper_url: activeSlot.url || null,
+                wallpaper_dim: activeSlot.dim || 0,
+                wallpaper_blur: activeSlot.blur || 0,
+                wallpaper_zoom: activeSlot.zoom || 1,
+              };
+              if (normDeck.autoMatchBubbles !== false && !prev?.personal_color_override) {
+                const colors = getSmartBubbleColors(activeSlot);
+                updated.bubble_color_sent = colors.sent;
+                updated.bubble_color_received = colors.received;
+              }
+              AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(updated)).catch(() => {});
+              return updated;
+            });
+          }
+        } else if (payload.new.wallpaper_url !== undefined && payload.new.user_id !== user.id) {
+          setChatSettings((prev: any) => {
+            const updated = {
+              ...(prev || {}),
+              wallpaper_url: payload.new.wallpaper_url || null,
+              wallpaper_dim: payload.new.wallpaper_dim ?? prev?.wallpaper_dim ?? 0,
+              wallpaper_blur: payload.new.wallpaper_blur ?? prev?.wallpaper_blur ?? 0,
+              wallpaper_zoom: payload.new.wallpaper_zoom ?? prev?.wallpaper_zoom ?? 1,
+            };
+            AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(updated)).catch(() => {});
+            return updated;
+          });
+        }
       }).subscribe();
 
     const profChannel = supabase.channel(`profiles_${sessionToken}`)

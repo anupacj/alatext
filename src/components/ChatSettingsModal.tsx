@@ -334,10 +334,10 @@ export default function ChatSettingsModal({
   const pickAndUploadChatAvatar = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.5,
         base64: true,
       });
       if (!result.canceled && result.assets?.[0]) {
@@ -401,6 +401,19 @@ export default function ChatSettingsModal({
           setDeck(norm);
           setSelectedGroupId(norm.activeGroupId);
           setSelectedSlotId(norm.activeSlotId);
+        }
+      });
+
+      fetchChatAvatarsFromCloud(chatId).then(cloudAvatars => {
+        if (cloudAvatars) {
+          if (cloudAvatars[userId] && !myChatAvatar) {
+            setMyChatAvatar(cloudAvatars[userId]);
+            if (onChatAvatarUpdated) onChatAvatarUpdated(userId, cloudAvatars[userId]);
+          }
+          if (targetUser?.id && cloudAvatars[targetUser.id] && !partnerChatAvatar) {
+            setPartnerChatAvatar(cloudAvatars[targetUser.id]);
+            if (onChatAvatarUpdated) onChatAvatarUpdated(targetUser.id, cloudAvatars[targetUser.id]);
+          }
         }
       });
 
@@ -604,8 +617,10 @@ export default function ChatSettingsModal({
 
   const pickImageForSlot = async (slotId: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, quality: 0.8, base64: true,
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.7,
+      base64: true,
     });
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
@@ -743,6 +758,8 @@ export default function ChatSettingsModal({
         send_button_emoji: sendButtonEmoji || "",
         partner_nickname: partnerNickname || null,
         nickname: partnerNickname || null,
+        custom_avatar_url: myChatAvatar,
+        wallpaper_deck: finalDeck,
         updated_at: new Date().toISOString(),
       };
 
@@ -772,7 +789,7 @@ export default function ChatSettingsModal({
 
         if (error) {
           console.warn("Retrying chat_participants update without optional columns:", error);
-          const { send_button_emoji, anniversary_date, partner_nickname, ...restUpdates } = updates;
+          const { send_button_emoji, anniversary_date, partner_nickname, custom_avatar_url, wallpaper_deck, ...restUpdates } = updates;
           await supabase
             .from("chat_participants")
             .update(restUpdates)

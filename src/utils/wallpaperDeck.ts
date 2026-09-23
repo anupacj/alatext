@@ -377,13 +377,19 @@ export function createDefaultDeck(fallbackUrl?: string | null, userId = "default
   let activeGroupId = "group_art";
 
   if (fallbackUrl) {
-    const daylight = groups.find(g => g.id === "group_nature")?.slots.find(s => s.id === "slot_daylight_glow");
-    if (daylight) {
-      daylight.url = fallbackUrl;
-      // If user had an existing custom wallpaper, activate it
-      if (fallbackUrl !== mountainAssetUri) {
-        activeSlotId = daylight.id;
-        activeGroupId = "group_nature";
+    const all = getAllSlots(groups);
+    const matched = all.find(s => s.url === fallbackUrl);
+    if (matched) {
+      activeSlotId = matched.id;
+      activeGroupId = matched.groupId || "group_art";
+    } else {
+      // Custom uploaded photo fallback
+      const customSlot = groups.find(g => g.id === "group_custom")?.slots[0] ||
+                         groups.find(g => g.id === "group_nature")?.slots.find(s => s.id === "slot_daylight_glow");
+      if (customSlot) {
+        customSlot.url = fallbackUrl;
+        activeSlotId = customSlot.id;
+        activeGroupId = customSlot.groupId || "group_custom";
       }
     }
   }
@@ -426,8 +432,24 @@ export async function saveDeckToLocal(chatId: string, deck: WallpaperDeckConfig)
   } catch (e) {}
 }
 
-export async function fetchDeckFromCloud(chatId: string): Promise<WallpaperDeckConfig | null> {
+export async function fetchDeckFromCloud(chatId: string, userId?: string): Promise<WallpaperDeckConfig | null> {
   try {
+    // 1. Try chat_participants table (first-class database column)
+    try {
+      let query = supabase.from("chat_participants").select("wallpaper_deck, user_id").eq("chat_id", chatId);
+      if (userId) query = query.eq("user_id", userId);
+      const { data: parts, error: partErr } = await query;
+      if (!partErr && Array.isArray(parts)) {
+        for (const p of parts) {
+          if (p.wallpaper_deck) {
+            const parsed = typeof p.wallpaper_deck === "string" ? JSON.parse(p.wallpaper_deck) : p.wallpaper_deck;
+            if (parsed) return normalizeDeck(parsed);
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Fallback to messages table
     const { data, error } = await supabase
       .from("messages")
       .select("content, created_at")
@@ -451,30 +473,44 @@ export async function fetchDeckFromCloud(chatId: string): Promise<WallpaperDeckC
 export async function persistDeckToCloud(chatId: string, userId: string, deck: WallpaperDeckConfig): Promise<void> {
   try {
     const normalized = normalizeDeck(deck, undefined, userId);
-    // 1. Save durable record into messages table
-    const { error: msgErr } = await supabase.from("messages").insert({
-      chat_id: chatId,
-      sender_id: userId,
-      content: JSON.stringify(normalized),
-      type: "wallpaper_deck",
-    });
-    if (msgErr) {
-      console.warn("Could not insert wallpaper_deck message record:", msgErr);
-    }
-
-    // 2. Update current participant's active wallpaper columns for standard compatibility
     const activeSlot = getActiveSlot(normalized);
-    if (activeSlot) {
-      const { error: partErr } = await supabase.from("chat_participants").update({
-        wallpaper_url: activeSlot.url || null,
-        wallpaper_dim: activeSlot.dim || 0,
-        wallpaper_blur: activeSlot.blur || 0,
-        wallpaper_zoom: activeSlot.zoom || 1,
-      }).eq("chat_id", chatId).eq("user_id", userId);
+
+    // 1. Update chat_participants directly with wallpaper_deck and active wallpaper columns
+    const updates: any = {
+      wallpaper_deck: normalized,
+      wallpaper_url: activeSlot?.url || null,
+      wallpaper_dim: activeSlot?.dim || 0,
+      wallpaper_blur: activeSlot?.blur || 0,
+      wallpaper_zoom: activeSlot?.zoom || 1,
+    };
+
+    try {
+      const { error: partErr } = await supabase
+        .from("chat_participants")
+        .update(updates)
+        .eq("chat_id", chatId)
+        .eq("user_id", userId);
+
       if (partErr) {
-        console.warn("Could not update chat_participants wallpaper:", partErr);
+        // If wallpaper_deck column is not in DB yet, update standard wallpaper columns
+        const { wallpaper_deck, ...baseUpdates } = updates;
+        await supabase
+          .from("chat_participants")
+          .update(baseUpdates)
+          .eq("chat_id", chatId)
+          .eq("user_id", userId);
       }
-    }
+    } catch (e) {}
+
+    // 2. Also try messages table for fallback
+    try {
+      await supabase.from("messages").insert({
+        chat_id: chatId,
+        sender_id: userId,
+        content: JSON.stringify(normalized),
+        type: "wallpaper_deck",
+      });
+    } catch (e) {}
   } catch (e) {
     console.error("Failed to persist wallpaper deck to cloud:", e);
   }
