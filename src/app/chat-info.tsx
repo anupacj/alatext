@@ -43,6 +43,8 @@ import {
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import { supabase } from "../lib/supabase";
 import { uploadImageToR2, deleteFileFromR2ByUrl, getThumbnailUrl } from "../lib/r2";
 import { useTheme } from "../context/ThemeContext";
@@ -78,6 +80,14 @@ export default function ChatInfoScreen() {
   const params = useLocalSearchParams();
   const chatId = (params.id as string) || "";
   const isGroupParam = params.isGroup === "true";
+  const targetUserIdParam = (params.targetUserId as string) || "";
+  const targetUsernameParam = (params.targetUsername as string) || "";
+  const targetDisplayNameParam = (params.targetDisplayName as string) || "";
+  const targetNicknameParam = (params.targetNickname as string) || "";
+  const targetAvatarParam = (params.targetAvatar as string) || "";
+  const targetBioParam = (params.targetBio as string) || "";
+  const groupNameParam = (params.groupName as string) || "";
+  const groupAvatarParam = (params.groupAvatar as string) || "";
 
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -96,9 +106,20 @@ export default function ChatInfoScreen() {
   const [loading, setLoading] = useState(true);
   const [chatData, setChatData] = useState<any>(null);
   const [isGroup, setIsGroup] = useState(isGroupParam);
-  const [partnerUser, setPartnerUser] = useState<any>(null);
-  const [partnerNickname, setPartnerNickname] = useState<string>("");
-  const [customAvatar, setCustomAvatar] = useState<string | null>(null);
+  const [partnerUser, setPartnerUser] = useState<any>(() => {
+    if (targetUserIdParam || targetUsernameParam) {
+      return {
+        id: targetUserIdParam,
+        username: targetUsernameParam,
+        display_name: targetDisplayNameParam || targetUsernameParam,
+        avatar_url: targetAvatarParam || null,
+        bio: targetBioParam || null,
+      };
+    }
+    return null;
+  });
+  const [partnerNickname, setPartnerNickname] = useState<string>(targetNicknameParam || targetDisplayNameParam || targetUsernameParam);
+  const [customAvatar, setCustomAvatar] = useState<string | null>(targetAvatarParam || null);
   const [anniversaryDate, setAnniversaryDate] = useState<string | null>(null);
   const [groupParticipants, setGroupParticipants] = useState<any[]>([]);
 
@@ -134,7 +155,7 @@ export default function ChatInfoScreen() {
 
   // Group edit states
   const [isEditingGroupName, setIsEditingGroupName] = useState(false);
-  const [groupNameInput, setGroupNameInput] = useState("");
+  const [groupNameInput, setGroupNameInput] = useState(groupNameParam || "Group Chat");
   const [uploadingGroupAvatar, setUploadingGroupAvatar] = useState(false);
 
   // -------------------------------------------------------------
@@ -145,55 +166,71 @@ export default function ChatInfoScreen() {
     setLoading(true);
 
     try {
+      let effectiveUserId = currentUserId;
+      if (!effectiveUserId) {
+        const { data: authData } = await supabase.auth.getUser();
+        effectiveUserId = authData?.user?.id || "";
+      }
+
       // 1. Fetch chat row
       const { data: chat } = await supabase.from("chats").select("*").eq("id", chatId).maybeSingle();
       if (chat) {
         setChatData(chat);
         setIsGroup(!!chat.is_group);
-        setGroupNameInput(chat.name || "Group Chat");
+        if (chat.name) setGroupNameInput(chat.name);
       }
 
-      // 2. Fetch my participant record
-      if (currentUserId) {
-        const { data: myPart } = await supabase
-          .from("chat_participants")
-          .select("anniversary_date, nickname, partner_nickname, custom_avatar_url")
-          .eq("chat_id", chatId)
-          .eq("user_id", currentUserId)
-          .maybeSingle();
+      // 2. Fetch participants
+      const { data: parts } = await supabase
+        .from("chat_participants")
+        .select("user_id, nickname, partner_nickname, custom_avatar_url, anniversary_date")
+        .eq("chat_id", chatId);
 
-        if (myPart) {
-          if (myPart.anniversary_date) setAnniversaryDate(myPart.anniversary_date);
-          if (myPart.partner_nickname || myPart.nickname) {
-            setPartnerNickname(myPart.partner_nickname || myPart.nickname);
+      if (parts && parts.length > 0) {
+        // My participant record
+        if (effectiveUserId) {
+          const myPart = parts.find((p: any) => p.user_id === effectiveUserId);
+          if (myPart) {
+            if (myPart.anniversary_date) setAnniversaryDate(myPart.anniversary_date);
+            if (myPart.partner_nickname || myPart.nickname) {
+              setPartnerNickname(myPart.partner_nickname || myPart.nickname);
+            }
           }
         }
+
+        // Partner participant record for DM
+        if (!chat?.is_group && !isGroupParam) {
+          const partnerPart =
+            parts.find((p: any) => p.user_id !== effectiveUserId) ||
+            (targetUserIdParam ? parts.find((p: any) => p.user_id === targetUserIdParam) : null) ||
+            parts[0];
+
+          if (partnerPart) {
+            if (partnerPart.custom_avatar_url) setCustomAvatar(partnerPart.custom_avatar_url);
+            if (partnerPart.anniversary_date) setAnniversaryDate(partnerPart.anniversary_date);
+
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("id, username, display_name, avatar_url, bio, created_at, updated_at")
+              .eq("id", partnerPart.user_id)
+              .maybeSingle();
+
+            if (prof) {
+              setPartnerUser(prof);
+            }
+          }
+        }
+      } else if (targetUserIdParam) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar_url, bio, created_at, updated_at")
+          .eq("id", targetUserIdParam)
+          .maybeSingle();
+        if (prof) setPartnerUser(prof);
       }
 
-      // 3. If DM, fetch partner's details
-      if (!chat?.is_group) {
-        const { data: parts } = await supabase
-          .from("chat_participants")
-          .select("user_id, nickname, partner_nickname, custom_avatar_url, anniversary_date")
-          .eq("chat_id", chatId)
-          .neq("user_id", currentUserId)
-          .limit(1);
-
-        if (parts && parts.length > 0) {
-          const partnerPart = parts[0];
-          if (partnerPart.custom_avatar_url) setCustomAvatar(partnerPart.custom_avatar_url);
-          if (!anniversaryDate && partnerPart.anniversary_date) setAnniversaryDate(partnerPart.anniversary_date);
-
-          const { data: prof } = await supabase
-            .from("profiles")
-            .select("id, username, display_name, avatar_url, bio, created_at, updated_at")
-            .eq("id", partnerPart.user_id)
-            .single();
-
-          if (prof) setPartnerUser(prof);
-        }
-      } else {
-        // Group: fetch all participants
+      // If group chat, fetch participant profiles
+      if (chat?.is_group || isGroupParam) {
         const { data: groupParts } = await supabase
           .from("chat_participants")
           .select("user_id, custom_avatar_url, profiles(id, username, display_name, avatar_url, bio, updated_at)")
@@ -219,21 +256,60 @@ export default function ChatInfoScreen() {
     } finally {
       setLoading(false);
     }
-  }, [chatId, currentUserId, anniversaryDate]);
+  }, [chatId, currentUserId, isGroupParam, targetUserIdParam]);
 
   // Load Shared Media (images, videos, voice notes)
   const loadSharedMedia = useCallback(async () => {
     if (!chatId) return;
     setLoadingMedia(true);
+
+    // 1. Instant local cache load
     try {
-      const { data, error } = await supabase
+      const cachedRaw = await AsyncStorage.getItem(`chat_${chatId}_messages`);
+      if (cachedRaw) {
+        const cachedMsgs = JSON.parse(cachedRaw);
+        if (Array.isArray(cachedMsgs)) {
+          const localMedia = cachedMsgs
+            .filter((m: any) => m && (m.type === "image" || m.type === "video" || m.type === "audio"))
+            .map((m: any) => ({
+              id: m.id,
+              content: m.text || m.content,
+              type: m.type,
+              created_at: m.created_at || (m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString()),
+              sender_id: m.sender_id || (m.isMe ? currentUserId : ""),
+            }));
+          if (localMedia.length > 0) {
+            setSharedMedia(localMedia);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Local media load error:", e);
+    }
+
+    // 2. Fetch clean messages from Supabase (WITHOUT broken profiles join)
+    try {
+      let { data, error } = await supabase
         .from("messages")
-        .select("id, content, type, created_at, sender_id, profiles(username, avatar_url)")
+        .select("id, content, type, created_at, sender_id")
         .eq("chat_id", chatId)
         .in("type", ["image", "video", "audio"])
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
+      if (error || !data || data.length === 0) {
+        // Fallback specifically for images
+        const fallback = await supabase
+          .from("messages")
+          .select("id, content, type, created_at, sender_id")
+          .eq("chat_id", chatId)
+          .eq("type", "image")
+          .order("created_at", { ascending: false });
+        if (fallback.data && fallback.data.length > 0) {
+          data = fallback.data;
+        }
+      }
+
+      if (data && data.length > 0) {
         setSharedMedia(data);
       }
     } catch (e) {
@@ -241,7 +317,7 @@ export default function ChatInfoScreen() {
     } finally {
       setLoadingMedia(false);
     }
-  }, [chatId]);
+  }, [chatId, currentUserId]);
 
   // Load Memories
   const loadMemoriesData = useCallback(async () => {
@@ -325,9 +401,11 @@ export default function ChatInfoScreen() {
 
   const handleSaveMemory = async () => {
     if (!newMemoryTitle.trim() && !newMemoryCaption.trim() && !newMemoryImage) return;
+    const activeUid = currentUserId || user?.id || (await supabase.auth.getUser()).data.user?.id;
+    if (!activeUid) return;
     setSavingMemory(true);
     try {
-      await addMemory(chatId, currentUserId, {
+      await addMemory(chatId, activeUid, {
         title: newMemoryTitle.trim() || "Cherished Memory",
         caption: newMemoryCaption.trim(),
         media_url: newMemoryImage || null,
@@ -381,9 +459,11 @@ export default function ChatInfoScreen() {
 
   const handleSaveNote = async () => {
     if (!noteTitle.trim()) return;
+    const activeUid = currentUserId || user?.id || (await supabase.auth.getUser()).data.user?.id;
+    if (!activeUid) return;
     setSavingNote(true);
     try {
-      await saveNote(chatId, currentUserId, {
+      await saveNote(chatId, activeUid, {
         id: editingNote?.id,
         title: noteTitle.trim(),
         content: noteContent.trim(),
@@ -458,7 +538,14 @@ export default function ChatInfoScreen() {
         <View style={styles.heroCard}>
           <View style={styles.heroAvatarContainer}>
             <Image
-              source={{ uri: customAvatar || (isGroup ? chatData?.avatar_url : partnerUser?.avatar_url) || "https://ui-avatars.com/api/?name=U" }}
+              source={{
+                uri:
+                  customAvatar ||
+                  (isGroup ? (chatData?.avatar_url || groupAvatarParam) : (partnerUser?.avatar_url || targetAvatarParam)) ||
+                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                    partnerNickname || partnerUser?.display_name || partnerUser?.username || targetDisplayNameParam || targetUsernameParam || (isGroup ? "Group" : "Chat")
+                  )}&background=5865F2&color=fff`,
+              }}
               style={styles.heroAvatar}
             />
             {customAvatar && (
@@ -471,20 +558,16 @@ export default function ChatInfoScreen() {
 
           <Text style={styles.heroDisplayName} numberOfLines={1}>
             {isGroup
-              ? (chatData?.name || "Group Chat")
-              : (partnerNickname || partnerUser?.display_name || partnerUser?.username || "User")}
+              ? (chatData?.name || groupNameParam || "Group Chat")
+              : (partnerNickname || partnerUser?.display_name || partnerUser?.username || targetDisplayNameParam || targetUsernameParam || "Chat Partner")}
           </Text>
 
-          {!isGroup && partnerNickname && partnerUser?.username && (
-            <Text style={styles.heroHandle}>@{partnerUser.username}</Text>
-          )}
+          {!isGroup && (partnerUser?.username || targetUsernameParam) ? (
+            <Text style={styles.heroHandle}>@{partnerUser?.username || targetUsernameParam}</Text>
+          ) : null}
 
-          {!isGroup && !partnerNickname && partnerUser?.username && (
-            <Text style={styles.heroHandle}>@{partnerUser.username}</Text>
-          )}
-
-          {partnerUser?.bio ? (
-            <Text style={styles.heroBio}>{partnerUser.bio}</Text>
+          {(partnerUser?.bio || targetBioParam) ? (
+            <Text style={styles.heroBio}>{partnerUser?.bio || targetBioParam}</Text>
           ) : null}
 
           {/* Quick Metrics Bar */}
@@ -609,29 +692,30 @@ export default function ChatInfoScreen() {
 
                   if (item.type === "video") {
                     return (
-                      <View key={item.id} style={styles.mediaVideoCard}>
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.mediaVideoCard}
+                        onPress={() => {
+                          if (Platform.OS === "web" && typeof window !== "undefined") {
+                            window.open(item.content, "_blank");
+                          }
+                        }}
+                        activeOpacity={0.85}
+                      >
                         <Video size={28} color="#fff" />
                         <Text style={styles.mediaVideoText} numberOfLines={1}>Video Clip</Text>
                         <Text style={styles.mediaDateText}>{new Date(item.created_at).toLocaleDateString()}</Text>
-                      </View>
+                      </TouchableOpacity>
                     );
                   }
 
                   if (item.type === "audio") {
-                    const isPlaying = playingAudioId === item.id;
                     return (
                       <View key={item.id} style={styles.mediaAudioCard}>
-                        <TouchableOpacity
-                          style={styles.audioPlayBtn}
-                          onPress={() => setPlayingAudioId(isPlaying ? null : item.id)}
-                        >
-                          {isPlaying ? <Pause size={16} color="#fff" /> : <Play size={16} color="#fff" />}
-                        </TouchableOpacity>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={styles.mediaAudioTitle}>Voice Note</Text>
-                          <Text style={styles.mediaDateText}>{new Date(item.created_at).toLocaleString()}</Text>
+                        <AudioPlayerBubble audioUrl={item.content} isMe={item.sender_id === currentUserId} />
+                        <View style={{ flex: 1, alignItems: "flex-end" }}>
+                          <Text style={styles.mediaDateText}>{new Date(item.created_at).toLocaleDateString()}</Text>
                         </View>
-                        <Mic size={18} color={theme.accent} />
                       </View>
                     );
                   }
@@ -687,21 +771,25 @@ export default function ChatInfoScreen() {
                 <Heart size={48} color="rgba(236, 72, 153, 0.4)" />
                 <Text style={styles.emptyStateTitle}>No memories saved yet</Text>
                 <Text style={styles.emptyStateSub}>
-                  Right-click any message or photo in chat and choose "Save to Memories", or add one manually!
+                  Right-click (PC) or long-press (Mobile) any message or photo in chat and choose "Save to Memories 💕", or tap "Add Memory"!
                 </Text>
               </View>
             ) : (
               <View style={styles.memoriesTimeline}>
                 {memories.map((mem) => (
                   <View key={mem.id} style={styles.memoryCard}>
-                    {mem.media_url && (
+                    {mem.media_url && mem.media_type === "audio" ? (
+                      <View style={{ padding: 14, backgroundColor: "rgba(0,0,0,0.15)" }}>
+                        <AudioPlayerBubble audioUrl={mem.media_url} isMe={false} />
+                      </View>
+                    ) : mem.media_url ? (
                       <TouchableOpacity
                         activeOpacity={0.9}
                         onPress={() => setSelectedViewerImage(mem.media_url!)}
                       >
                         <Image source={{ uri: mem.media_url }} style={styles.memoryCardImage} />
                       </TouchableOpacity>
-                    )}
+                    ) : null}
 
                     <View style={styles.memoryCardBody}>
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -1162,6 +1250,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     },
     filterChipRow: {
       flexDirection: "row",
+      flexWrap: "wrap",
       gap: 8,
       marginBottom: 16,
     },
@@ -1169,21 +1258,21 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 12,
-      backgroundColor: cardBg,
+      backgroundColor: isAmoled ? "#141416" : cardBg,
       borderWidth: 1,
-      borderColor: borderCol,
+      borderColor: isAmoled ? "#27272a" : borderCol,
     },
     filterChipActive: {
-      backgroundColor: theme.accent || "#5865F2",
-      borderColor: theme.accent || "#5865F2",
+      backgroundColor: isAmoled ? "#ffffff" : (theme.accent || "#5865F2"),
+      borderColor: isAmoled ? "#ffffff" : (theme.accent || "#5865F2"),
     },
     filterChipText: {
-      color: theme.textMuted,
+      color: isAmoled ? "#a1a1aa" : theme.textMuted,
       fontSize: 13,
       fontWeight: "600",
     },
     filterChipTextActive: {
-      color: "#ffffff",
+      color: isAmoled ? "#000000" : "#ffffff",
       fontWeight: "700",
     },
     mediaGrid: {

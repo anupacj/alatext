@@ -2213,9 +2213,17 @@ export default function ChatScreen() {
       params: {
         id: id as string,
         isGroup: isGroup ? "true" : "false",
+        targetUserId: targetUser?.id || "",
+        targetUsername: targetUser?.username || "",
+        targetDisplayName: targetUser?.display_name || "",
+        targetNickname: targetUser?.nickname || (typeof name === "string" ? name : "") || "",
+        targetAvatar: (targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url || "",
+        targetBio: targetUser?.bio || "",
+        groupName: groupChatData?.name || (typeof name === "string" ? name : "") || "",
+        groupAvatar: groupChatData?.avatar_url || "",
       },
     });
-  }, [router, id, isGroup]);
+  }, [router, id, isGroup, targetUser, chatAvatars, name, groupChatData]);
 
   const handleSaveMessageToMemories = useCallback(async (msg: any) => {
     if (!id || !user || !msg) return;
