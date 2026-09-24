@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,8 @@ import {
   User,
   Bell,
   Check,
+  Heart,
+  FileText,
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "../context/ThemeContext";
@@ -247,6 +249,18 @@ export default function AlaContextMenu() {
             <TouchableOpacity style={styles.menuItem} onPress={() => handleMsgAction("pin")} activeOpacity={0.7}>
               <Pin size={15} color={theme.textMuted} style={{ marginRight: 10 }} />
               <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Pin Message</Text>
+            </TouchableOpacity>
+
+            {/* Save to Memories */}
+            <TouchableOpacity style={styles.menuItem} onPress={() => handleMsgAction("save_memory")} activeOpacity={0.7}>
+              <Heart size={15} color="#ec4899" style={{ marginRight: 10 }} />
+              <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Save to Memories</Text>
+            </TouchableOpacity>
+
+            {/* Pin to Notes & Vault */}
+            <TouchableOpacity style={styles.menuItem} onPress={() => handleMsgAction("save_note")} activeOpacity={0.7}>
+              <FileText size={15} color="#3b82f6" style={{ marginRight: 10 }} />
+              <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Pin to Notes & Vault</Text>
             </TouchableOpacity>
 
             {/* Copy Text */}

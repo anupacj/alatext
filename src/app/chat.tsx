@@ -11,7 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
@@ -64,6 +64,7 @@ import {
 import { tabTitleManager } from "../utils/tabTitleManager";
 import { playNotificationChime } from "../utils/soundManager";
 import { EmojiAutocomplete, searchEmojis, EmojiMatch } from "../components/EmojiAutocomplete";
+import { addMemory, saveNote } from "../utils/memoriesAndNotes";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -120,6 +121,7 @@ export default function ChatScreen() {
   const [groupMemberCount, setGroupMemberCount] = useState<number>(0);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [infoVisible, setInfoVisible] = useState(false);
+  const [mobileActionMessage, setMobileActionMessage] = useState<any>(null);
   const [chatSettings, setChatSettings] = useState<any>(null);
   const [chatAvatars, setChatAvatars] = useState<ChatAvatarMap>({});
   const [wallpaperDeck, setWallpaperDeck] = useState<WallpaperDeckConfig | null>(null);
@@ -2205,6 +2207,57 @@ export default function ChatScreen() {
     });
   }, [customAlert, user, id]);
 
+  const openChatInfo = useCallback(() => {
+    router.push({
+      pathname: "/chat-info",
+      params: {
+        id: id as string,
+        isGroup: isGroup ? "true" : "false",
+      },
+    });
+  }, [router, id, isGroup]);
+
+  const handleSaveMessageToMemories = useCallback(async (msg: any) => {
+    if (!id || !user || !msg) return;
+    try {
+      const mediaType = msg.type === "image" ? "image" : msg.type === "video" ? "video" : msg.type === "audio" ? "audio" : "text";
+      const mediaUrl = (msg.type === "image" || msg.type === "video" || msg.type === "audio") ? msg.text : null;
+      const caption = (msg.type === "text" || !msg.type) ? msg.text : (msg.reply_to_content || "");
+      const title = msg.type === "image" ? "Photo Memory" : msg.type === "audio" ? "Voice Note Memory" : `Memory from ${msg.sender || "Chat"}`;
+
+      await addMemory(id as string, user.id, {
+        title,
+        caption,
+        media_url: mediaUrl,
+        media_type: mediaType,
+        original_message_id: msg.id,
+        sender_name: msg.sender,
+      });
+
+      showThinkingNotification("Saved to Memories 💕");
+    } catch (e) {
+      console.error("Failed to save memory:", e);
+    }
+  }, [id, user, showThinkingNotification]);
+
+  const handleSaveMessageToNotes = useCallback(async (msg: any) => {
+    if (!id || !user || !msg) return;
+    try {
+      const textContent = typeof msg.text === "string" ? msg.text : JSON.stringify(msg.text || "");
+      const noteTitle = `Note from ${msg.sender || "Chat"}`;
+
+      await saveNote(id as string, user.id, {
+        title: noteTitle,
+        content: textContent,
+        color: "#5865F2",
+      });
+
+      showThinkingNotification("Pinned to Notes & Vault 📝");
+    } catch (e) {
+      console.error("Failed to save note:", e);
+    }
+  }, [id, user, showThinkingNotification]);
+
   // Message context action listener
   useEffect(() => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -2221,14 +2274,18 @@ export default function ChatScreen() {
         } else if (action === "delete") {
           deleteMessage(message.id);
         } else if (action === "profile") {
-          setInfoVisible(true);
+          openChatInfo();
+        } else if (action === "save_memory") {
+          handleSaveMessageToMemories(message);
+        } else if (action === "save_note") {
+          handleSaveMessageToNotes(message);
         }
       };
 
       window.addEventListener("ala_message_action" as any, handleMessageAction);
       return () => window.removeEventListener("ala_message_action" as any, handleMessageAction);
     }
-  }, [handlePinMessage, deleteMessage]);
+  }, [handlePinMessage, deleteMessage, openChatInfo, handleSaveMessageToMemories, handleSaveMessageToNotes]);
 
   // Escape key handler to exit chat to home or close active modals
   useEffect(() => {
@@ -2262,6 +2319,7 @@ export default function ChatScreen() {
         isHighlighted={highlightedMsgId === item.id}
         onScrollToMessage={scrollToAndHighlightMessage}
         chatAvatars={chatAvatars}
+        onMessageLongPress={setMobileActionMessage}
       />
     );
   }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage, chatAvatars]);
@@ -2355,7 +2413,7 @@ export default function ChatScreen() {
                   styles.headerProfilePill,
                   headerGlassStyle,
                 ]}
-                onPress={() => setInfoVisible(true)} 
+                onPress={openChatInfo} 
                 activeOpacity={0.8}
               >
                 {isGroup ? (
@@ -2657,7 +2715,7 @@ export default function ChatScreen() {
                 style={styles.moreDropdownItem}
                 onPress={() => {
                   closeMoreMenu();
-                  setInfoVisible(true);
+                  openChatInfo();
                 }}
                 activeOpacity={0.7}
               >
@@ -3379,6 +3437,106 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Mobile Long-Press Message Action Sheet */}
+      {mobileActionMessage && (
+        <Modal
+          visible={!!mobileActionMessage}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMobileActionMessage(null)}
+        >
+          <TouchableOpacity
+            style={styles.mobileActionBackdrop}
+            activeOpacity={1}
+            onPress={() => setMobileActionMessage(null)}
+          >
+            <View style={styles.mobileActionCard}>
+              <View style={styles.mobileActionHeader}>
+                <Text style={styles.mobileActionHeaderText} numberOfLines={1}>
+                  {mobileActionMessage.isMe ? "Your Message" : (mobileActionMessage.sender || "Message Options")}
+                </Text>
+                <TouchableOpacity onPress={() => setMobileActionMessage(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <X size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.mobileActionItem}
+                onPress={() => {
+                  setReplyingTo({ id: mobileActionMessage.id, text: mobileActionMessage.text, sender: mobileActionMessage.sender });
+                  setMobileActionMessage(null);
+                }}
+              >
+                <Reply size={18} color={theme.accent} style={{ marginRight: 12 }} />
+                <Text style={styles.mobileActionItemText}>Reply</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.mobileActionItem}
+                onPress={() => {
+                  handleSaveMessageToMemories(mobileActionMessage);
+                  setMobileActionMessage(null);
+                }}
+              >
+                <Heart size={18} color="#ec4899" style={{ marginRight: 12 }} />
+                <Text style={styles.mobileActionItemText}>Save to Memories 💕</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.mobileActionItem}
+                onPress={() => {
+                  handleSaveMessageToNotes(mobileActionMessage);
+                  setMobileActionMessage(null);
+                }}
+              >
+                <FileText size={18} color="#3b82f6" style={{ marginRight: 12 }} />
+                <Text style={styles.mobileActionItemText}>Pin to Notes & Vault 📝</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.mobileActionItem}
+                onPress={() => {
+                  handlePinMessage(mobileActionMessage);
+                  setMobileActionMessage(null);
+                }}
+              >
+                <Pin size={18} color={theme.textMuted} style={{ marginRight: 12 }} />
+                <Text style={styles.mobileActionItemText}>Pin Message</Text>
+              </TouchableOpacity>
+
+              {mobileActionMessage.text ? (
+                <TouchableOpacity
+                  style={styles.mobileActionItem}
+                  onPress={() => {
+                    if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
+                      navigator.clipboard.writeText(mobileActionMessage.text);
+                    }
+                    setMobileActionMessage(null);
+                    showThinkingNotification("Copied text!");
+                  }}
+                >
+                  <Copy size={18} color={theme.textMuted} style={{ marginRight: 12 }} />
+                  <Text style={styles.mobileActionItemText}>Copy Text</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {mobileActionMessage.isMe && (
+                <TouchableOpacity
+                  style={styles.mobileActionItem}
+                  onPress={() => {
+                    deleteMessage(mobileActionMessage.id);
+                    setMobileActionMessage(null);
+                  }}
+                >
+                  <Trash2 size={18} color="#f43f5e" style={{ marginRight: 12 }} />
+                  <Text style={[styles.mobileActionItemText, { color: "#f43f5e", fontWeight: "700" }]}>Delete Message</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </View>
   );
 
@@ -3823,6 +3981,49 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     justifyContent: "center",
     alignItems: "center",
   },
+  mobileActionBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "flex-end",
+  },
+  mobileActionCard: {
+    backgroundColor: isAmoled ? "#121214" : theme.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 32,
+    borderTopWidth: 1,
+    borderColor: isAmoled ? "rgba(255, 255, 255, 0.12)" : theme.border,
+  },
+  mobileActionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: isAmoled ? "rgba(255, 255, 255, 0.08)" : theme.border,
+    marginBottom: 8,
+  },
+  mobileActionHeaderText: {
+    color: theme.accent || "#5865F2",
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    flex: 1,
+  },
+  mobileActionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: isAmoled ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)",
+  },
+  mobileActionItemText: {
+    color: isAmoled ? "#ffffff" : theme.text,
+    fontSize: 15,
+    fontWeight: "600",
+  },
 });
 };
 
@@ -4043,7 +4244,7 @@ const MessageHoverActions = ({
 };
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars, onMessageLongPress }: any) => {
   if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
 
   // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
@@ -4389,6 +4590,19 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     }
   };
 
+  const handleLongPress = () => {
+    if (Platform.OS === "web") {
+      window.dispatchEvent(
+        new CustomEvent("open_ala_context_menu", {
+          detail: { x: 120, y: 220, type: "message", item },
+        })
+      );
+    }
+    if (onMessageLongPress) {
+      onMessageLongPress(item);
+    }
+  };
+
   return (
     <View style={{ position: "relative", width: "100%", justifyContent: "center" }}>
       {/* Instagram-style Circular Reply Indicator behind the message */}
@@ -4443,6 +4657,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         onHoverIn={handleHoverIn}
         onHoverOut={handleHoverOut}
         onPress={handlePress}
+        onLongPress={handleLongPress}
       >
         {!item.isMe && (
           <View style={styles.avatarSlot}>
