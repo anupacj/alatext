@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
+import { extractPaletteFromImageUrl } from "./colorExtractor";
 
 export type MoodTriggerType = "none" | "love" | "night" | "day";
 
@@ -592,7 +593,42 @@ export function getSmartBubbleColors(slot: WallpaperSlot): { sent: string; recei
     return { sent: "#2e7d32", received: "#1e2f24" };
   }
 
+  if (slot.url) {
+    // Generate a pleasant warm/cool contrast based on URL hash rather than generic blue
+    let hash = 0;
+    for (let i = 0; i < slot.url.length; i++) {
+      hash = (hash << 5) - hash + slot.url.charCodeAt(i);
+      hash |= 0;
+    }
+    const palettes = [
+      { sent: "#d97706", received: "#231810" }, // Amber / Warm espresso
+      { sent: "#2563eb", received: "#132135" }, // Royal blue / Deep navy
+      { sent: "#059669", received: "#11261d" }, // Emerald / Dark spruce
+      { sent: "#db2777", received: "#2d1320" }, // Rose / Plum
+      { sent: "#7c3aed", received: "#1f1535" }, // Violet / Midnight purple
+      { sent: "#ea580c", received: "#29160e" }, // Sunset orange / Dark cedar
+    ];
+    return palettes[Math.abs(hash) % palettes.length];
+  }
+
   return { sent: "#5865F2", received: "#2b2d31" };
+}
+
+export async function resolveSmartBubbleColors(slot: WallpaperSlot): Promise<{ sent: string; received: string }> {
+  if (slot.bubbleColorSent && slot.bubbleColorReceived) {
+    return { sent: slot.bubbleColorSent, received: slot.bubbleColorReceived };
+  }
+
+  if (slot.url) {
+    try {
+      const extracted = await extractPaletteFromImageUrl(slot.url);
+      if (extracted?.sent && extracted?.received) {
+        return { sent: extracted.sent, received: extracted.received };
+      }
+    } catch (e) {}
+  }
+
+  return getSmartBubbleColors(slot);
 }
 
 export function getNextRotatedSlot(deck: WallpaperDeckConfig): WallpaperSlot | null {

@@ -54,6 +54,7 @@ import {
   createDefaultDeck,
   normalizeDeck,
   getSmartBubbleColors,
+  resolveSmartBubbleColors,
 } from "../utils/wallpaperDeck";
 import {
   ChatAvatarMap,
@@ -121,7 +122,6 @@ export default function ChatScreen() {
   const [groupMemberCount, setGroupMemberCount] = useState<number>(0);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [infoVisible, setInfoVisible] = useState(false);
-  const [mobileActionMessage, setMobileActionMessage] = useState<any>(null);
   const [chatSettings, setChatSettings] = useState<any>(null);
   const [chatAvatars, setChatAvatars] = useState<ChatAvatarMap>({});
   const [wallpaperDeck, setWallpaperDeck] = useState<WallpaperDeckConfig | null>(null);
@@ -1091,6 +1091,17 @@ export default function ChatScreen() {
           const colors = getSmartBubbleColors(activeSlot);
           mergedSettings.bubble_color_sent = colors.sent;
           mergedSettings.bubble_color_received = colors.received;
+          if (activeSlot.url) {
+            resolveSmartBubbleColors(activeSlot).then((dyn) => {
+              setChatSettings((prev: any) => {
+                if (!prev || prev.personal_color_override) return prev;
+                if (prev.bubble_color_sent === dyn.sent && prev.bubble_color_received === dyn.received) return prev;
+                const updated = { ...prev, bubble_color_sent: dyn.sent, bubble_color_received: dyn.received };
+                AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(updated)).catch(() => {});
+                return updated;
+              });
+            });
+          }
         }
       }
 
@@ -1217,6 +1228,17 @@ export default function ChatScreen() {
                       const colors = getSmartBubbleColors(activeSlot);
                       nextSettings.bubble_color_sent = colors.sent;
                       nextSettings.bubble_color_received = colors.received;
+                      if (activeSlot.url) {
+                        resolveSmartBubbleColors(activeSlot).then((dyn) => {
+                          setChatSettings((p: any) => {
+                            if (!p || p.personal_color_override) return p;
+                            if (p.bubble_color_sent === dyn.sent && p.bubble_color_received === dyn.received) return p;
+                            const up = { ...p, bubble_color_sent: dyn.sent, bubble_color_received: dyn.received };
+                            AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(up)).catch(() => {});
+                            return up;
+                          });
+                        });
+                      }
                     }
                     AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(nextSettings)).catch(() => {});
                     return nextSettings;
@@ -1485,6 +1507,17 @@ export default function ChatScreen() {
               const colors = getSmartBubbleColors(activeSlot);
               nextSettings.bubble_color_sent = colors.sent;
               nextSettings.bubble_color_received = colors.received;
+              if (activeSlot.url) {
+                resolveSmartBubbleColors(activeSlot).then((dyn) => {
+                  setChatSettings((p: any) => {
+                    if (!p || p.personal_color_override) return p;
+                    if (p.bubble_color_sent === dyn.sent && p.bubble_color_received === dyn.received) return p;
+                    const up = { ...p, bubble_color_sent: dyn.sent, bubble_color_received: dyn.received };
+                    AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(up)).catch(() => {});
+                    return up;
+                  });
+                });
+              }
             }
             AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(nextSettings)).catch(() => {});
             return nextSettings;
@@ -2221,9 +2254,11 @@ export default function ChatScreen() {
         targetBio: targetUser?.bio || "",
         groupName: groupChatData?.name || (typeof name === "string" ? name : "") || "",
         groupAvatar: groupChatData?.avatar_url || "",
+        wallpaperUrl: chatSettings?.wallpaper_url || "",
+        wallpaperBlur: String(chatSettings?.wallpaper_blur || 0),
       },
     });
-  }, [router, id, isGroup, targetUser, chatAvatars, name, groupChatData]);
+  }, [router, id, isGroup, targetUser, chatAvatars, name, groupChatData, chatSettings]);
 
   const handleSaveMessageToMemories = useCallback(async (msg: any) => {
     if (!id || !user || !msg) return;
@@ -2327,7 +2362,6 @@ export default function ChatScreen() {
         isHighlighted={highlightedMsgId === item.id}
         onScrollToMessage={scrollToAndHighlightMessage}
         chatAvatars={chatAvatars}
-        onMessageLongPress={setMobileActionMessage}
       />
     );
   }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage, chatAvatars]);
@@ -2369,6 +2403,20 @@ export default function ChatScreen() {
           zoom={chatSettings?.wallpaper_zoom || 1}
           blur={chatSettings?.wallpaper_blur || 0}
           dim={chatSettings?.wallpaper_dim || 0}
+        />
+      )}
+      {/* Night Screen Soft Dim & Contrast Reduction Overlay */}
+      {((chatSettings?.screen_dim || 0) > 0) && (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: "#000000",
+              opacity: Math.min(0.72, Math.max(0, (chatSettings.screen_dim || 0) * 0.75)),
+              zIndex: 35,
+            },
+          ]}
         />
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
@@ -3445,106 +3493,6 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* Mobile Long-Press Message Action Sheet */}
-      {mobileActionMessage && (
-        <Modal
-          visible={!!mobileActionMessage}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setMobileActionMessage(null)}
-        >
-          <TouchableOpacity
-            style={styles.mobileActionBackdrop}
-            activeOpacity={1}
-            onPress={() => setMobileActionMessage(null)}
-          >
-            <View style={styles.mobileActionCard}>
-              <View style={styles.mobileActionHeader}>
-                <Text style={styles.mobileActionHeaderText} numberOfLines={1}>
-                  {mobileActionMessage.isMe ? "Your Message" : (mobileActionMessage.sender || "Message Options")}
-                </Text>
-                <TouchableOpacity onPress={() => setMobileActionMessage(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <X size={18} color={theme.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={styles.mobileActionItem}
-                onPress={() => {
-                  setReplyingTo({ id: mobileActionMessage.id, text: mobileActionMessage.text, sender: mobileActionMessage.sender });
-                  setMobileActionMessage(null);
-                }}
-              >
-                <Reply size={18} color={theme.accent} style={{ marginRight: 12 }} />
-                <Text style={styles.mobileActionItemText}>Reply</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.mobileActionItem}
-                onPress={() => {
-                  handleSaveMessageToMemories(mobileActionMessage);
-                  setMobileActionMessage(null);
-                }}
-              >
-                <Heart size={18} color="#ec4899" style={{ marginRight: 12 }} />
-                <Text style={styles.mobileActionItemText}>Save to Memories 💕</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.mobileActionItem}
-                onPress={() => {
-                  handleSaveMessageToNotes(mobileActionMessage);
-                  setMobileActionMessage(null);
-                }}
-              >
-                <FileText size={18} color="#3b82f6" style={{ marginRight: 12 }} />
-                <Text style={styles.mobileActionItemText}>Pin to Notes & Vault 📝</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.mobileActionItem}
-                onPress={() => {
-                  handlePinMessage(mobileActionMessage);
-                  setMobileActionMessage(null);
-                }}
-              >
-                <Pin size={18} color={theme.textMuted} style={{ marginRight: 12 }} />
-                <Text style={styles.mobileActionItemText}>Pin Message</Text>
-              </TouchableOpacity>
-
-              {mobileActionMessage.text ? (
-                <TouchableOpacity
-                  style={styles.mobileActionItem}
-                  onPress={() => {
-                    if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
-                      navigator.clipboard.writeText(mobileActionMessage.text);
-                    }
-                    setMobileActionMessage(null);
-                    showThinkingNotification("Copied text!");
-                  }}
-                >
-                  <Copy size={18} color={theme.textMuted} style={{ marginRight: 12 }} />
-                  <Text style={styles.mobileActionItemText}>Copy Text</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {mobileActionMessage.isMe && (
-                <TouchableOpacity
-                  style={styles.mobileActionItem}
-                  onPress={() => {
-                    deleteMessage(mobileActionMessage.id);
-                    setMobileActionMessage(null);
-                  }}
-                >
-                  <Trash2 size={18} color="#f43f5e" style={{ marginRight: 12 }} />
-                  <Text style={[styles.mobileActionItemText, { color: "#f43f5e", fontWeight: "700" }]}>Delete Message</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </TouchableOpacity>
-        </Modal>
-      )}
     </View>
   );
 
@@ -4252,7 +4200,7 @@ const MessageHoverActions = ({
 };
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars, onMessageLongPress }: any) => {
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
   if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
 
   // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
@@ -4561,10 +4509,12 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     }
     if (item.type === "sticker") {
       const stickerDim = Platform.OS === "web" ? 104 : 128;
-      return <Image source={{ uri: item.text }} style={{ width: stickerDim, height: stickerDim }} resizeMode="contain" />;
+      const stickerOpacity = (chatSettings?.screen_dim > 0) ? Math.max(0.55, 1 - (chatSettings.screen_dim * 0.45)) : 1;
+      return <Image source={{ uri: item.text }} style={{ width: stickerDim, height: stickerDim, opacity: stickerOpacity }} resizeMode="contain" />;
     }
     if (item.type === "image") {
-      return <DynamicImage uri={item.text} onPress={() => setImageViewerUrl(item.text)} />;
+      const imgOpacity = (chatSettings?.screen_dim > 0) ? Math.max(0.7, 1 - (chatSettings.screen_dim * 0.3)) : 1;
+      return <DynamicImage uri={item.text} onPress={() => setImageViewerUrl(item.text)} style={{ opacity: imgOpacity }} />;
     }
     if (item.type === "audio") {
       return <AudioPlayerBubble audioUrl={item.text} isMe={item.isMe} />;
@@ -4598,16 +4548,15 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
     }
   };
 
-  const handleLongPress = () => {
+  const handleLongPress = (e?: any) => {
     if (Platform.OS === "web") {
+      const x = e?.clientX || e?.nativeEvent?.pageX || (typeof window !== "undefined" ? window.innerWidth / 2 - 110 : 120);
+      const y = e?.clientY || e?.nativeEvent?.pageY || (typeof window !== "undefined" ? window.innerHeight / 2 - 120 : 220);
       window.dispatchEvent(
         new CustomEvent("open_ala_context_menu", {
-          detail: { x: 120, y: 220, type: "message", item },
+          detail: { x, y, type: "message", item },
         })
       );
-    }
-    if (onMessageLongPress) {
-      onMessageLongPress(item);
     }
   };
 
@@ -4679,6 +4628,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}
           {...({
             onContextMenu: handleBubbleContextMenu,
+            "data-msg-id": item.id,
           } as any)}
         >
           <Animated.View

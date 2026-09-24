@@ -250,6 +250,7 @@ export default function ChatSettingsModal({
   const [wallpaperDoodle, setWallpaperDoodle] = useState(currentSettings?.wallpaper_doodle || "none");
   const [anniversaryDate, setAnniversaryDate] = useState(currentSettings?.anniversary_date || null);
   const [sendButtonEmoji, setSendButtonEmoji] = useState(currentSettings?.send_button_emoji || "");
+  const [screenDim, setScreenDim] = useState<number>(() => currentSettings?.screen_dim || 0);
 
   // New Group Modal
   const [newGroupModalVisible, setNewGroupModalVisible] = useState(false);
@@ -754,6 +755,7 @@ export default function ChatSettingsModal({
         wallpaper_blur: activeSlot?.blur ?? blur,
         wallpaper_zoom: activeSlot?.zoom ?? zoom,
         wallpaper_doodle: wallpaperDoodle,
+        screen_dim: screenDim,
         anniversary_date: anniversaryDate,
         send_button_emoji: sendButtonEmoji || "",
         partner_nickname: partnerNickname || null,
@@ -768,6 +770,7 @@ export default function ChatSettingsModal({
         const merged = {
           ...(cached ? JSON.parse(cached) : {}),
           ...updates,
+          screen_dim: screenDim,
           auto_match_bubbles: autoMatchBubbles,
           personal_color_override: personalColorOverride,
         };
@@ -789,7 +792,7 @@ export default function ChatSettingsModal({
 
         if (error) {
           console.warn("Retrying chat_participants update without optional columns:", error);
-          const { send_button_emoji, anniversary_date, partner_nickname, custom_avatar_url, wallpaper_deck, ...restUpdates } = updates;
+          const { send_button_emoji, anniversary_date, partner_nickname, custom_avatar_url, wallpaper_deck, screen_dim, ...restUpdates } = updates;
           await supabase
             .from("chat_participants")
             .update(restUpdates)
@@ -804,6 +807,7 @@ export default function ChatSettingsModal({
         onSettingsSaved({
           ...currentSettings,
           ...updates,
+          screen_dim: screenDim,
           auto_match_bubbles: autoMatchBubbles,
           personal_color_override: personalColorOverride,
           wallpaper_deck: finalDeck,
@@ -995,6 +999,63 @@ export default function ChatSettingsModal({
           >
             <View style={[styles.toggleThumb, personalColorOverride && styles.toggleThumbOn]} />
           </TouchableOpacity>
+        </View>
+
+        {/* SCREEN SOFT CONTRAST & NIGHT DIM SLIDER */}
+        <View style={[styles.sectionCard, { marginTop: 14, marginBottom: 14 }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Moon size={18} color={theme.accent || "#5865F2"} />
+              <Text style={styles.sectionCardTitle}>🌙 Screen Soft Contrast & Night Dim</Text>
+            </View>
+            <View style={styles.smartBadgePill}>
+              <Text style={styles.smartBadgeText}>{Math.round(screenDim * 100)}%</Text>
+            </View>
+          </View>
+          <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 17, marginBottom: 10, fontFamily: "Josefin Sans" }}>
+            Softens bright whites, harsh glare, and glaring stickers in dark or AMOLED environments.
+          </Text>
+
+          <View style={styles.sliderRow}>
+            <Slider
+              style={styles.slider}
+              minimumValue={0}
+              maximumValue={0.7}
+              step={0.05}
+              value={screenDim}
+              onValueChange={(val) => setScreenDim(val)}
+              minimumTrackTintColor={theme.accent || "#5865F2"}
+              maximumTrackTintColor={theme.border}
+              thumbTintColor={theme.accent || "#5865F2"}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            {[
+              { label: "Normal (0%)", val: 0 },
+              { label: "Soft Dim (20%)", val: 0.2 },
+              { label: "Night Mellow (40%)", val: 0.4 },
+              { label: "Ultra Dark (65%)", val: 0.65 },
+            ].map((preset) => (
+              <TouchableOpacity
+                key={preset.label}
+                style={[
+                  styles.smallTogglePill,
+                  Math.abs(screenDim - preset.val) < 0.04 && styles.smallTogglePillActive,
+                ]}
+                onPress={() => setScreenDim(preset.val)}
+              >
+                <Text
+                  style={[
+                    styles.smallTogglePillText,
+                    Math.abs(screenDim - preset.val) < 0.04 && { color: "#fff" },
+                  ]}
+                >
+                  {preset.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* CURATED THEMES */}
@@ -1993,9 +2054,11 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.textMuted,
       fontSize: 11,
       marginTop: 2,
+      fontFamily: "Josefin Sans",
     },
     tabItemSubtitleActive: {
       color: "rgba(255,255,255,0.85)",
+      fontFamily: "Josefin Sans",
     },
     sidebarFooter: {
       paddingTop: 12,
@@ -2073,10 +2136,12 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: isDark ? theme.textMuted : "#4e5058",
       fontSize: 13,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     mobileTabPillTextActive: {
       color: "#ffffff",
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     mobileScrollContent: {
       flex: 1,
@@ -2102,7 +2167,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       borderRadius: 12,
       gap: 5,
     },
-    syncBadgeText: { color: "#10b981", fontSize: 11, fontWeight: "700" },
+    syncBadgeText: { color: "#10b981", fontSize: 11, fontWeight: "700", fontFamily: "Josefin Sans" },
 
     // Wallpaper Groups Selector
     groupSelectorBar: {
@@ -2136,10 +2201,12 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.text,
       fontSize: 13,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     groupPillNameActive: {
       color: "#ffffff",
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     groupCountBadge: {
       backgroundColor: "rgba(255,255,255,0.1)",
@@ -2151,6 +2218,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.textMuted,
       fontSize: 10,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     activePillDot: {
       width: 6,
@@ -2174,6 +2242,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.textMuted,
       fontSize: 12,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
 
     // Deck Slots Carousel
@@ -2235,6 +2304,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       paddingHorizontal: 6,
       paddingVertical: 2,
       borderRadius: 6,
+      fontFamily: "Josefin Sans",
     },
     activeDotBadge: {
       flexDirection: "row",
@@ -2246,7 +2316,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       gap: 3,
     },
     activeDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#ffffff" },
-    activeDotText: { color: "#ffffff", fontSize: 9, fontWeight: "800" },
+    activeDotText: { color: "#ffffff", fontSize: 9, fontWeight: "800", fontFamily: "Josefin Sans" },
     deckSlotColorDots: {
       position: "absolute",
       bottom: 40,
@@ -2274,8 +2344,8 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       padding: 8,
       zIndex: 2,
     },
-    deckSlotName: { color: "#ffffff", fontSize: 11, fontWeight: "700" },
-    deckSlotMoodTag: { color: "rgba(255,255,255,0.75)", fontSize: 10, marginTop: 2 },
+    deckSlotName: { color: "#ffffff", fontSize: 11, fontWeight: "700", fontFamily: "Josefin Sans" },
+    deckSlotMoodTag: { color: "rgba(255,255,255,0.75)", fontSize: 10, marginTop: 2, fontFamily: "Josefin Sans" },
     addSlotCard: {
       width: 100,
       height: 180,
@@ -2301,6 +2371,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.textMuted,
       fontSize: 11,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
 
     // Customizer Box
@@ -2329,7 +2400,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       borderRadius: 8,
       cursor: "pointer" as any,
     },
-    setAsActiveBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+    setAsActiveBtnText: { color: "#fff", fontSize: 12, fontWeight: "700", fontFamily: "Josefin Sans" },
     matchedThemeBox: {
       backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)") : theme.background,
       borderRadius: 12,
@@ -2342,6 +2413,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.text,
       fontSize: 12,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     colorBubbleChip: {
       width: 14,
@@ -2354,6 +2426,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.textMuted,
       fontSize: 11,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     slotNameInputRow: {
       flexDirection: "row",
@@ -2378,7 +2451,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       backgroundColor: theme.accent || "#5865F2",
       borderColor: theme.accent || "#5865F2",
     },
-    moodOptionText: { color: theme.textMuted, fontSize: 12, fontWeight: "600" },
+    moodOptionText: { color: theme.textMuted, fontSize: 12, fontWeight: "600", fontFamily: "Josefin Sans" },
     wallpaperPreviewContainer: {
       width: "100%",
       height: 180,
@@ -2399,7 +2472,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       backgroundColor: theme.background,
       gap: 8,
     },
-    emptyText: { color: theme.textMuted, fontSize: 13, fontWeight: "600" },
+    emptyText: { color: theme.textMuted, fontSize: 13, fontWeight: "600", fontFamily: "Josefin Sans" },
     wallpaperActions: { flexDirection: "row", gap: 8, marginBottom: 14 },
     actionBtn: {
       flex: 1,
@@ -2412,7 +2485,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       gap: 6,
       cursor: "pointer" as any,
     },
-    actionBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+    actionBtnText: { color: "#fff", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" },
     removeBtn: {
       backgroundColor: "rgba(242, 63, 67, 0.12)",
       borderWidth: 1,
@@ -2420,7 +2493,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
     },
     slidersContainer: { gap: 12 },
     sliderRow: { gap: 4 },
-    sliderLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "700" },
+    sliderLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "700", fontFamily: "Josefin Sans" },
     slider: { width: "100%", height: 36 },
 
     // Automation Box
@@ -2432,7 +2505,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       padding: 14,
       marginBottom: 20,
     },
-    automationTitle: { color: theme.text, fontSize: 13, fontWeight: "700", marginBottom: 12 },
+    automationTitle: { color: theme.text, fontSize: 13, fontWeight: "700", marginBottom: 12, fontFamily: "Josefin Sans" },
 
     // Smart Match Banner in Themes
     smartMatchBanner: {
@@ -2459,6 +2532,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: "#10b981",
       fontSize: 11,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     smartPreviewRow: {
       flexDirection: "row",
@@ -2472,6 +2546,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.textMuted,
       fontSize: 11,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     smartColorSwatch: {
       height: 38,
@@ -2488,6 +2563,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       textShadowColor: "rgba(0,0,0,0.6)",
       textShadowOffset: { width: 0, height: 1 },
       textShadowRadius: 3,
+      fontFamily: "Josefin Sans",
     },
     smallTogglePill: {
       paddingHorizontal: 12,
@@ -2506,6 +2582,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.textMuted,
       fontSize: 11,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
 
     // Themes & Color Grids
@@ -2543,6 +2620,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       fontSize: 11,
       fontWeight: "600",
       textAlign: "center",
+      fontFamily: "Josefin Sans",
     },
     colorGrid: {
       flexDirection: "row",
@@ -2568,7 +2646,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       alignItems: "center",
       paddingVertical: 10,
     },
-    toggleLabel: { color: theme.text, fontSize: 14, fontWeight: "600" },
+    toggleLabel: { color: theme.text, fontSize: 14, fontWeight: "600", fontFamily: "Josefin Sans" },
     toggle: {
       width: 48,
       height: 28,
@@ -2593,7 +2671,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       marginTop: 8,
       marginBottom: 14,
     },
-    gradientPreviewText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+    gradientPreviewText: { color: "#fff", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" },
     shapeRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
     shapeBtn: {
       flex: 1,
@@ -2608,7 +2686,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
     },
     shapeBtnSelected: { borderColor: theme.accent || "#5865F2" },
     shapePreviewBox: { width: 36, height: 26 },
-    shapeLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "600" },
+    shapeLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "600", fontFamily: "Josefin Sans" },
     fontCard: {
       paddingHorizontal: 14,
       paddingVertical: 10,
@@ -2623,7 +2701,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
     },
     fontCardSelected: { borderColor: theme.accent || "#5865F2", backgroundColor: "rgba(88,101,242,0.12)" },
     fontCardSample: { fontSize: 20, color: theme.text, marginBottom: 2 },
-    fontCardName: { fontSize: 11, color: theme.textMuted },
+    fontCardName: { fontSize: 11, color: theme.textMuted, fontFamily: "Josefin Sans" },
 
     // Sounds
     soundOptionCard: {
@@ -2648,8 +2726,8 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       justifyContent: "center",
       alignItems: "center",
     },
-    soundOptionName: { color: theme.text, fontSize: 13, fontWeight: "600" },
-    soundOptionDesc: { color: theme.textMuted, fontSize: 11, marginTop: 2 },
+    soundOptionName: { color: theme.text, fontSize: 13, fontWeight: "600", fontFamily: "Josefin Sans" },
+    soundOptionDesc: { color: theme.textMuted, fontSize: 11, marginTop: 2, fontFamily: "Josefin Sans" },
     uploadSoundBtn: {
       flex: 1,
       flexDirection: "row",
@@ -2697,7 +2775,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       borderRadius: 6,
       alignItems: "center",
     },
-    defaultPfpText: { color: "#fff", fontSize: 8, fontWeight: "700" },
+    defaultPfpText: { color: "#fff", fontSize: 8, fontWeight: "700", fontFamily: "Josefin Sans" },
     secretPfpBadge: {
       position: "absolute",
       bottom: 0,
@@ -2710,7 +2788,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       borderRadius: 8,
       gap: 3,
     },
-    secretPfpText: { color: "#fff", fontSize: 9, fontWeight: "700" },
+    secretPfpText: { color: "#fff", fontSize: 9, fontWeight: "700", fontFamily: "Josefin Sans" },
     chatPfpActions: { flex: 1, gap: 8 },
     uploadChatPfpBtn: {
       flexDirection: "row",
@@ -2722,7 +2800,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       borderRadius: 10,
       cursor: "pointer" as any,
     },
-    uploadChatPfpText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+    uploadChatPfpText: { color: "#fff", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" },
     resetChatPfpBtn: {
       flexDirection: "row",
       alignItems: "center",
@@ -2730,7 +2808,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       paddingVertical: 6,
       cursor: "pointer" as any,
     },
-    resetChatPfpText: { color: "#f43f5e", fontSize: 12, fontWeight: "600" },
+    resetChatPfpText: { color: "#f43f5e", fontSize: 12, fontWeight: "600", fontFamily: "Josefin Sans" },
 
     // Custom Alert & Danger
     alertTriggerBtn: {
@@ -2743,7 +2821,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       gap: 8,
       cursor: "pointer" as any,
     },
-    alertTriggerBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
+    alertTriggerBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "700", fontFamily: "Josefin Sans" },
     deleteBtn: {
       flexDirection: "row",
       alignItems: "center",
@@ -2756,7 +2834,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       backgroundColor: "rgba(244,63,94,0.1)",
       cursor: "pointer" as any,
     },
-    deleteBtnText: { color: "#f43f5e", fontSize: 13, fontWeight: "700" },
+    deleteBtnText: { color: "#f43f5e", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" },
     alertInput: {
       backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(0, 0, 0, 0.25)" : "rgba(0, 0, 0, 0.04)") : theme.background,
       color: theme.text,
@@ -2767,6 +2845,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       borderWidth: 1,
       borderColor: Platform.OS === "web" ? (isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.12)") : theme.border,
       outlineStyle: "none" as any,
+      fontFamily: "Josefin Sans",
     },
     saveBtn: {
       width: "100%",
@@ -2776,7 +2855,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       alignItems: "center",
       cursor: "pointer" as any,
     },
-    saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+    saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700", fontFamily: "Josefin Sans" },
     footer: {
       padding: 16,
       borderTopWidth: 1,

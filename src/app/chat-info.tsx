@@ -102,6 +102,22 @@ export default function ChatInfoScreen() {
   const currentUserId = user?.id || "";
 
   // Core States
+  const wallpaperUrlParam = (params.wallpaperUrl as string) || "";
+  const [wallpaperUrl, setWallpaperUrl] = useState<string>(wallpaperUrlParam);
+
+  useEffect(() => {
+    if (!wallpaperUrl && chatId) {
+      AsyncStorage.getItem(`chat_${chatId}_settings`).then(raw => {
+        if (raw) {
+          try {
+            const s = JSON.parse(raw);
+            if (s?.wallpaper_url) setWallpaperUrl(s.wallpaper_url);
+          } catch (e) {}
+        }
+      });
+    }
+  }, [chatId, wallpaperUrl]);
+
   const [activeTab, setActiveTab] = useState<ActiveTab>("media");
   const [loading, setLoading] = useState(true);
   const [chatData, setChatData] = useState<any>(null);
@@ -263,6 +279,32 @@ export default function ChatInfoScreen() {
     if (!chatId) return;
     setLoadingMedia(true);
 
+    const isMediaMsg = (m: any) => {
+      if (!m) return false;
+      if (m.type === "image" || m.type === "video" || m.type === "audio") return true;
+      const str = m.text || m.content || "";
+      if (
+        typeof str === "string" &&
+        (str.includes("/chat-images/") ||
+          str.includes("/chat-videos/") ||
+          str.includes("/audio-messages/") ||
+          str.match(/\.(jpeg|jpg|gif|png|webp|mp4|webm|m4a|mp3|ogg)(\?.*)?$/i))
+      ) {
+        return true;
+      }
+      return false;
+    };
+
+    const resolveType = (m: any) => {
+      if (m.type === "image" || m.type === "video" || m.type === "audio") return m.type;
+      const str = m.text || m.content || "";
+      if (typeof str === "string") {
+        if (str.includes("/chat-videos/") || str.match(/\.(mp4|webm)(\?.*)?$/i)) return "video";
+        if (str.includes("/audio-messages/") || str.match(/\.(m4a|mp3|ogg|wav)(\?.*)?$/i)) return "audio";
+      }
+      return "image";
+    };
+
     // 1. Instant local cache load
     try {
       const cachedRaw = await AsyncStorage.getItem(`chat_${chatId}_messages`);
@@ -270,11 +312,11 @@ export default function ChatInfoScreen() {
         const cachedMsgs = JSON.parse(cachedRaw);
         if (Array.isArray(cachedMsgs)) {
           const localMedia = cachedMsgs
-            .filter((m: any) => m && (m.type === "image" || m.type === "video" || m.type === "audio"))
+            .filter(isMediaMsg)
             .map((m: any) => ({
               id: m.id,
               content: m.text || m.content,
-              type: m.type,
+              type: resolveType(m),
               created_at: m.created_at || (m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString()),
               sender_id: m.sender_id || (m.isMe ? currentUserId : ""),
             }));
@@ -287,7 +329,7 @@ export default function ChatInfoScreen() {
       console.error("Local media load error:", e);
     }
 
-    // 2. Fetch clean messages from Supabase (WITHOUT broken profiles join)
+    // 2. Fetch clean messages from Supabase
     try {
       let { data, error } = await supabase
         .from("messages")
@@ -297,15 +339,23 @@ export default function ChatInfoScreen() {
         .order("created_at", { ascending: false });
 
       if (error || !data || data.length === 0) {
-        // Fallback specifically for images
         const fallback = await supabase
           .from("messages")
           .select("id, content, type, created_at, sender_id")
           .eq("chat_id", chatId)
-          .eq("type", "image")
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .limit(100);
+
         if (fallback.data && fallback.data.length > 0) {
-          data = fallback.data;
+          const mediaRows = fallback.data
+            .filter(isMediaMsg)
+            .map((m: any) => ({
+              ...m,
+              type: resolveType(m),
+            }));
+          if (mediaRows.length > 0) {
+            data = mediaRows;
+          }
         }
       }
 
@@ -513,15 +563,39 @@ export default function ChatInfoScreen() {
   // -------------------------------------------------------------
   return (
     <View style={styles.screenContainer}>
-      {/* Top Header */}
+      {/* Absolute Blurred Wallpaper Background */}
+      {wallpaperUrl ? (
+        <Image
+          source={{ uri: wallpaperUrl }}
+          style={StyleSheet.absoluteFill}
+          blurRadius={Platform.OS === "web" ? 32 : 24}
+          resizeMode="cover"
+        />
+      ) : null}
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: isAmoled
+              ? "rgba(0, 0, 0, 0.88)"
+              : theme.isDark !== false
+              ? "rgba(10, 13, 20, 0.82)"
+              : "rgba(246, 248, 252, 0.85)",
+            backdropFilter: "blur(36px) saturate(180%)",
+            WebkitBackdropFilter: "blur(36px) saturate(180%)",
+          } as any,
+        ]}
+      />
+
+      {/* Top Header - Safe from mobile notch */}
       <View style={styles.topHeader}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)")}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
           activeOpacity={0.7}
         >
-          <ArrowLeft size={20} color={isAmoled ? "#ffffff" : theme.text} />
-          <Text style={styles.backButtonText}>Back to Chat</Text>
+          <ArrowLeft size={18} color={isAmoled ? "#ffffff" : theme.text} />
+          <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
 
         <View style={styles.topHeaderCenter}>
@@ -530,11 +604,11 @@ export default function ChatInfoScreen() {
           </Text>
         </View>
 
-        <View style={{ width: 100 }} />
+        <View style={{ width: 68 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Profile Hero Card */}
+        {/* Sleek Floating Glass Profile Card */}
         <View style={styles.heroCard}>
           <View style={styles.heroAvatarContainer}>
             <Image
@@ -550,7 +624,7 @@ export default function ChatInfoScreen() {
             />
             {customAvatar && (
               <View style={styles.secretAvatarBadge}>
-                <Lock size={12} color="#ffffff" style={{ marginRight: 4 }} />
+                <Lock size={11} color="#ffffff" style={{ marginRight: 3 }} />
                 <Text style={styles.secretAvatarBadgeText}>Secret PFP</Text>
               </View>
             )}
@@ -563,80 +637,71 @@ export default function ChatInfoScreen() {
           </Text>
 
           {!isGroup && (partnerUser?.username || targetUsernameParam) ? (
-            <Text style={styles.heroHandle}>@{partnerUser?.username || targetUsernameParam}</Text>
+            <View style={styles.handleBadge}>
+              <Text style={styles.heroHandle}>@{partnerUser?.username || targetUsernameParam}</Text>
+            </View>
           ) : null}
 
           {(partnerUser?.bio || targetBioParam) ? (
-            <Text style={styles.heroBio}>{partnerUser?.bio || targetBioParam}</Text>
+            <Text style={styles.heroBio}>"{partnerUser?.bio || targetBioParam}"</Text>
           ) : null}
 
-          {/* Quick Metrics Bar */}
-          <View style={styles.metricsBar}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricVal}>{sharedMedia.length}</Text>
-              <Text style={styles.metricLabel}>Shared Media</Text>
+          {daysTogether !== null && (
+            <View style={styles.anniversaryPill}>
+              <Heart size={13} color="#ec4899" fill="#ec4899" />
+              <Text style={styles.anniversaryPillText}>{daysTogether} Days Together</Text>
             </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricVal}>{memories.length}</Text>
-              <Text style={styles.metricLabel}>Memories</Text>
-            </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricVal}>{notes.length}</Text>
-              <Text style={styles.metricLabel}>Notes & Vault</Text>
-            </View>
-          </View>
+          )}
         </View>
 
-        {/* 3 Main Segmented Tabs */}
+        {/* 3 Main Floating Glass Segmented Tabs */}
         <View style={styles.tabBar}>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === "media" && styles.tabButtonActive]}
+            style={[styles.tabButton, activeTab === "media" && styles.tabButtonActiveMedia]}
             onPress={() => setActiveTab("media")}
             activeOpacity={0.8}
           >
-            <ImageIcon size={18} color={activeTab === "media" ? theme.accent : theme.textMuted} />
+            <ImageIcon size={16} color={activeTab === "media" ? "#ffffff" : theme.textMuted} />
             <Text style={[styles.tabButtonText, activeTab === "media" && styles.tabButtonTextActive]}>
-              Shared Media
+              Media
             </Text>
-            {sharedMedia.length > 0 && (
-              <View style={styles.tabBadge}>
-                <Text style={styles.tabBadgeText}>{sharedMedia.length}</Text>
-              </View>
-            )}
+            <View style={[styles.tabBadge, activeTab === "media" && styles.tabBadgeActive]}>
+              <Text style={[styles.tabBadgeText, activeTab === "media" && styles.tabBadgeTextActive]}>
+                {sharedMedia.length}
+              </Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === "memories" && styles.tabButtonActive]}
+            style={[styles.tabButton, activeTab === "memories" && styles.tabButtonActiveMemories]}
             onPress={() => setActiveTab("memories")}
             activeOpacity={0.8}
           >
-            <Heart size={18} color={activeTab === "memories" ? "#ec4899" : theme.textMuted} />
-            <Text style={[styles.tabButtonText, activeTab === "memories" && { color: "#ec4899", fontWeight: "700" }]}>
+            <Heart size={16} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
+            <Text style={[styles.tabButtonText, activeTab === "memories" && styles.tabButtonTextActive]}>
               Memories
             </Text>
-            {memories.length > 0 && (
-              <View style={[styles.tabBadge, { backgroundColor: "rgba(236, 72, 153, 0.2)" }]}>
-                <Text style={[styles.tabBadgeText, { color: "#ec4899" }]}>{memories.length}</Text>
-              </View>
-            )}
+            <View style={[styles.tabBadge, activeTab === "memories" && styles.tabBadgeActive]}>
+              <Text style={[styles.tabBadgeText, activeTab === "memories" && styles.tabBadgeTextActive]}>
+                {memories.length}
+              </Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === "notes" && styles.tabButtonActive]}
+            style={[styles.tabButton, activeTab === "notes" && styles.tabButtonActiveNotes]}
             onPress={() => setActiveTab("notes")}
             activeOpacity={0.8}
           >
-            <FileText size={18} color={activeTab === "notes" ? "#3b82f6" : theme.textMuted} />
-            <Text style={[styles.tabButtonText, activeTab === "notes" && { color: "#3b82f6", fontWeight: "700" }]}>
+            <FileText size={16} color={activeTab === "notes" ? "#ffffff" : theme.textMuted} />
+            <Text style={[styles.tabButtonText, activeTab === "notes" && styles.tabButtonTextActive]}>
               Notes & Vault
             </Text>
-            {notes.length > 0 && (
-              <View style={[styles.tabBadge, { backgroundColor: "rgba(59, 130, 246, 0.2)" }]}>
-                <Text style={[styles.tabBadgeText, { color: "#3b82f6" }]}>{notes.length}</Text>
-              </View>
-            )}
+            <View style={[styles.tabBadge, activeTab === "notes" && styles.tabBadgeActive]}>
+              <Text style={[styles.tabBadgeText, activeTab === "notes" && styles.tabBadgeTextActive]}>
+                {notes.length}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -1060,17 +1125,18 @@ export default function ChatInfoScreen() {
 // STYLESHEET
 // -------------------------------------------------------------
 function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
+  const isDark = theme.isDark ?? (theme.id !== "light" && theme.id !== "pink");
   const cardBg = isAmoled
-    ? "#101012"
-    : theme.id === "light"
-    ? "#ffffff"
-    : "rgba(255, 255, 255, 0.05)";
+    ? "rgba(14, 14, 18, 0.72)"
+    : isDark
+    ? "rgba(22, 26, 36, 0.65)"
+    : "rgba(255, 255, 255, 0.72)";
 
   const borderCol = isAmoled
+    ? "rgba(255, 255, 255, 0.10)"
+    : isDark
     ? "rgba(255, 255, 255, 0.12)"
-    : theme.id === "light"
-    ? "rgba(0, 0, 0, 0.08)"
-    : "rgba(255, 255, 255, 0.08)";
+    : "rgba(0, 0, 0, 0.08)";
 
   return StyleSheet.create({
     screenContainer: {
@@ -1078,38 +1144,50 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       backgroundColor: isAmoled ? "#000000" : theme.background,
     },
     topHeader: {
-      height: 60,
-      paddingHorizontal: 20,
+      paddingTop: Platform.OS === "ios" ? 54 : Platform.OS === "android" ? 44 : 20,
+      paddingBottom: 14,
+      paddingHorizontal: 18,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       borderBottomWidth: 1,
       borderBottomColor: borderCol,
-      backgroundColor: isAmoled ? "#09090b" : theme.card,
-    },
+      backgroundColor: isAmoled
+        ? "rgba(0, 0, 0, 0.75)"
+        : isDark
+        ? "rgba(16, 20, 28, 0.75)"
+        : "rgba(255, 255, 255, 0.8)",
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+      zIndex: 10,
+    } as any,
     backButton: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      paddingVertical: 8,
+      gap: 6,
+      paddingVertical: 7,
       paddingHorizontal: 12,
-      borderRadius: 12,
-      backgroundColor: isAmoled ? "#161618" : "rgba(255, 255, 255, 0.06)",
+      borderRadius: 14,
+      backgroundColor: isAmoled ? "rgba(255,255,255,0.08)" : "rgba(255, 255, 255, 0.12)",
+      borderWidth: 1,
+      borderColor: borderCol,
     },
     backButtonText: {
       color: isAmoled ? "#ffffff" : theme.text,
-      fontSize: 14,
-      fontWeight: "600",
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     topHeaderCenter: {
       flex: 1,
       alignItems: "center",
-      marginHorizontal: 16,
+      marginHorizontal: 12,
     },
     topHeaderTitle: {
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 16,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     scrollContent: {
       paddingBottom: 60,
@@ -1117,136 +1195,177 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     },
     heroCard: {
       width: isDesktop ? 680 : "92%",
-      marginTop: 24,
-      padding: 24,
+      marginTop: 20,
+      padding: 22,
       borderRadius: 24,
       backgroundColor: cardBg,
       borderWidth: 1,
       borderColor: borderCol,
       alignItems: "center",
-    },
+      backdropFilter: "blur(28px)",
+      WebkitBackdropFilter: "blur(28px)",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+    } as any,
     heroAvatarContainer: {
       position: "relative",
-      marginBottom: 14,
+      marginBottom: 12,
     },
     heroAvatar: {
-      width: 104,
-      height: 104,
-      borderRadius: 52,
+      width: 96,
+      height: 96,
+      borderRadius: 48,
       borderWidth: 3,
       borderColor: theme.accent || "#5865F2",
     },
     secretAvatarBadge: {
       position: "absolute",
-      bottom: -6,
+      bottom: -4,
       alignSelf: "center",
       backgroundColor: theme.accent || "#5865F2",
-      paddingHorizontal: 10,
+      paddingHorizontal: 9,
       paddingVertical: 3,
       borderRadius: 12,
       flexDirection: "row",
       alignItems: "center",
+      borderWidth: 1.5,
+      borderColor: "#ffffff",
     },
     secretAvatarBadgeText: {
       color: "#ffffff",
-      fontSize: 11,
+      fontSize: 10,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     heroDisplayName: {
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 22,
       fontWeight: "800",
       textAlign: "center",
-      marginTop: 6,
+      marginTop: 4,
+      fontFamily: "Josefin Sans",
+    },
+    handleBadge: {
+      marginTop: 4,
+      backgroundColor: "rgba(88, 101, 242, 0.12)",
+      paddingHorizontal: 10,
+      paddingVertical: 2,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "rgba(88, 101, 242, 0.25)",
     },
     heroHandle: {
       color: theme.accent || "#5865F2",
-      fontSize: 14,
-      fontWeight: "600",
-      marginTop: 2,
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     heroBio: {
       color: theme.textMuted,
-      fontSize: 14,
+      fontSize: 13,
       textAlign: "center",
-      marginTop: 10,
+      marginTop: 8,
       paddingHorizontal: 20,
-      lineHeight: 20,
+      lineHeight: 19,
+      fontStyle: "italic",
+      fontFamily: "Josefin Sans",
     },
-    metricsBar: {
+    anniversaryPill: {
       flexDirection: "row",
       alignItems: "center",
-      marginTop: 20,
-      paddingTop: 16,
-      borderTopWidth: 1,
-      borderTopColor: borderCol,
-      width: "100%",
-      justifyContent: "space-around",
+      gap: 6,
+      marginTop: 12,
+      backgroundColor: "rgba(236, 72, 153, 0.12)",
+      borderColor: "rgba(236, 72, 153, 0.3)",
+      borderWidth: 1,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 16,
     },
-    metricItem: {
-      alignItems: "center",
-    },
-    metricVal: {
-      color: isAmoled ? "#ffffff" : theme.text,
-      fontSize: 18,
-      fontWeight: "800",
-    },
-    metricLabel: {
-      color: theme.textMuted,
+    anniversaryPillText: {
+      color: "#ec4899",
       fontSize: 12,
-      marginTop: 2,
-    },
-    metricDivider: {
-      width: 1,
-      height: 28,
-      backgroundColor: borderCol,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     tabBar: {
       flexDirection: "row",
       width: isDesktop ? 680 : "92%",
       backgroundColor: cardBg,
       borderRadius: 18,
-      padding: 6,
-      marginTop: 20,
+      padding: 5,
+      marginTop: 16,
       borderWidth: 1,
       borderColor: borderCol,
       gap: 6,
-    },
+      backdropFilter: "blur(24px)",
+      WebkitBackdropFilter: "blur(24px)",
+    } as any,
     tabButton: {
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      paddingVertical: 12,
-      borderRadius: 14,
-      gap: 8,
+      paddingVertical: 10,
+      borderRadius: 13,
+      gap: 6,
     },
-    tabButtonActive: {
-      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.12)" : "rgba(88, 101, 242, 0.14)",
+    tabButtonActiveMedia: {
+      backgroundColor: theme.accent || "#5865F2",
+      shadowColor: theme.accent || "#5865F2",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.35,
+      shadowRadius: 8,
+    },
+    tabButtonActiveMemories: {
+      backgroundColor: "#ec4899",
+      shadowColor: "#ec4899",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.35,
+      shadowRadius: 8,
+    },
+    tabButtonActiveNotes: {
+      backgroundColor: "#3b82f6",
+      shadowColor: "#3b82f6",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.35,
+      shadowRadius: 8,
     },
     tabButtonText: {
       color: theme.textMuted,
-      fontSize: 14,
-      fontWeight: "600",
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     tabButtonTextActive: {
-      color: theme.accent || "#5865F2",
-      fontWeight: "700",
+      color: "#ffffff",
+      fontWeight: "800",
+      fontFamily: "Josefin Sans",
     },
     tabBadge: {
-      backgroundColor: "rgba(88, 101, 242, 0.15)",
+      backgroundColor: "rgba(255, 255, 255, 0.08)",
       paddingHorizontal: 7,
-      paddingVertical: 2,
+      paddingVertical: 1,
       borderRadius: 10,
     },
+    tabBadgeActive: {
+      backgroundColor: "rgba(255, 255, 255, 0.28)",
+    },
     tabBadgeText: {
-      color: theme.accent || "#5865F2",
+      color: theme.textMuted,
       fontSize: 11,
-      fontWeight: "700",
+      fontWeight: "800",
+      fontFamily: "Josefin Sans",
+    },
+    tabBadgeTextActive: {
+      color: "#ffffff",
+      fontFamily: "Josefin Sans",
     },
     tabContentContainer: {
       width: isDesktop ? 680 : "92%",
-      marginTop: 20,
+      marginTop: 18,
     },
     filterChipRow: {
       flexDirection: "row",
@@ -1258,10 +1377,12 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 12,
-      backgroundColor: isAmoled ? "#141416" : cardBg,
+      backgroundColor: cardBg,
       borderWidth: 1,
-      borderColor: isAmoled ? "#27272a" : borderCol,
-    },
+      borderColor: borderCol,
+      backdropFilter: "blur(16px)",
+      WebkitBackdropFilter: "blur(16px)",
+    } as any,
     filterChipActive: {
       backgroundColor: isAmoled ? "#ffffff" : (theme.accent || "#5865F2"),
       borderColor: isAmoled ? "#ffffff" : (theme.accent || "#5865F2"),
@@ -1270,10 +1391,12 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: isAmoled ? "#a1a1aa" : theme.textMuted,
       fontSize: 13,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     filterChipTextActive: {
       color: isAmoled ? "#000000" : "#ffffff",
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     mediaGrid: {
       flexDirection: "row",
@@ -1286,6 +1409,8 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       borderRadius: 14,
       overflow: "hidden",
       backgroundColor: isAmoled ? "#161618" : "#2a2b2f",
+      borderWidth: 1,
+      borderColor: borderCol,
     },
     mediaThumbImage: {
       width: "100%",
@@ -1308,6 +1433,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       fontSize: 12,
       fontWeight: "600",
       marginTop: 6,
+      fontFamily: "Josefin Sans",
     },
     mediaAudioCard: {
       width: "100%",
@@ -1318,7 +1444,9 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       borderRadius: 16,
       borderWidth: 1,
       borderColor: borderCol,
-    },
+      backdropFilter: "blur(16px)",
+      WebkitBackdropFilter: "blur(16px)",
+    } as any,
     audioPlayBtn: {
       width: 36,
       height: 36,
@@ -1331,11 +1459,13 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: isAmoled ? "#fff" : theme.text,
       fontSize: 14,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     mediaDateText: {
       color: theme.textMuted,
       fontSize: 11,
       marginTop: 2,
+      fontFamily: "Josefin Sans",
     },
     emptyState: {
       paddingVertical: 50,
@@ -1347,6 +1477,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       fontSize: 16,
       fontWeight: "700",
       marginTop: 12,
+      fontFamily: "Josefin Sans",
     },
     emptyStateSub: {
       color: theme.textMuted,
@@ -1355,6 +1486,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       marginTop: 6,
       maxWidth: 320,
       lineHeight: 18,
+      fontFamily: "Josefin Sans",
     },
     anniversaryBanner: {
       flexDirection: "row",
@@ -1365,7 +1497,9 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       borderRadius: 20,
       padding: 16,
       marginBottom: 20,
-    },
+      backdropFilter: "blur(16px)",
+      WebkitBackdropFilter: "blur(16px)",
+    } as any,
     anniversaryIconCircle: {
       width: 48,
       height: 48,
@@ -1378,11 +1512,13 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: "#ec4899",
       fontSize: 16,
       fontWeight: "800",
+      fontFamily: "Josefin Sans",
     },
     anniversarySub: {
       color: theme.textMuted,
       fontSize: 13,
       marginTop: 2,
+      fontFamily: "Josefin Sans",
     },
     sectionActionBar: {
       flexDirection: "row",
@@ -1394,6 +1530,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 16,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     addPrimaryBtn: {
       flexDirection: "row",
@@ -1407,6 +1544,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: "#ffffff",
       fontSize: 13,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     memoriesTimeline: {
       gap: 16,
@@ -1417,7 +1555,9 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       overflow: "hidden",
       borderWidth: 1,
       borderColor: borderCol,
-    },
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+    } as any,
     memoryCardImage: {
       width: "100%",
       height: 220,
@@ -1432,12 +1572,14 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       fontWeight: "700",
       flex: 1,
       marginRight: 10,
+      fontFamily: "Josefin Sans",
     },
     memoryCardCaption: {
       color: isAmoled ? "#e2e8f0" : theme.text,
       fontSize: 14,
       marginTop: 8,
       lineHeight: 20,
+      fontFamily: "Josefin Sans",
     },
     memoryCardFooter: {
       flexDirection: "row",
@@ -1447,6 +1589,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     memoryCardDate: {
       color: theme.textMuted,
       fontSize: 12,
+      fontFamily: "Josefin Sans",
     },
     vaultActionBar: {
       flexDirection: "row",
@@ -1464,7 +1607,9 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       backgroundColor: cardBg,
       borderWidth: 1,
       borderColor: borderCol,
-    },
+      backdropFilter: "blur(16px)",
+      WebkitBackdropFilter: "blur(16px)",
+    } as any,
     vaultToggleBtnActive: {
       borderColor: "rgba(16, 185, 129, 0.4)",
       backgroundColor: "rgba(16, 185, 129, 0.1)",
@@ -1473,6 +1618,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: "#fbbf24",
       fontSize: 13,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     notesGrid: {
       flexDirection: isDesktop ? "row" : "column",
@@ -1487,7 +1633,9 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       borderLeftWidth: 5,
       borderWidth: 1,
       borderColor: borderCol,
-    },
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+    } as any,
     noteCardHeader: {
       flexDirection: "row",
       alignItems: "center",
@@ -1498,16 +1646,19 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 15,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     noteCardContent: {
       color: theme.textMuted,
       fontSize: 13,
       lineHeight: 18,
+      fontFamily: "Josefin Sans",
     },
     noteCardDate: {
       color: theme.textMuted,
       fontSize: 11,
       marginTop: 12,
+      fontFamily: "Josefin Sans",
     },
     modalBackdrop: {
       flex: 1,
@@ -1515,7 +1666,9 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       alignItems: "center",
       justifyContent: "center",
       padding: 16,
-    },
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
+    } as any,
     modalCard: {
       width: isDesktop ? 520 : "100%",
       maxHeight: "85%",
@@ -1524,7 +1677,9 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       borderWidth: 1,
       borderColor: borderCol,
       overflow: "hidden",
-    },
+      backdropFilter: "blur(28px)",
+      WebkitBackdropFilter: "blur(28px)",
+    } as any,
     modalHeader: {
       flexDirection: "row",
       alignItems: "center",
@@ -1538,6 +1693,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 17,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     inputLabel: {
       color: theme.textMuted,
@@ -1546,6 +1702,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       textTransform: "uppercase",
       marginTop: 12,
       marginBottom: 6,
+      fontFamily: "Josefin Sans",
     },
     textInput: {
       backgroundColor: cardBg,
@@ -1556,6 +1713,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       paddingVertical: 10,
       color: isAmoled ? "#ffffff" : theme.text,
       fontSize: 14,
+      fontFamily: "Josefin Sans",
     },
     attachedImagePreviewBox: {
       position: "relative",
@@ -1595,6 +1753,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: theme.accent || "#5865F2",
       fontSize: 14,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     colorRow: {
       flexDirection: "row",
@@ -1637,6 +1796,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: theme.textMuted,
       fontSize: 13,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
     saveModalBtn: {
       backgroundColor: theme.accent || "#5865F2",
@@ -1650,6 +1810,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: "#ffffff",
       fontSize: 15,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
     },
     deleteModalBtn: {
       flexDirection: "row",
@@ -1663,6 +1824,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: "#f43f5e",
       fontSize: 14,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
     },
   });
 }
