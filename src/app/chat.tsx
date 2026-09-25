@@ -53,6 +53,7 @@ import {
   getSlotByMood,
   createDefaultDeck,
   normalizeDeck,
+  mergeDecks,
   getSmartBubbleColors,
   resolveSmartBubbleColors,
 } from "../utils/wallpaperDeck";
@@ -1052,16 +1053,10 @@ export default function ChatScreen() {
         cloudDeck = normalizeDeck(partnerPartData.wallpaper_deck, fallbackWallpaperUrl, user.id);
       }
       if (!cloudDeck) {
-        cloudDeck = await fetchDeckFromCloud(id as string);
+        cloudDeck = await fetchDeckFromCloud(id as string, user.id);
       }
-      if (cloudDeck && (!loadedDeck || (cloudDeck.updatedAt || 0) >= (loadedDeck.updatedAt || 0))) {
-        loadedDeck = cloudDeck;
-        saveDeckToLocal(id as string, cloudDeck);
-      }
-      if (!loadedDeck) {
-        loadedDeck = createDefaultDeck(fallbackWallpaperUrl, user.id);
-        saveDeckToLocal(id as string, loadedDeck);
-      }
+      loadedDeck = mergeDecks(loadedDeck, cloudDeck, fallbackWallpaperUrl, user.id);
+      saveDeckToLocal(id as string, loadedDeck);
 
       // 1. Session Auto-Rotate (if explicitly enabled)
       if (loadedDeck.autoRotateEnabled) {
@@ -1210,7 +1205,7 @@ export default function ChatScreen() {
             try {
               const parsedDeck = typeof payload.new.content === "string" ? JSON.parse(payload.new.content) : payload.new.content;
               if (parsedDeck) {
-                const normDeck = normalizeDeck(parsedDeck);
+                const normDeck = mergeDecks(wallpaperDeckRef.current, parsedDeck, undefined, user.id);
                 setWallpaperDeck(normDeck);
                 wallpaperDeckRef.current = normDeck;
                 saveDeckToLocal(id as string, normDeck);
@@ -1345,7 +1340,7 @@ export default function ChatScreen() {
           saveChatAvatarToLocal(id as string, payload.new.user_id, newAvatar);
         }
         if (payload.new.wallpaper_deck) {
-          const normDeck = normalizeDeck(payload.new.wallpaper_deck, payload.new.wallpaper_url, user.id);
+          const normDeck = mergeDecks(wallpaperDeckRef.current, payload.new.wallpaper_deck, payload.new.wallpaper_url, user.id);
           setWallpaperDeck(normDeck);
           wallpaperDeckRef.current = normDeck;
           saveDeckToLocal(id as string, normDeck);
@@ -1488,7 +1483,7 @@ export default function ChatScreen() {
       .on("broadcast", { event: "wallpaper_sync" }, (payload: any) => {
         const p = payload?.payload;
         if (!p?.deck) return;
-        const incomingDeck = p.deck as WallpaperDeckConfig;
+        const incomingDeck = mergeDecks(wallpaperDeckRef.current, p.deck, undefined, user.id);
         setWallpaperDeck(incomingDeck);
         wallpaperDeckRef.current = incomingDeck;
         saveDeckToLocal(id as string, incomingDeck);

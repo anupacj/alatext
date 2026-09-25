@@ -297,9 +297,11 @@ export function normalizeDeck(raw: any, fallbackUrl?: string | null, userId = "d
     return createDefaultDeck(fallbackUrl, userId);
   }
 
+  const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_GROUPS)) as WallpaperGroup[];
   let groups: WallpaperGroup[] = [];
+
   if (Array.isArray(raw.groups) && raw.groups.length > 0) {
-    groups = raw.groups.map((g: any, gIdx: number) => ({
+    const parsedGroups: WallpaperGroup[] = raw.groups.map((g: any, gIdx: number) => ({
       id: g.id || `group_${gIdx}`,
       name: g.name || "Group",
       icon: g.icon || "🖼️",
@@ -318,11 +320,44 @@ export function normalizeDeck(raw: any, fallbackUrl?: string | null, userId = "d
         isCustom: !!s.isCustom,
       })) : [],
     }));
+
+    // Ensure all standard DEFAULT_GROUPS exist, while retaining all custom user groups
+    const groupMap = new Map<string, WallpaperGroup>();
+    for (const defG of defaultCopy) {
+      groupMap.set(defG.id, { ...defG, slots: [...defG.slots] });
+    }
+    for (const pg of parsedGroups) {
+      if (!groupMap.has(pg.id)) {
+        groupMap.set(pg.id, pg);
+      } else {
+        const existing = groupMap.get(pg.id)!;
+        existing.name = pg.name || existing.name;
+        existing.icon = pg.icon || existing.icon;
+        existing.description = pg.description || existing.description;
+        // Merge slots: keep existing slots, overlay user's slots (especially any with URLs or custom)
+        const slotMap = new Map<string, WallpaperSlot>();
+        for (const s of existing.slots) slotMap.set(s.id, s);
+        for (const s of pg.slots) {
+          if (!slotMap.has(s.id)) {
+            slotMap.set(s.id, s);
+          } else {
+            const prev = slotMap.get(s.id)!;
+            slotMap.set(s.id, {
+              ...prev,
+              ...s,
+              url: s.url || prev.url,
+              name: s.name || prev.name,
+              isCustom: s.isCustom || prev.isCustom,
+            });
+          }
+        }
+        existing.slots = Array.from(slotMap.values());
+      }
+    }
+    groups = Array.from(groupMap.values());
   } else {
     // Migration from version 1 slots to version 2 groups
-    const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_GROUPS)) as WallpaperGroup[];
     if (Array.isArray(raw.slots) && raw.slots.length > 0) {
-      // Put existing v1 slots into the custom group or nature group
       const customGroup = defaultCopy.find(g => g.id === "group_custom") || defaultCopy[0];
       const customSlots: WallpaperSlot[] = raw.slots.map((s: any, sIdx: number) => ({
         id: s.id || `migrated_slot_${sIdx}`,
@@ -372,6 +407,89 @@ export function normalizeDeck(raw: any, fallbackUrl?: string | null, userId = "d
   };
 }
 
+export function mergeDecks(
+  local: WallpaperDeckConfig | null,
+  cloud: WallpaperDeckConfig | null,
+  fallbackUrl?: string | null,
+  userId = "default"
+): WallpaperDeckConfig {
+  if (!local && !cloud) return createDefaultDeck(fallbackUrl, userId);
+  if (!local) return normalizeDeck(cloud, fallbackUrl, userId);
+  if (!cloud) return normalizeDeck(local, fallbackUrl, userId);
+
+  const localTime = local.updatedAt || 0;
+  const cloudTime = cloud.updatedAt || 0;
+  // Whichever deck has the later timestamp is primary for settings/active IDs
+  const primary = cloudTime > localTime ? cloud : local;
+  const secondary = primary === cloud ? local : cloud;
+
+  const normPrimary = normalizeDeck(primary, fallbackUrl, userId);
+  const normSecondary = normalizeDeck(secondary, fallbackUrl, userId);
+
+  // Group Map starting with DEFAULT_GROUPS templates
+  const groupMap = new Map<string, WallpaperGroup>();
+  for (const dg of DEFAULT_GROUPS) {
+    groupMap.set(dg.id, { ...dg, slots: [...dg.slots] });
+  }
+
+  // Overlay secondary then primary
+  for (const src of [normSecondary, normPrimary]) {
+    for (const g of src.groups) {
+      if (!groupMap.has(g.id)) {
+        groupMap.set(g.id, { ...g, slots: [...g.slots] });
+      } else {
+        const existing = groupMap.get(g.id)!;
+        existing.name = g.name || existing.name;
+        existing.icon = g.icon || existing.icon;
+        existing.description = g.description || existing.description;
+        const slotMap = new Map<string, WallpaperSlot>();
+        for (const s of existing.slots) slotMap.set(s.id, s);
+        for (const s of g.slots) {
+          if (!slotMap.has(s.id)) {
+            slotMap.set(s.id, s);
+          } else {
+            const prev = slotMap.get(s.id)!;
+            slotMap.set(s.id, {
+              ...prev,
+              ...s,
+              url: s.url || prev.url,
+              name: s.name || prev.name,
+              isCustom: s.isCustom || prev.isCustom,
+            });
+          }
+        }
+        existing.slots = Array.from(slotMap.values());
+      }
+    }
+  }
+
+  const finalGroups = Array.from(groupMap.values());
+  const allSlots = getAllSlots(finalGroups);
+
+  const activeSlotId =
+    (primary.activeSlotId && allSlots.some(s => s.id === primary.activeSlotId))
+      ? primary.activeSlotId
+      : (secondary.activeSlotId && allSlots.some(s => s.id === secondary.activeSlotId))
+      ? secondary.activeSlotId
+      : (allSlots.find(s => !!s.url)?.id || allSlots[0]?.id || "slot_mountain_red_sun");
+
+  const activeSlot = allSlots.find(s => s.id === activeSlotId);
+  const activeGroupId = activeSlot?.groupId || primary.activeGroupId || finalGroups[0]?.id || "group_art";
+
+  return {
+    version: 2,
+    activeGroupId,
+    activeSlotId,
+    autoMoodEnabled: primary.autoMoodEnabled ?? secondary.autoMoodEnabled ?? false,
+    autoRotateEnabled: primary.autoRotateEnabled ?? secondary.autoRotateEnabled ?? false,
+    autoMatchBubbles: primary.autoMatchBubbles ?? secondary.autoMatchBubbles ?? true,
+    groups: finalGroups,
+    slots: allSlots,
+    updatedAt: Math.max(localTime, cloudTime, Date.now()),
+    updatedBy: primary.updatedBy || secondary.updatedBy || userId,
+  };
+}
+
 export function createDefaultDeck(fallbackUrl?: string | null, userId = "default"): WallpaperDeckConfig {
   const groups: WallpaperGroup[] = JSON.parse(JSON.stringify(DEFAULT_GROUPS));
   let activeSlotId = "slot_mountain_red_sun";
@@ -418,9 +536,19 @@ export function getLocalDeckKey(chatId: string): string {
 export async function loadDeckFromLocal(chatId: string): Promise<WallpaperDeckConfig | null> {
   try {
     const raw = await AsyncStorage.getItem(getLocalDeckKey(chatId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return normalizeDeck(parsed);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return normalizeDeck(parsed);
+    }
+    // Fallback: check cached chat settings
+    const settingsRaw = await AsyncStorage.getItem(`chat_${chatId}_settings`);
+    if (settingsRaw) {
+      const parsedSettings = JSON.parse(settingsRaw);
+      if (parsedSettings?.wallpaper_deck) {
+        return normalizeDeck(parsedSettings.wallpaper_deck);
+      }
+    }
+    return null;
   } catch (e) {
     return null;
   }
@@ -429,7 +557,14 @@ export async function loadDeckFromLocal(chatId: string): Promise<WallpaperDeckCo
 export async function saveDeckToLocal(chatId: string, deck: WallpaperDeckConfig): Promise<void> {
   try {
     const normalized = normalizeDeck(deck);
-    await AsyncStorage.setItem(getLocalDeckKey(chatId), JSON.stringify(normalized));
+    const json = JSON.stringify(normalized);
+    await AsyncStorage.setItem(getLocalDeckKey(chatId), json);
+    try {
+      const cached = await AsyncStorage.getItem(`chat_${chatId}_settings`);
+      const merged = cached ? JSON.parse(cached) : {};
+      merged.wallpaper_deck = normalized;
+      await AsyncStorage.setItem(`chat_${chatId}_settings`, JSON.stringify(merged));
+    } catch (e) {}
   } catch (e) {}
 }
 
@@ -438,13 +573,16 @@ export async function fetchDeckFromCloud(chatId: string, userId?: string): Promi
     // 1. Try chat_participants table (first-class database column)
     try {
       let query = supabase.from("chat_participants").select("wallpaper_deck, user_id").eq("chat_id", chatId);
-      if (userId) query = query.eq("user_id", userId);
       const { data: parts, error: partErr } = await query;
-      if (!partErr && Array.isArray(parts)) {
-        for (const p of parts) {
+      if (!partErr && Array.isArray(parts) && parts.length > 0) {
+        // Prioritize the requested user's record first if userId is provided
+        const sorted = userId
+          ? [...parts].sort((a, b) => (a.user_id === userId ? -1 : b.user_id === userId ? 1 : 0))
+          : parts;
+        for (const p of sorted) {
           if (p.wallpaper_deck) {
             const parsed = typeof p.wallpaper_deck === "string" ? JSON.parse(p.wallpaper_deck) : p.wallpaper_deck;
-            if (parsed) return normalizeDeck(parsed);
+            if (parsed) return normalizeDeck(parsed, undefined, userId);
           }
         }
       }
@@ -463,7 +601,7 @@ export async function fetchDeckFromCloud(chatId: string, userId?: string): Promi
     if (error || !data?.content) return null;
     const parsed = typeof data.content === "string" ? JSON.parse(data.content) : data.content;
     if (parsed) {
-      return normalizeDeck(parsed);
+      return normalizeDeck(parsed, undefined, userId);
     }
     return null;
   } catch (e) {

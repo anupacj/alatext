@@ -5,7 +5,7 @@ import * as ImagePicker from "expo-image-picker";
 import {
   X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell, Sparkles, Heart,
   Moon, Sun, Check, RefreshCw, Layers, Edit3, Camera, RotateCcw, User, Lock,
-  Volume2, Play, Pause, Music, Plus, Palette, FolderPlus,
+  Volume2, Play, Pause, Music, Plus, Palette, FolderPlus, ChevronLeft, ChevronRight,
 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { uploadImageToR2, uploadChatAvatarToR2, uploadCustomChimeToR2, deleteFileFromR2ByUrl } from "../lib/r2";
@@ -13,6 +13,7 @@ import { supabase } from "../lib/supabase";
 import { useRouter } from "expo-router";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
 import { useTheme } from "../context/ThemeContext";
+import { extractPaletteFromImageUrl } from "../utils/colorExtractor";
 import {
   WallpaperSlot,
   WallpaperGroup,
@@ -21,6 +22,7 @@ import {
   DEFAULT_GROUPS,
   createDefaultDeck,
   normalizeDeck,
+  mergeDecks,
   getAllSlots,
   getActiveSlot,
   getActiveGroup,
@@ -273,6 +275,12 @@ export default function ChatSettingsModal({
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupIcon, setNewGroupIcon] = useState("📁");
 
+  // Multi-wallpaper upload & Web drag-and-drop state
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [uploadingMulti, setUploadingMulti] = useState(false);
+  const [multiUploadStatus, setMultiUploadStatus] = useState<string | null>(null);
+  const webFileInputRef = React.useRef<any>(null);
+
   // Chat-Specific Profile Photo (Chat PFP) state
   const [myChatAvatar, setMyChatAvatar] = useState<string | null>(() => chatAvatars?.[userId] || null);
   const [partnerChatAvatar, setPartnerChatAvatar] = useState<string | null>(() => (targetUser?.id ? chatAvatars?.[targetUser.id] : null) || null);
@@ -404,21 +412,24 @@ export default function ChatSettingsModal({
 
   useEffect(() => {
     if (visible && chatId) {
+      let local: WallpaperDeckConfig | null = null;
       loadDeckFromLocal(chatId).then(localDeck => {
         if (localDeck) {
+          local = localDeck;
           const norm = normalizeDeck(localDeck, currentSettings?.wallpaper_url, userId);
           setDeck(norm);
           setSelectedGroupId(norm.activeGroupId);
           setSelectedSlotId(norm.activeSlotId);
         }
-      });
-      fetchDeckFromCloud(chatId).then(cloudDeck => {
-        if (cloudDeck) {
-          const norm = normalizeDeck(cloudDeck, currentSettings?.wallpaper_url, userId);
-          setDeck(norm);
-          setSelectedGroupId(norm.activeGroupId);
-          setSelectedSlotId(norm.activeSlotId);
-        }
+        fetchDeckFromCloud(chatId, userId).then(cloudDeck => {
+          if (cloudDeck) {
+            const merged = mergeDecks(local, cloudDeck, currentSettings?.wallpaper_url, userId);
+            setDeck(merged);
+            setSelectedGroupId(merged.activeGroupId);
+            setSelectedSlotId(merged.activeSlotId);
+            saveDeckToLocal(chatId, merged);
+          }
+        });
       });
 
       fetchChatAvatarsFromCloud(chatId).then(cloudAvatars => {
@@ -474,6 +485,10 @@ export default function ChatSettingsModal({
     const all = getAllSlots(deck.groups || []);
     return all.find(s => s.id === selectedSlotId) || activeGroup.slots?.[0] || all[0];
   }, [deck.groups, selectedSlotId, activeGroup]);
+
+  const selectedSlotIdx = useMemo(() => {
+    return (activeGroup.slots || []).findIndex(s => s.id === selectedSlot.id);
+  }, [activeGroup.slots, selectedSlot.id]);
 
   const applyTheme = useCallback((selectedTheme: typeof THEMES[0]) => {
     setBubbleColorSent(selectedTheme.sent);
@@ -632,25 +647,252 @@ export default function ChatSettingsModal({
     setNewGroupModalVisible(false);
   }, [newGroupName, newGroupIcon, chatId, userId]);
 
+  const readAssetOrFileAsBase64 = async (item: {
+    file?: File;
+    uri?: string;
+    base64?: string;
+    mimeType?: string;
+  }): Promise<{ base64: string; mimeType: string }> => {
+    if (item.base64) {
+      return { base64: item.base64, mimeType: item.mimeType || "image/jpeg" };
+    }
+    if (item.file) {
+      const mime = item.file.type || "image/jpeg";
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const str = reader.result as string;
+          resolve(str.includes(",") ? str.split(",")[1] : str);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(item.file!);
+      });
+      return { base64: b64, mimeType: mime };
+    }
+    if (item.uri) {
+      const res = await fetch(item.uri);
+      const blob = await res.blob();
+      const mime = item.mimeType || blob.type || "image/jpeg";
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const str = reader.result as string;
+          resolve(str.includes(",") ? str.split(",")[1] : str);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      return { base64: b64, mimeType: mime };
+    }
+    throw new Error("No image data available");
+  };
+
+  const processAndUploadImages = async (
+    items: Array<{ file?: File; uri?: string; base64?: string; name?: string; mimeType?: string }>,
+    targetGroupId: string
+  ) => {
+    if (!items || items.length === 0) return;
+    setUploadingMulti(true);
+    setMultiUploadStatus(`Preparing ${items.length} photo${items.length > 1 ? "s" : ""}...`);
+
+    try {
+      const uploadedSlots: WallpaperSlot[] = [];
+      const targetGroup = (deck.groups || []).find(g => g.id === targetGroupId) || activeGroup;
+      const baseCount = targetGroup.slots?.length || 0;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        setMultiUploadStatus(`Uploading photo ${i + 1} of ${items.length}...`);
+        try {
+          const { base64, mimeType } = await readAssetOrFileAsBase64(item);
+          const uniqueId = `slot_${targetGroupId}_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`;
+          const url = await uploadImageToR2(`wallpapers/${chatId}/${userId}-${Date.now()}-${i}`, base64, mimeType);
+
+          let smartColors: { sent: string; received: string } | undefined;
+          try {
+            const pal = await extractPaletteFromImageUrl(url);
+            if (pal?.sent && pal?.received) {
+              smartColors = { sent: pal.sent, received: pal.received };
+            }
+          } catch (e) {}
+
+          const cleanName = item.name
+            ? item.name.replace(/\.[^/.]+$/, "").substring(0, 30)
+            : `Wallpaper ${baseCount + i + 1}`;
+
+          uploadedSlots.push({
+            id: uniqueId,
+            name: cleanName,
+            url,
+            dim: 0,
+            blur: 0,
+            zoom: 1,
+            mood: "none",
+            groupId: targetGroupId,
+            bubbleColorSent: smartColors?.sent,
+            bubbleColorReceived: smartColors?.received,
+            isCustom: true,
+          });
+        } catch (err) {
+          console.error(`Failed to upload photo #${i + 1}:`, err);
+        }
+      }
+
+      if (uploadedSlots.length > 0) {
+        setDeck(prev => {
+          const updatedGroups = (prev.groups || []).map(g => {
+            if (g.id === targetGroupId) {
+              return {
+                ...g,
+                slots: [...(g.slots || []), ...uploadedSlots],
+              };
+            }
+            return g;
+          });
+          const allSlots = getAllSlots(updatedGroups);
+          const updatedDeck: WallpaperDeckConfig = {
+            ...prev,
+            groups: updatedGroups,
+            slots: allSlots,
+            updatedAt: Date.now(),
+            updatedBy: userId,
+          };
+          setSelectedSlotId(uploadedSlots[0].id);
+          saveDeckToLocal(chatId, updatedDeck);
+          persistDeckToCloud(chatId, userId, updatedDeck);
+          broadcastDeckUpdate(chatId, userId, updatedDeck);
+          return updatedDeck;
+        });
+        setMultiUploadStatus(`Added ${uploadedSlots.length} wallpaper${uploadedSlots.length > 1 ? "s" : ""}!`);
+        setTimeout(() => setMultiUploadStatus(null), 3000);
+      } else {
+        setMultiUploadStatus("Failed to upload wallpapers. Please try again.");
+        setTimeout(() => setMultiUploadStatus(null), 3500);
+      }
+    } catch (e) {
+      console.error("Multi upload error:", e);
+      setMultiUploadStatus("Upload failed.");
+      setTimeout(() => setMultiUploadStatus(null), 3000);
+    } finally {
+      setUploadingMulti(false);
+    }
+  };
+
+  const triggerMultiPicker = async () => {
+    if (Platform.OS === "web") {
+      webFileInputRef.current?.click();
+    } else {
+      try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsMultipleSelection: true,
+          quality: 0.8,
+          base64: true,
+        });
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+          const items = result.assets.map(a => ({
+            uri: a.uri,
+            base64: a.base64 || undefined,
+            mimeType: a.mimeType || "image/jpeg",
+            name: a.fileName || undefined,
+          }));
+          processAndUploadImages(items, activeGroup.id);
+        }
+      } catch (e) {
+        console.error("Mobile picker error:", e);
+      }
+    }
+  };
+
+  const handleWebFileInputChange = (e: any) => {
+    const files: File[] = e.target?.files ? Array.from(e.target.files) : [];
+    if (files.length > 0) {
+      const items = files.map(f => ({ file: f, name: f.name }));
+      processAndUploadImages(items, activeGroup.id);
+    }
+    if (e.target) e.target.value = "";
+  };
+
+  const handleWebDrop = (e: any) => {
+    if (Platform.OS !== "web") return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    const rawFiles: File[] = e.dataTransfer?.files ? Array.from(e.dataTransfer.files) : [];
+    const imageFiles = rawFiles.filter(
+      f => f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|heic|avif)$/i.test(f.name)
+    );
+    if (imageFiles.length > 0) {
+      const items = imageFiles.map(f => ({ file: f, name: f.name }));
+      processAndUploadImages(items, activeGroup.id);
+    }
+  };
+
+  const handleMoveSlot = useCallback((slotId: string, direction: "left" | "right") => {
+    setDeck(prev => {
+      const targetGroup = (prev.groups || []).find(g => g.slots?.some(s => s.id === slotId));
+      if (!targetGroup) return prev;
+      const currentSlots = [...targetGroup.slots];
+      const idx = currentSlots.findIndex(s => s.id === slotId);
+      if (idx < 0) return prev;
+      const targetIdx = direction === "left" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= currentSlots.length) return prev;
+
+      const temp = currentSlots[idx];
+      currentSlots[idx] = currentSlots[targetIdx];
+      currentSlots[targetIdx] = temp;
+
+      const updatedGroups = (prev.groups || []).map(g => (g.id === targetGroup.id ? { ...g, slots: currentSlots } : g));
+      const allSlots = getAllSlots(updatedGroups);
+      const updatedDeck: WallpaperDeckConfig = {
+        ...prev,
+        groups: updatedGroups,
+        slots: allSlots,
+        updatedAt: Date.now(),
+        updatedBy: userId,
+      };
+      saveDeckToLocal(chatId, updatedDeck);
+      persistDeckToCloud(chatId, userId, updatedDeck);
+      broadcastDeckUpdate(chatId, userId, updatedDeck);
+      return updatedDeck;
+    });
+  }, [chatId, userId]);
+
   const pickImageForSlot = async (slotId: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      quality: 0.7,
+      quality: 0.8,
       base64: true,
     });
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
       setLoading(true);
       try {
-        const mimeType = asset.mimeType || "image/jpeg";
-        if (!asset.base64) throw new Error("Could not read image data");
-        const url = await uploadImageToR2(`wallpapers/${chatId}/${userId}-${Date.now()}`, asset.base64, mimeType);
-        
+        const { base64, mimeType } = await readAssetOrFileAsBase64({
+          uri: asset.uri,
+          base64: asset.base64 || undefined,
+          mimeType: asset.mimeType || "image/jpeg",
+        });
+        const url = await uploadImageToR2(`wallpapers/${chatId}/${userId}-${Date.now()}`, base64, mimeType);
+
+        let smartColors: { sent: string; received: string } | undefined;
+        try {
+          const pal = await extractPaletteFromImageUrl(url);
+          if (pal?.sent && pal?.received) {
+            smartColors = { sent: pal.sent, received: pal.received };
+          }
+        } catch (e) {}
+
         setDeck(prev => {
           const updatedGroups = (prev.groups || []).map(g => ({
             ...g,
-            slots: g.slots.map(s => s.id === slotId ? { ...s, url } : s),
+            slots: g.slots.map(s => s.id === slotId ? {
+              ...s,
+              url,
+              bubbleColorSent: smartColors?.sent || s.bubbleColorSent,
+              bubbleColorReceived: smartColors?.received || s.bubbleColorReceived,
+            } : s),
           }));
           const allSlots = getAllSlots(updatedGroups);
           const updatedDeck: WallpaperDeckConfig = {
@@ -667,8 +909,12 @@ export default function ChatSettingsModal({
           broadcastDeckUpdate(chatId, userId, updatedDeck);
           return updatedDeck;
         });
-      } catch (e) { console.error("Failed to upload wallpaper", e); }
-      finally { setLoading(false); }
+      } catch (e) {
+        console.error("Failed to upload wallpaper", e);
+        if (Platform.OS === "web") alert("Failed to upload wallpaper photo");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -1241,19 +1487,105 @@ export default function ChatSettingsModal({
           </ScrollView>
         </View>
 
+        {/* Hidden Multi-file input for Web */}
+        {Platform.OS === "web" && (
+          <input
+            ref={webFileInputRef}
+            type="file"
+            multiple
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleWebFileInputChange}
+          />
+        )}
+
+        {/* Drag & Drop Hero Zone / Quick Multi-Add Banner */}
+        <View
+          // @ts-ignore
+          onDragOver={(e: any) => {
+            if (Platform.OS === "web") {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingOver(true);
+            }
+          }}
+          onDragEnter={(e: any) => {
+            if (Platform.OS === "web") {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingOver(true);
+            }
+          }}
+          onDragLeave={(e: any) => {
+            if (Platform.OS === "web") {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingOver(false);
+            }
+          }}
+          onDrop={handleWebDrop}
+          style={[
+            styles.dropZoneContainer,
+            isDraggingOver && styles.dropZoneContainerActive,
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.dropZoneInner}
+            onPress={triggerMultiPicker}
+            activeOpacity={0.8}
+            disabled={uploadingMulti}
+          >
+            <View style={[styles.dropZoneIconCircle, isDraggingOver && { backgroundColor: theme.accent || "#5865F2" }]}>
+              {uploadingMulti ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Upload size={18} color={isDraggingOver ? "#fff" : (theme.accent || "#5865F2")} />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.dropZoneTitle, { color: isDraggingOver ? (theme.accent || "#5865F2") : theme.text }]}>
+                {uploadingMulti
+                  ? (multiUploadStatus || "Uploading wallpapers...")
+                  : isDraggingOver
+                  ? `Drop images now to add to "${activeGroup.name}"!`
+                  : `Drag & drop wallpapers or click to browse`}
+              </Text>
+              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2, fontFamily: "Josefin Sans" }}>
+                {uploadingMulti
+                  ? "Uploading to Cloudflare R2 storage & generating palette..."
+                  : `Select multiple photos at once • PNG, JPG, WebP • Adds to "${activeGroup.name}"`}
+              </Text>
+            </View>
+            <View style={styles.browsePill}>
+              <Text style={styles.browsePillText}>Select Files</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {/* 2. WALLPAPER CAROUSEL FOR SELECTED GROUP */}
         <View style={{ marginBottom: 16 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8, paddingHorizontal: 2 }}>
             <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: "600", textTransform: "uppercase" }}>
               {activeGroup.name} ({activeGroup.slots?.length || 0} wallpapers)
             </Text>
-            <TouchableOpacity
-              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
-              onPress={() => handleAddNewSlotToGroup(activeGroup.id)}
-            >
-              <Plus size={14} color={theme.accent || "#5865F2"} />
-              <Text style={{ color: theme.accent || "#5865F2", fontSize: 12, fontWeight: "700" }}>Add Wallpaper</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TouchableOpacity
+                style={styles.uploadMultiBtn}
+                onPress={triggerMultiPicker}
+                disabled={uploadingMulti}
+                activeOpacity={0.7}
+              >
+                <Upload size={13} color={theme.accent || "#5865F2"} />
+                <Text style={styles.uploadMultiBtnText}>Add Multiple</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                onPress={() => handleAddNewSlotToGroup(activeGroup.id)}
+              >
+                <Plus size={14} color={theme.accent || "#5865F2"} />
+                <Text style={{ color: theme.accent || "#5865F2", fontSize: 12, fontWeight: "700" }}>Add Slot</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
@@ -1292,6 +1624,34 @@ export default function ChatSettingsModal({
                     )}
                   </View>
 
+                  {/* Reorder controls on card */}
+                  {(activeGroup.slots?.length || 0) > 1 && (
+                    <View style={styles.cardReorderRow}>
+                      <TouchableOpacity
+                        style={[styles.cardReorderBtn, idx === 0 && { opacity: 0.3 }]}
+                        onPress={(e: any) => {
+                          e?.stopPropagation?.();
+                          handleMoveSlot(slot.id, "left");
+                        }}
+                        disabled={idx === 0}
+                        activeOpacity={0.7}
+                      >
+                        <ChevronLeft size={13} color="#fff" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.cardReorderBtn, idx === (activeGroup.slots?.length || 1) - 1 && { opacity: 0.3 }]}
+                        onPress={(e: any) => {
+                          e?.stopPropagation?.();
+                          handleMoveSlot(slot.id, "right");
+                        }}
+                        disabled={idx === (activeGroup.slots?.length || 1) - 1}
+                        activeOpacity={0.7}
+                      >
+                        <ChevronRight size={13} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
                   {/* Smart Bubble Colors Indicator */}
                   <View style={styles.deckSlotColorDots}>
                     <View style={[styles.deckSlotColorDot, { backgroundColor: slotColors.sent }]} />
@@ -1320,7 +1680,7 @@ export default function ChatSettingsModal({
               <View style={styles.addSlotCircle}>
                 <Plus size={20} color={theme.textMuted} />
               </View>
-              <Text style={styles.addSlotText}>Add Photo</Text>
+              <Text style={styles.addSlotText}>Add Slot</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -1347,6 +1707,41 @@ export default function ChatSettingsModal({
               )}
             </View>
           </View>
+
+          {/* Position in Collection (Rearrange / Reorder) */}
+          {(activeGroup.slots?.length || 0) > 1 && (
+            <View style={styles.reorderBar}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Layers size={14} color={theme.textMuted} />
+                <Text style={styles.reorderBarLabel}>Position in Collection</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <TouchableOpacity
+                  style={[styles.reorderNavBtn, selectedSlotIdx === 0 && styles.reorderNavBtnDisabled]}
+                  onPress={() => handleMoveSlot(selectedSlot.id, "left")}
+                  disabled={selectedSlotIdx === 0}
+                  activeOpacity={0.7}
+                >
+                  <ChevronLeft size={13} color={selectedSlotIdx === 0 ? theme.textMuted : "#fff"} />
+                  <Text style={[styles.reorderNavText, selectedSlotIdx === 0 && { color: theme.textMuted }]}>Move Left</Text>
+                </TouchableOpacity>
+                <View style={styles.reorderPositionBadge}>
+                  <Text style={styles.reorderPositionText}>
+                    {selectedSlotIdx + 1} / {activeGroup.slots?.length || 1}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.reorderNavBtn, selectedSlotIdx >= (activeGroup.slots?.length || 1) - 1 && styles.reorderNavBtnDisabled]}
+                  onPress={() => handleMoveSlot(selectedSlot.id, "right")}
+                  disabled={selectedSlotIdx >= (activeGroup.slots?.length || 1) - 1}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.reorderNavText, selectedSlotIdx >= (activeGroup.slots?.length || 1) - 1 && { color: theme.textMuted }]}>Move Right</Text>
+                  <ChevronRight size={13} color={selectedSlotIdx >= (activeGroup.slots?.length || 1) - 1 ? theme.textMuted : "#fff"} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {/* Paired Smart Bubble Colors */}
           <View style={styles.matchedThemeBox}>
@@ -2258,6 +2653,144 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       color: theme.textMuted,
       fontSize: 12,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+
+    // Drag & Drop Hero Zone & Multi-Upload
+    dropZoneContainer: {
+      borderWidth: 2,
+      borderStyle: "dashed",
+      borderColor: Platform.OS === "web" ? "rgba(88,101,242,0.4)" : theme.border,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(88,101,242,0.06)" : "rgba(88,101,242,0.04)") : theme.surface,
+      borderRadius: 14,
+      padding: 12,
+      marginBottom: 16,
+      transition: "all 0.2s ease" as any,
+    },
+    dropZoneContainerActive: {
+      borderColor: theme.accent || "#5865F2",
+      backgroundColor: "rgba(88,101,242,0.15)",
+      transform: [{ scale: 1.01 }],
+    },
+    dropZoneInner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      cursor: "pointer" as any,
+    },
+    dropZoneIconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: "rgba(88,101,242,0.15)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    dropZoneTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    browsePill: {
+      backgroundColor: theme.accent || "#5865F2",
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 8,
+      alignSelf: "center",
+    },
+    browsePillText: {
+      color: "#ffffff",
+      fontSize: 11,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    uploadMultiBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      backgroundColor: "rgba(88,101,242,0.12)",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "rgba(88,101,242,0.25)",
+      cursor: "pointer" as any,
+    },
+    uploadMultiBtnText: {
+      color: theme.accent || "#5865F2",
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    cardReorderRow: {
+      position: "absolute",
+      top: 34,
+      left: 6,
+      right: 6,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      zIndex: 4,
+    },
+    cardReorderBtn: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: "rgba(0,0,0,0.7)",
+      justifyContent: "center",
+      alignItems: "center",
+      cursor: "pointer" as any,
+    },
+    reorderBar: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(0,0,0,0.04)") : theme.background,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)") : theme.border,
+    },
+    reorderBarLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    reorderNavBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: Platform.OS === "web" ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)") : theme.surface,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      cursor: "pointer" as any,
+    },
+    reorderNavBtnDisabled: {
+      opacity: 0.35,
+      cursor: "default" as any,
+    },
+    reorderNavText: {
+      color: theme.text,
+      fontSize: 11,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    reorderPositionBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: "rgba(88,101,242,0.15)",
+    },
+    reorderPositionText: {
+      color: theme.accent || "#5865F2",
+      fontSize: 11,
+      fontWeight: "800",
       fontFamily: "Josefin Sans",
     },
 
