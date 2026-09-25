@@ -233,16 +233,36 @@ export default function ChatInfoScreen() {
       // 3. Fetch profiles for all participants directly from profiles table
       const userIds = rawParts.map((p: any) => p.user_id).filter(Boolean);
       const profMap = new Map<string, any>();
+      // Seed current user's profile from auth context immediately as reliable fallback
+      if (effectiveUserId && user) {
+        profMap.set(effectiveUserId, {
+          id: effectiveUserId,
+          username: user.user_metadata?.username || user.email?.split("@")[0] || "you",
+          display_name: user.user_metadata?.display_name || user.user_metadata?.username || user.user_metadata?.name || "You",
+          avatar_url: user.user_metadata?.avatar_url || null,
+        });
+      }
 
       if (userIds.length > 0) {
         try {
+          // Select all existing profile fields (id, username, display_name, avatar_url, etc.)
           const { data: profs, error: profErr } = await supabase
             .from("profiles")
-            .select("id, username, display_name, avatar_url, bio, created_at, updated_at")
+            .select("*")
             .in("id", userIds);
 
-          if (!profErr && Array.isArray(profs)) {
-            profs.forEach((pr) => profMap.set(pr.id, pr));
+          if (!profErr && Array.isArray(profs) && profs.length > 0) {
+            profs.forEach((pr) => profMap.set(pr.id, { ...profMap.get(pr.id), ...pr }));
+          } else {
+            if (profErr) console.warn("[chat-info] profiles select(*) error:", profErr);
+            // Fallback to basic guaranteed columns (id, username)
+            const { data: profsBasic } = await supabase
+              .from("profiles")
+              .select("id, username")
+              .in("id", userIds);
+            if (Array.isArray(profsBasic) && profsBasic.length > 0) {
+              profsBasic.forEach((pr) => profMap.set(pr.id, { ...profMap.get(pr.id), ...pr }));
+            }
           }
         } catch (e) {
           console.error("Failed to fetch participant profiles:", e);
@@ -283,11 +303,19 @@ export default function ChatInfoScreen() {
       // 5. If Group: format and set group participants
       if (isGroupChat) {
         const formatted = rawParts.map((p: any) => {
+          const isMe = p.user_id === effectiveUserId;
           const pr = profMap.get(p.user_id) || {};
+          const fallbackName = isMe
+            ? (user?.user_metadata?.display_name || user?.user_metadata?.username || "You")
+            : (p.nickname || "Member");
+          const fallbackUsername = isMe
+            ? (user?.user_metadata?.username || user?.email?.split("@")[0] || "you")
+            : "user";
+
           return {
             user_id: p.user_id,
-            username: pr.username || "user",
-            display_name: pr.display_name || pr.username || "Member",
+            username: pr.username || fallbackUsername,
+            display_name: pr.display_name || pr.username || fallbackName,
             avatar_url: p.custom_avatar_url || pr.avatar_url || null,
             bio: pr.bio || null,
             updated_at: pr.updated_at || null,
