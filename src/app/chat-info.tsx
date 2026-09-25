@@ -210,76 +210,90 @@ export default function ChatInfoScreen() {
         if (chat.name) setGroupNameInput(chat.name);
       }
 
-      // 2. Fetch participants
-      const { data: parts } = await supabase
+      // 2. Fetch raw participants for this chat
+      let rawParts: any[] = [];
+      const { data: pData, error: pErr } = await supabase
         .from("chat_participants")
-        .select("user_id, nickname, partner_nickname, custom_avatar_url, anniversary_date")
+        .select("*")
         .eq("chat_id", chatId);
 
-      if (parts && parts.length > 0) {
-        // My participant record
-        if (effectiveUserId) {
-          const myPart = parts.find((p: any) => p.user_id === effectiveUserId);
-          if (myPart) {
-            if (myPart.anniversary_date) setAnniversaryDate(myPart.anniversary_date);
-            if (myPart.partner_nickname || myPart.nickname) {
-              setPartnerNickname(myPart.partner_nickname || myPart.nickname);
-            }
-          }
+      if (!pErr && Array.isArray(pData) && pData.length > 0) {
+        rawParts = pData;
+      } else {
+        // Fallback in case select("*") had an issue
+        const { data: pSimple } = await supabase
+          .from("chat_participants")
+          .select("user_id")
+          .eq("chat_id", chatId);
+        if (Array.isArray(pSimple) && pSimple.length > 0) {
+          rawParts = pSimple;
         }
-
-        // Partner participant record for DM
-        if (!chat?.is_group && !isGroupParam) {
-          const partnerPart =
-            parts.find((p: any) => p.user_id !== effectiveUserId) ||
-            (targetUserIdParam ? parts.find((p: any) => p.user_id === targetUserIdParam) : null) ||
-            parts[0];
-
-          if (partnerPart) {
-            if (partnerPart.custom_avatar_url) setCustomAvatar(partnerPart.custom_avatar_url);
-            if (partnerPart.anniversary_date) setAnniversaryDate(partnerPart.anniversary_date);
-
-            const { data: prof } = await supabase
-              .from("profiles")
-              .select("id, username, display_name, avatar_url, bio, created_at, updated_at")
-              .eq("id", partnerPart.user_id)
-              .maybeSingle();
-
-            if (prof) {
-              setPartnerUser(prof);
-            }
-          }
-        }
-      } else if (targetUserIdParam) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("id, username, display_name, avatar_url, bio, created_at, updated_at")
-          .eq("id", targetUserIdParam)
-          .maybeSingle();
-        if (prof) setPartnerUser(prof);
       }
 
-      // If group chat, fetch participant profiles
-      if (chat?.is_group || isGroupParam) {
-        const { data: groupParts } = await supabase
-          .from("chat_participants")
-          .select("user_id, custom_avatar_url, profiles(id, username, display_name, avatar_url, bio, updated_at)")
-          .eq("chat_id", chatId);
+      // 3. Fetch profiles for all participants directly from profiles table
+      const userIds = rawParts.map((p: any) => p.user_id).filter(Boolean);
+      const profMap = new Map<string, any>();
 
-        if (groupParts && groupParts.length > 0) {
-          const formatted = groupParts.map((p: any) => {
-            const pr = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles || {};
-            return {
-              user_id: p.user_id,
-              username: pr.username || "user",
-              display_name: pr.display_name || pr.username || "user",
-              avatar_url: p.custom_avatar_url || pr.avatar_url || null,
-              bio: pr.bio || null,
-              updated_at: pr.updated_at || null,
-            };
-          });
-          setGroupParticipants(formatted);
+      if (userIds.length > 0) {
+        try {
+          const { data: profs, error: profErr } = await supabase
+            .from("profiles")
+            .select("id, username, display_name, avatar_url, bio, created_at, updated_at")
+            .in("id", userIds);
+
+          if (!profErr && Array.isArray(profs)) {
+            profs.forEach((pr) => profMap.set(pr.id, pr));
+          }
+        } catch (e) {
+          console.error("Failed to fetch participant profiles:", e);
         }
+      }
+
+      const isGroupChat = !!chat?.is_group || isGroupParam;
+
+      // 4. If DM: extract partner info & anniversary
+      if (!isGroupChat) {
+        const myPart = rawParts.find((p: any) => p.user_id === effectiveUserId);
+        if (myPart) {
+          if (myPart.anniversary_date) setAnniversaryDate(myPart.anniversary_date);
+          if (myPart.partner_nickname || myPart.nickname) {
+            setPartnerNickname(myPart.partner_nickname || myPart.nickname);
+          }
+        }
+
+        const partnerPart =
+          rawParts.find((p: any) => p.user_id !== effectiveUserId) ||
+          (targetUserIdParam ? rawParts.find((p: any) => p.user_id === targetUserIdParam) : null) ||
+          rawParts[0];
+
+        if (partnerPart) {
+          if (partnerPart.custom_avatar_url) setCustomAvatar(partnerPart.custom_avatar_url);
+          if (partnerPart.anniversary_date) setAnniversaryDate(partnerPart.anniversary_date);
+
+          const partnerProf = profMap.get(partnerPart.user_id);
+          if (partnerProf) {
+            setPartnerUser(partnerProf);
+          }
+        } else if (targetUserIdParam) {
+          const partnerProf = profMap.get(targetUserIdParam);
+          if (partnerProf) setPartnerUser(partnerProf);
+        }
+      }
+
+      // 5. If Group: format and set group participants
+      if (isGroupChat) {
+        const formatted = rawParts.map((p: any) => {
+          const pr = profMap.get(p.user_id) || {};
+          return {
+            user_id: p.user_id,
+            username: pr.username || "user",
+            display_name: pr.display_name || pr.username || "Member",
+            avatar_url: p.custom_avatar_url || pr.avatar_url || null,
+            bio: pr.bio || null,
+            updated_at: pr.updated_at || null,
+          };
+        });
+        setGroupParticipants(formatted);
       }
     } catch (e) {
       console.error("Failed to load chat details:", e);
