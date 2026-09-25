@@ -4537,21 +4537,21 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   };
 
   const handleBubbleContextMenu = (e: any) => {
-    if (Platform.OS === "web") {
-      e.preventDefault();
-      e.stopPropagation();
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
       window.dispatchEvent(
         new CustomEvent("open_ala_context_menu", {
-          detail: { x: e.clientX, y: e.clientY, type: "message", item },
+          detail: { x: e?.clientX || 120, y: e?.clientY || 220, type: "message", item },
         })
       );
     }
   };
 
   const handleLongPress = (e?: any) => {
-    if (Platform.OS === "web") {
-      const x = e?.clientX || e?.nativeEvent?.pageX || (typeof window !== "undefined" ? window.innerWidth / 2 - 110 : 120);
-      const y = e?.clientY || e?.nativeEvent?.pageY || (typeof window !== "undefined" ? window.innerHeight / 2 - 120 : 220);
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const x = e?.clientX || e?.nativeEvent?.pageX || (window.innerWidth / 2 - 110);
+      const y = e?.clientY || e?.nativeEvent?.pageY || (window.innerHeight / 2 - 120);
       window.dispatchEvent(
         new CustomEvent("open_ala_context_menu", {
           detail: { x, y, type: "message", item },

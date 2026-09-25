@@ -95,13 +95,18 @@ export async function extractPaletteFromImageUrl(imageUrl: string): Promise<Extr
     return { sent: "#d97706", received: "#1e293b", accent: "#d97706", isLight: false };
   }
 
-  if (Platform.OS !== "web" || typeof window === "undefined" || typeof document === "undefined") {
+  if (
+    Platform.OS !== "web" ||
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    typeof (window as any).Image === "undefined"
+  ) {
     return getFallbackPalette(imageUrl);
   }
 
   return new Promise((resolve) => {
     try {
-      const img = new Image();
+      const img = new (window as any).Image();
       img.crossOrigin = "anonymous";
 
       const timer = setTimeout(() => {

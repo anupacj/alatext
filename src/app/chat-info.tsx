@@ -476,7 +476,7 @@ export default function ChatInfoScreen() {
   };
 
   const handleDeleteMemory = async (memId: string) => {
-    if (Platform.OS === "web") {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
       const confirmDelete = window.confirm("Remove this memory?");
       if (!confirmDelete) return;
     }
@@ -531,7 +531,7 @@ export default function ChatInfoScreen() {
   };
 
   const handleDeleteNote = async (noteId: string) => {
-    if (Platform.OS === "web") {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
       const confirmDelete = window.confirm("Delete this note?");
       if (!confirmDelete) return;
     }
