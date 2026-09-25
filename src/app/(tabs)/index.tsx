@@ -260,14 +260,14 @@ export default function Home() {
     try {
       const uuid = require("react-native-uuid");
       const newChatId = uuid.default ? uuid.default.v4() : uuid.v4();
-      const { error: ce } = await supabase.from("chats").insert([{ id: newChatId, is_group: true, name: groupName.trim() }]);
+      const { error: ce } = await supabase.from("chats").insert([{ id: newChatId, is_group: true, name: groupName.trim(), created_by: user.id }]);
       if (ce) throw ce;
       const participants = [{ chat_id: newChatId, user_id: user.id }, ...groupMembers.map(m => ({ chat_id: newChatId, user_id: m.id }))];
       const { error: pe } = await supabase.from("chat_participants").insert(participants);
       if (pe) throw pe;
       resetModal();
       tryEnterFullscreen();
-      router.push({ pathname: "/chat", params: { id: newChatId, name: groupName.trim() } });
+      router.push({ pathname: "/chat", params: { id: newChatId, name: groupName.trim(), isGroup: "true" } });
     } catch (e: any) { setSearchError(e.message || "An error occurred."); }
     finally { setSearchLoading(false); }
   };
@@ -276,7 +276,7 @@ export default function Home() {
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
       onPress={() => {
         tryEnterFullscreen();
-        router.push({ pathname: "/chat", params: { id: item.id, name: item.name } });
+        router.push({ pathname: "/chat", params: { id: item.id, name: item.name, isGroup: item.isGroup ? "true" : "false" } });
       }}>
       {item.avatar ? (
         <Image source={{ uri: item.avatar }} style={styles.avatar} />

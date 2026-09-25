@@ -51,6 +51,7 @@ export default function AlaContextMenu() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [menuType, setMenuType] = useState<"app" | "message">("app");
   const [msgData, setMsgData] = useState<any>(null);
+  const [isGroupMsg, setIsGroupMsg] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -104,13 +105,15 @@ export default function AlaContextMenu() {
       e.preventDefault();
       setMenuType("app");
       setMsgData(null);
+      setIsGroupMsg(false);
       triggerAnimation(e.clientX, e.clientY);
     };
 
     const handleCustomMenu = (e: any) => {
-      const { x, y, type, item } = e.detail || {};
+      const { x, y, type, item, isGroup } = e.detail || {};
       setMenuType(type || "app");
       setMsgData(item || null);
+      setIsGroupMsg(!!isGroup);
       triggerAnimation(x || 100, y || 100);
     };
 
@@ -251,17 +254,21 @@ export default function AlaContextMenu() {
               <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Pin Message</Text>
             </TouchableOpacity>
 
-            {/* Save to Memories */}
-            <TouchableOpacity style={styles.menuItem} onPress={() => handleMsgAction("save_memory")} activeOpacity={0.7}>
-              <Heart size={15} color="#ec4899" style={{ marginRight: 10 }} />
-              <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Save to Memories</Text>
-            </TouchableOpacity>
+            {/* Save to Memories (DMs only) */}
+            {!isGroupMsg && (
+              <TouchableOpacity style={styles.menuItem} onPress={() => handleMsgAction("save_memory")} activeOpacity={0.7}>
+                <Heart size={15} color="#ec4899" style={{ marginRight: 10 }} />
+                <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Save to Memories</Text>
+              </TouchableOpacity>
+            )}
 
-            {/* Pin to Notes & Vault */}
-            <TouchableOpacity style={styles.menuItem} onPress={() => handleMsgAction("save_note")} activeOpacity={0.7}>
-              <FileText size={15} color="#3b82f6" style={{ marginRight: 10 }} />
-              <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Pin to Notes & Vault</Text>
-            </TouchableOpacity>
+            {/* Pin to Notes & Vault (DMs only) */}
+            {!isGroupMsg && (
+              <TouchableOpacity style={styles.menuItem} onPress={() => handleMsgAction("save_note")} activeOpacity={0.7}>
+                <FileText size={15} color="#3b82f6" style={{ marginRight: 10 }} />
+                <Text style={[styles.menuText, { color: isAmoled ? "#fff" : theme.text }]}>Pin to Notes & Vault</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Copy Text */}
             <TouchableOpacity style={styles.menuItem} onPress={handleCopyText} activeOpacity={0.7}>

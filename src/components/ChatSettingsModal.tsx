@@ -199,6 +199,7 @@ interface ChatSettingsModalProps {
   onClose: () => void;
   chatId: string;
   userId: string;
+  isGroup?: boolean;
   targetUser?: any;
   currentSettings?: any;
   onSettingsSaved?: (newSettings: any) => void;
@@ -214,6 +215,7 @@ export default function ChatSettingsModal({
   onClose,
   chatId,
   userId,
+  isGroup = false,
   targetUser,
   currentSettings,
   onSettingsSaved,
@@ -228,7 +230,21 @@ export default function ChatSettingsModal({
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === "web" && width >= 768;
   const styles = useMemo(() => createStyles(theme, isDesktop), [theme, isDesktop]);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+
+  const availableTabs = useMemo(() => {
+    if (isGroup) {
+      return SETTINGS_TABS.filter((t) => t.id !== "profile" && t.id !== "danger");
+    }
+    return SETTINGS_TABS;
+  }, [isGroup]);
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => (isGroup ? "appearance" : "profile"));
+
+  useEffect(() => {
+    if (isGroup && (activeTab === "profile" || activeTab === "danger")) {
+      setActiveTab("appearance");
+    }
+  }, [isGroup]);
 
   const [loading, setLoading] = useState(false);
   const [deck, setDeck] = useState<WallpaperDeckConfig>(() => createDefaultDeck(currentSettings?.wallpaper_url, userId));
@@ -1372,7 +1388,7 @@ export default function ChatSettingsModal({
           <View style={{ marginBottom: 14 }}>
             <Text style={styles.sliderLabel}>Mood Trigger (Auto-Detect)</Text>
             <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              {(["none", "love", "night", "day"] as MoodTriggerType[]).map((m) => {
+              {((isGroup ? ["none", "night", "day"] : ["none", "love", "night", "day"]) as MoodTriggerType[]).map((m) => {
                 const isMoodSelected = selectedSlot.mood === m;
                 const label = m === "none" ? "None" : m === "love" ? "❤️ Love" : m === "night" ? "🌙 Night" : "☀️ Day";
                 return (
@@ -1657,7 +1673,7 @@ export default function ChatSettingsModal({
           <View style={styles.header}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Sparkles size={20} color={theme.accent || "#5865F2"} />
-              <Text style={styles.title}>Chat Customization</Text>
+              <Text style={styles.title}>{isGroup ? "Group Customization & Wallpaper" : "Chat Customization"}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <X size={20} color={theme.textMuted} />
@@ -1670,7 +1686,7 @@ export default function ChatSettingsModal({
               {/* Left Sidebar Navigation */}
               <View style={styles.sidebar}>
                 <View style={styles.tabList}>
-                  {SETTINGS_TABS.map((tab) => {
+                  {availableTabs.map((tab) => {
                     const IconComponent = tab.icon;
                     const isActive = activeTab === tab.id;
                     return (
@@ -1733,7 +1749,7 @@ export default function ChatSettingsModal({
                 style={styles.mobileTabBar}
                 contentContainerStyle={styles.mobileTabBarContent}
               >
-                {SETTINGS_TABS.map((tab) => {
+                {availableTabs.map((tab) => {
                   const isActive = activeTab === tab.id;
                   return (
                     <TouchableOpacity

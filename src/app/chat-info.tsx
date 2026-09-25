@@ -40,6 +40,9 @@ import {
   ExternalLink,
   Shield,
   Search,
+  Settings,
+  LogOut,
+  MessageSquare,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -51,6 +54,7 @@ import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useAlaPin } from "../context/AlaPinContext";
 import { ZoomableImageViewer } from "../components/ZoomableImageViewer";
+import ChatSettingsModal from "../components/ChatSettingsModal";
 import {
   MemoryItem,
   NoteItem,
@@ -62,7 +66,7 @@ import {
   deleteNote,
 } from "../utils/memoriesAndNotes";
 
-type ActiveTab = "media" | "memories" | "notes";
+type ActiveTab = "media" | "memories" | "notes" | "members" | "settings";
 type MediaFilter = "all" | "images" | "videos" | "audio";
 
 const NOTE_COLORS = [
@@ -118,7 +122,7 @@ export default function ChatInfoScreen() {
     }
   }, [chatId, wallpaperUrl]);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("media");
+  const [activeTab, setActiveTab] = useState<ActiveTab>(isGroupParam ? "members" : "media");
   const [loading, setLoading] = useState(true);
   const [chatData, setChatData] = useState<any>(null);
   const [isGroup, setIsGroup] = useState(isGroupParam);
@@ -173,6 +177,16 @@ export default function ChatInfoScreen() {
   const [isEditingGroupName, setIsEditingGroupName] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState(groupNameParam || "Group Chat");
   const [uploadingGroupAvatar, setUploadingGroupAvatar] = useState(false);
+
+  // Add Member to Group states
+  const [addMemberModalVisible, setAddMemberModalVisible] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState("");
+  const [memberSearchResults, setMemberSearchResults] = useState<any[]>([]);
+  const [searchingMembers, setSearchingMembers] = useState(false);
+  const [addingMemberId, setAddingMemberId] = useState<string | null>(null);
+
+  // Group Settings Modal
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
 
   // -------------------------------------------------------------
   // DATA FETCHING
@@ -540,6 +554,210 @@ export default function ChatInfoScreen() {
     setNoteModalVisible(false);
   };
 
+  // Group ownership check
+  const isOwner = useMemo(() => {
+    if (!isGroup) return false;
+    if (chatData?.created_by) return chatData.created_by === currentUserId;
+    if (groupParticipants.length > 0) return groupParticipants[0].user_id === currentUserId;
+    return true;
+  }, [isGroup, chatData?.created_by, currentUserId, groupParticipants]);
+
+  // Group Avatar Upload
+  const handlePickGroupAvatar = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.base64) {
+        setUploadingGroupAvatar(true);
+        const asset = result.assets[0];
+        const mimeType = asset.mimeType || "image/jpeg";
+        const uploadedUrl = await uploadImageToR2(`groups/${chatId}/${Date.now()}`, asset.base64!, mimeType);
+
+        const { error } = await supabase
+          .from("chats")
+          .update({ avatar_url: uploadedUrl })
+          .eq("id", chatId);
+
+        if (!error) {
+          setChatData((prev: any) => ({ ...prev, avatar_url: uploadedUrl }));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to pick/upload group avatar:", e);
+    } finally {
+      setUploadingGroupAvatar(false);
+    }
+  };
+
+  // Group Name Save
+  const handleSaveGroupName = async () => {
+    if (!groupNameInput.trim()) return;
+    try {
+      const { error } = await supabase
+        .from("chats")
+        .update({ name: groupNameInput.trim() })
+        .eq("id", chatId);
+      if (!error) {
+        setChatData((prev: any) => ({ ...prev, name: groupNameInput.trim() }));
+        setIsEditingGroupName(false);
+      }
+    } catch (e) {
+      console.error("Failed to update group name:", e);
+    }
+  };
+
+  // Search users to add to group
+  const handleSearchUsers = async (query: string) => {
+    setMemberSearchQuery(query);
+    if (!query.trim()) {
+      setMemberSearchResults([]);
+      return;
+    }
+    setSearchingMembers(true);
+    try {
+      const existingIds = groupParticipants.map((p) => p.user_id);
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, username, display_name, avatar_url")
+        .ilike("username", `%${query.trim()}%`)
+        .limit(15);
+
+      if (data) {
+        const filtered = data.filter((u: any) => !existingIds.includes(u.id));
+        setMemberSearchResults(filtered);
+      }
+    } catch (e) {
+      console.error("Failed to search members:", e);
+    } finally {
+      setSearchingMembers(false);
+    }
+  };
+
+  // Add Member
+  const handleAddMember = async (selectedUser: any) => {
+    if (!chatId || !selectedUser) return;
+    setAddingMemberId(selectedUser.id);
+    try {
+      const { error } = await supabase
+        .from("chat_participants")
+        .insert([{ chat_id: chatId, user_id: selectedUser.id }]);
+      if (error) throw error;
+
+      // System notification message
+      const adderName = user?.user_metadata?.display_name || user?.user_metadata?.username || "Admin";
+      const addedName = selectedUser.display_name || selectedUser.username || "User";
+      await supabase.from("messages").insert([{
+        chat_id: chatId,
+        sender_id: currentUserId,
+        content: `${adderName} added ${addedName} to the group.`,
+        type: "text",
+      }]);
+
+      setGroupParticipants((prev) => [
+        ...prev,
+        {
+          user_id: selectedUser.id,
+          username: selectedUser.username,
+          display_name: selectedUser.display_name || selectedUser.username,
+          avatar_url: selectedUser.avatar_url || null,
+          bio: null,
+        },
+      ]);
+      setMemberSearchResults((prev) => prev.filter((u) => u.id !== selectedUser.id));
+      setAddMemberModalVisible(false);
+      setMemberSearchQuery("");
+    } catch (e: any) {
+      console.error("Failed to add member:", e);
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.alert(e.message || "Could not add member.");
+      }
+    } finally {
+      setAddingMemberId(null);
+    }
+  };
+
+  // Remove Member
+  const handleRemoveMember = async (memberUserId: string, memberName: string) => {
+    if (!chatId || !memberUserId) return;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const confirmKick = window.confirm(`Remove ${memberName} from this group?`);
+      if (!confirmKick) return;
+    }
+    try {
+      const { error } = await supabase
+        .from("chat_participants")
+        .delete()
+        .eq("chat_id", chatId)
+        .eq("user_id", memberUserId);
+      if (error) throw error;
+
+      await supabase.from("messages").insert([{
+        chat_id: chatId,
+        sender_id: currentUserId,
+        content: `${memberName} was removed from the group.`,
+        type: "text",
+      }]);
+
+      setGroupParticipants((prev) => prev.filter((p) => p.user_id !== memberUserId));
+    } catch (e: any) {
+      console.error("Failed to remove member:", e);
+    }
+  };
+
+  // Leave Group
+  const handleLeaveGroup = async () => {
+    if (!chatId || !currentUserId) return;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const confirmLeave = window.confirm("Are you sure you want to leave this group?");
+      if (!confirmLeave) return;
+    }
+    try {
+      const { error } = await supabase
+        .from("chat_participants")
+        .delete()
+        .eq("chat_id", chatId)
+        .eq("user_id", currentUserId);
+      if (error) throw error;
+
+      const myName = user?.user_metadata?.display_name || user?.user_metadata?.username || "A member";
+      await supabase.from("messages").insert([{
+        chat_id: chatId,
+        sender_id: currentUserId,
+        content: `${myName} left the group.`,
+        type: "text",
+      }]);
+
+      router.replace("/(tabs)");
+    } catch (e: any) {
+      console.error("Failed to leave group:", e);
+    }
+  };
+
+  // Delete Group
+  const handleDeleteGroup = async () => {
+    if (!chatId) return;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const confirmDelete = window.confirm(
+        "Are you SURE you want to delete this group permanently? All messages and media will be removed for everyone."
+      );
+      if (!confirmDelete) return;
+    }
+    try {
+      await supabase.from("messages").delete().eq("chat_id", chatId);
+      await supabase.from("chat_participants").delete().eq("chat_id", chatId);
+      await supabase.from("chats").delete().eq("id", chatId);
+
+      router.replace("/(tabs)");
+    } catch (e: any) {
+      console.error("Failed to delete group:", e);
+    }
+  };
+
   // Filtered Media
   const filteredMedia = useMemo(() => {
     if (mediaFilter === "all") return sharedMedia;
@@ -608,102 +826,330 @@ export default function ChatInfoScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Sleek Floating Glass Profile Card */}
+        {/* Sleek Floating Glass Profile / Group Card */}
         <View style={styles.heroCard}>
-          <View style={styles.heroAvatarContainer}>
-            <Image
-              source={{
-                uri:
-                  customAvatar ||
-                  (isGroup ? (chatData?.avatar_url || groupAvatarParam) : (partnerUser?.avatar_url || targetAvatarParam)) ||
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    partnerNickname || partnerUser?.display_name || partnerUser?.username || targetDisplayNameParam || targetUsernameParam || (isGroup ? "Group" : "Chat")
-                  )}&background=5865F2&color=fff`,
-              }}
-              style={styles.heroAvatar}
-            />
-            {customAvatar && (
-              <View style={styles.secretAvatarBadge}>
-                <Lock size={11} color="#ffffff" style={{ marginRight: 3 }} />
-                <Text style={styles.secretAvatarBadgeText}>Secret PFP</Text>
+          {isGroup ? (
+            <TouchableOpacity
+              style={styles.heroAvatarContainer}
+              onPress={handlePickGroupAvatar}
+              activeOpacity={0.85}
+              disabled={uploadingGroupAvatar}
+            >
+              <Image
+                source={{
+                  uri:
+                    chatData?.avatar_url ||
+                    groupAvatarParam ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      chatData?.name || groupNameParam || "Group"
+                    )}&background=5865F2&color=fff`,
+                }}
+                style={styles.heroAvatar}
+              />
+              <View style={styles.avatarCameraBadge}>
+                {uploadingGroupAvatar ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Camera size={14} color="#fff" />
+                )}
               </View>
-            )}
-          </View>
-
-          <Text style={styles.heroDisplayName} numberOfLines={1}>
-            {isGroup
-              ? (chatData?.name || groupNameParam || "Group Chat")
-              : (partnerNickname || partnerUser?.display_name || partnerUser?.username || targetDisplayNameParam || targetUsernameParam || "Chat Partner")}
-          </Text>
-
-          {!isGroup && (partnerUser?.username || targetUsernameParam) ? (
-            <View style={styles.handleBadge}>
-              <Text style={styles.heroHandle}>@{partnerUser?.username || targetUsernameParam}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.heroAvatarContainer}>
+              <Image
+                source={{
+                  uri:
+                    customAvatar ||
+                    partnerUser?.avatar_url ||
+                    targetAvatarParam ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      partnerNickname ||
+                        partnerUser?.display_name ||
+                        partnerUser?.username ||
+                        targetDisplayNameParam ||
+                        targetUsernameParam ||
+                        "Chat"
+                    )}&background=5865F2&color=fff`,
+                }}
+                style={styles.heroAvatar}
+              />
+              {customAvatar && (
+                <View style={styles.secretAvatarBadge}>
+                  <Lock size={11} color="#ffffff" style={{ marginRight: 3 }} />
+                  <Text style={styles.secretAvatarBadgeText}>Secret PFP</Text>
+                </View>
+              )}
             </View>
-          ) : null}
+          )}
 
-          {(partnerUser?.bio || targetBioParam) ? (
-            <Text style={styles.heroBio}>"{partnerUser?.bio || targetBioParam}"</Text>
-          ) : null}
+          {isGroup ? (
+            isEditingGroupName ? (
+              <View style={styles.inlineEditNameRow}>
+                <TextInput
+                  style={styles.inlineEditInput}
+                  value={groupNameInput}
+                  onChangeText={setGroupNameInput}
+                  placeholder="Group Name"
+                  placeholderTextColor={theme.textMuted}
+                  autoFocus
+                />
+                <TouchableOpacity style={styles.inlineEditConfirmBtn} onPress={handleSaveGroupName}>
+                  <Check size={16} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.inlineEditCancelBtn} onPress={() => setIsEditingGroupName(false)}>
+                  <X size={16} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.groupTitleRow}>
+                <Text style={styles.heroDisplayName} numberOfLines={1}>
+                  {chatData?.name || groupNameParam || "Group Chat"}
+                </Text>
+                <TouchableOpacity
+                  style={styles.editNameBtn}
+                  onPress={() => {
+                    setGroupNameInput(chatData?.name || groupNameParam || "");
+                    setIsEditingGroupName(true);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Edit3 size={15} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+            )
+          ) : (
+            <Text style={styles.heroDisplayName} numberOfLines={1}>
+              {partnerNickname ||
+                partnerUser?.display_name ||
+                partnerUser?.username ||
+                targetDisplayNameParam ||
+                targetUsernameParam ||
+                "Chat Partner"}
+            </Text>
+          )}
 
-          {daysTogether !== null && (
-            <View style={styles.anniversaryPill}>
-              <Heart size={13} color="#ec4899" fill="#ec4899" />
-              <Text style={styles.anniversaryPillText}>{daysTogether} Days Together</Text>
-            </View>
+          {isGroup ? (
+            <Text style={styles.groupMemberCountSubtitle}>
+              {groupParticipants.length} {groupParticipants.length === 1 ? "member" : "members"}
+            </Text>
+          ) : (
+            <>
+              {(partnerUser?.username || targetUsernameParam) ? (
+                <View style={styles.handleBadge}>
+                  <Text style={styles.heroHandle}>@{partnerUser?.username || targetUsernameParam}</Text>
+                </View>
+              ) : null}
+
+              {(partnerUser?.bio || targetBioParam) ? (
+                <Text style={styles.heroBio}>"{partnerUser?.bio || targetBioParam}"</Text>
+              ) : null}
+
+              {daysTogether !== null && (
+                <View style={styles.anniversaryPill}>
+                  <Heart size={13} color="#ec4899" fill="#ec4899" />
+                  <Text style={styles.anniversaryPillText}>{daysTogether} Days Together</Text>
+                </View>
+              )}
+            </>
           )}
         </View>
 
-        {/* 3 Main Floating Glass Segmented Tabs */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === "media" && styles.tabButtonActiveMedia]}
-            onPress={() => setActiveTab("media")}
-            activeOpacity={0.8}
-          >
-            <ImageIcon size={16} color={activeTab === "media" ? "#ffffff" : theme.textMuted} />
-            <Text style={[styles.tabButtonText, activeTab === "media" && styles.tabButtonTextActive]}>
-              Media
-            </Text>
-            <View style={[styles.tabBadge, activeTab === "media" && styles.tabBadgeActive]}>
-              <Text style={[styles.tabBadgeText, activeTab === "media" && styles.tabBadgeTextActive]}>
-                {sharedMedia.length}
+        {/* Main Floating Glass Segmented Tabs */}
+        {isGroup ? (
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "members" && styles.tabButtonActiveMedia]}
+              onPress={() => setActiveTab("members")}
+              activeOpacity={0.8}
+            >
+              <Users size={16} color={activeTab === "members" ? "#ffffff" : theme.textMuted} />
+              <Text style={[styles.tabButtonText, activeTab === "members" && styles.tabButtonTextActive]}>
+                Members
               </Text>
-            </View>
-          </TouchableOpacity>
+              <View style={[styles.tabBadge, activeTab === "members" && styles.tabBadgeActive]}>
+                <Text style={[styles.tabBadgeText, activeTab === "members" && styles.tabBadgeTextActive]}>
+                  {groupParticipants.length}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === "memories" && styles.tabButtonActiveMemories]}
-            onPress={() => setActiveTab("memories")}
-            activeOpacity={0.8}
-          >
-            <Heart size={16} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
-            <Text style={[styles.tabButtonText, activeTab === "memories" && styles.tabButtonTextActive]}>
-              Memories
-            </Text>
-            <View style={[styles.tabBadge, activeTab === "memories" && styles.tabBadgeActive]}>
-              <Text style={[styles.tabBadgeText, activeTab === "memories" && styles.tabBadgeTextActive]}>
-                {memories.length}
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "media" && styles.tabButtonActiveNotes]}
+              onPress={() => setActiveTab("media")}
+              activeOpacity={0.8}
+            >
+              <ImageIcon size={16} color={activeTab === "media" ? "#ffffff" : theme.textMuted} />
+              <Text style={[styles.tabButtonText, activeTab === "media" && styles.tabButtonTextActive]}>
+                Media
               </Text>
-            </View>
-          </TouchableOpacity>
+              <View style={[styles.tabBadge, activeTab === "media" && styles.tabBadgeActive]}>
+                <Text style={[styles.tabBadgeText, activeTab === "media" && styles.tabBadgeTextActive]}>
+                  {sharedMedia.length}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === "notes" && styles.tabButtonActiveNotes]}
-            onPress={() => setActiveTab("notes")}
-            activeOpacity={0.8}
-          >
-            <FileText size={16} color={activeTab === "notes" ? "#ffffff" : theme.textMuted} />
-            <Text style={[styles.tabButtonText, activeTab === "notes" && styles.tabButtonTextActive]}>
-              Notes & Vault
-            </Text>
-            <View style={[styles.tabBadge, activeTab === "notes" && styles.tabBadgeActive]}>
-              <Text style={[styles.tabBadgeText, activeTab === "notes" && styles.tabBadgeTextActive]}>
-                {notes.length}
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "settings" && styles.tabButtonActiveNeutral]}
+              onPress={() => setActiveTab("settings")}
+              activeOpacity={0.8}
+            >
+              <Settings size={16} color={activeTab === "settings" ? "#ffffff" : theme.textMuted} />
+              <Text style={[styles.tabButtonText, activeTab === "settings" && styles.tabButtonTextActive]}>
+                Settings
               </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "media" && styles.tabButtonActiveMedia]}
+              onPress={() => setActiveTab("media")}
+              activeOpacity={0.8}
+            >
+              <ImageIcon size={16} color={activeTab === "media" ? "#ffffff" : theme.textMuted} />
+              <Text style={[styles.tabButtonText, activeTab === "media" && styles.tabButtonTextActive]}>
+                Media
+              </Text>
+              <View style={[styles.tabBadge, activeTab === "media" && styles.tabBadgeActive]}>
+                <Text style={[styles.tabBadgeText, activeTab === "media" && styles.tabBadgeTextActive]}>
+                  {sharedMedia.length}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "memories" && styles.tabButtonActiveMemories]}
+              onPress={() => setActiveTab("memories")}
+              activeOpacity={0.8}
+            >
+              <Heart size={16} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
+              <Text style={[styles.tabButtonText, activeTab === "memories" && styles.tabButtonTextActive]}>
+                Memories
+              </Text>
+              <View style={[styles.tabBadge, activeTab === "memories" && styles.tabBadgeActive]}>
+                <Text style={[styles.tabBadgeText, activeTab === "memories" && styles.tabBadgeTextActive]}>
+                  {memories.length}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "notes" && styles.tabButtonActiveNotes]}
+              onPress={() => setActiveTab("notes")}
+              activeOpacity={0.8}
+            >
+              <FileText size={16} color={activeTab === "notes" ? "#ffffff" : theme.textMuted} />
+              <Text style={[styles.tabButtonText, activeTab === "notes" && styles.tabButtonTextActive]}>
+                Notes & Vault
+              </Text>
+              <View style={[styles.tabBadge, activeTab === "notes" && styles.tabBadgeActive]}>
+                <Text style={[styles.tabBadgeText, activeTab === "notes" && styles.tabBadgeTextActive]}>
+                  {notes.length}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ========================================================= */}
+        {/* GROUP TAB: MEMBERS                                        */}
+        {/* ========================================================= */}
+        {isGroup && activeTab === "members" && (
+          <View style={styles.tabContentContainer}>
+            <View style={styles.sectionActionBar}>
+              <Text style={styles.sectionHeading}>
+                Participants ({groupParticipants.length})
+              </Text>
+              <TouchableOpacity
+                style={styles.addPrimaryBtn}
+                onPress={() => {
+                  setMemberSearchQuery("");
+                  setMemberSearchResults([]);
+                  setAddMemberModalVisible(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <UserPlus size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.addPrimaryBtnText}>Add Member</Text>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        </View>
+
+            <View style={styles.memberListContainer}>
+              {groupParticipants.map((member) => {
+                const isMemberOwner = chatData?.created_by ? member.user_id === chatData.created_by : member.user_id === groupParticipants[0]?.user_id;
+                const isMe = member.user_id === currentUserId;
+
+                return (
+                  <View key={member.user_id} style={styles.memberCard}>
+                    <Image
+                      source={{
+                        uri:
+                          member.avatar_url ||
+                          `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                            member.display_name || member.username || "User"
+                          )}&background=5865F2&color=fff`,
+                      }}
+                      style={styles.memberAvatar}
+                    />
+
+                    <View style={styles.memberInfo}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={styles.memberName} numberOfLines={1}>
+                          {member.display_name || member.username}
+                          {isMe ? " (You)" : ""}
+                        </Text>
+                        {isMemberOwner ? (
+                          <View style={styles.roleBadgeOwner}>
+                            <Crown size={11} color="#fbbf24" style={{ marginRight: 3 }} />
+                            <Text style={styles.roleBadgeOwnerText}>Owner</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.roleBadgeMember}>
+                            <Text style={styles.roleBadgeMemberText}>Member</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.memberUsername}>@{member.username}</Text>
+                    </View>
+
+                    <View style={styles.memberActions}>
+                      {!isMe && (
+                        <TouchableOpacity
+                          style={styles.memberActionBtn}
+                          onPress={() => {
+                            router.push({
+                              pathname: "/chat",
+                              params: {
+                                targetUserId: member.user_id,
+                                targetDisplayName: member.display_name || member.username,
+                                targetUsername: member.username,
+                                targetAvatar: member.avatar_url || "",
+                              },
+                            });
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <MessageSquare size={16} color={theme.accent || "#5865F2"} />
+                        </TouchableOpacity>
+                      )}
+
+                      {!isMe && isOwner && (
+                        <TouchableOpacity
+                          style={[styles.memberActionBtn, styles.memberActionBtnDanger]}
+                          onPress={() => handleRemoveMember(member.user_id, member.display_name || member.username)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <UserMinus size={16} color="#f43f5e" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* ========================================================= */}
         {/* TAB 1: SHARED MEDIA                                       */}
@@ -793,9 +1239,86 @@ export default function ChatInfoScreen() {
         )}
 
         {/* ========================================================= */}
-        {/* TAB 2: MEMORIES                                           */}
+        {/* GROUP TAB: SETTINGS & DANGER ZONE                         */}
         {/* ========================================================= */}
-        {activeTab === "memories" && (
+        {isGroup && activeTab === "settings" && (
+          <View style={styles.tabContentContainer}>
+            {/* Customization Tile */}
+            <View style={styles.settingsSectionCard}>
+              <Text style={styles.settingsSectionTitle}>Appearance & Wallpaper</Text>
+              <Text style={styles.settingsSectionSubtitle}>
+                Customize background wallpapers and bubble contrast for this group.
+              </Text>
+              <TouchableOpacity
+                style={styles.settingsActionRow}
+                onPress={() => setSettingsModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.settingsRowLeft}>
+                  <View style={styles.settingsIconBox}>
+                    <Settings size={18} color="#ffffff" />
+                  </View>
+                  <View>
+                    <Text style={styles.settingsRowTitle}>Group Customization</Text>
+                    <Text style={styles.settingsRowSub}>Wallpapers, blur & Amoled contrast</Text>
+                  </View>
+                </View>
+                <ArrowLeft size={16} color={theme.textMuted} style={{ transform: [{ rotate: "180deg" }] }} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Info Card */}
+            <View style={styles.settingsSectionCard}>
+              <Text style={styles.settingsSectionTitle}>Group Details</Text>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Total Members</Text>
+                <Text style={styles.infoValue}>{groupParticipants.length}</Text>
+              </View>
+              {chatData?.created_at && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Created On</Text>
+                  <Text style={styles.infoValue}>
+                    {new Date(chatData.created_at).toLocaleDateString(undefined, {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Danger Zone */}
+            <View style={[styles.settingsSectionCard, styles.dangerSectionCard]}>
+              <Text style={[styles.settingsSectionTitle, { color: "#f43f5e" }]}>Danger Zone</Text>
+
+              <TouchableOpacity
+                style={styles.dangerRowBtn}
+                onPress={handleLeaveGroup}
+                activeOpacity={0.8}
+              >
+                <LogOut size={16} color="#f43f5e" style={{ marginRight: 8 }} />
+                <Text style={styles.dangerRowBtnText}>Leave Group</Text>
+              </TouchableOpacity>
+
+              {isOwner && (
+                <TouchableOpacity
+                  style={[styles.dangerRowBtn, styles.dangerRowBtnSolid]}
+                  onPress={handleDeleteGroup}
+                  activeOpacity={0.8}
+                >
+                  <Trash2 size={16} color="#ffffff" style={{ marginRight: 8 }} />
+                  <Text style={[styles.dangerRowBtnText, { color: "#ffffff" }]}>Delete Group Forever</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 2: MEMORIES (1-ON-1 ONLY)                             */}
+        {/* ========================================================= */}
+        {!isGroup && activeTab === "memories" && (
           <View style={styles.tabContentContainer}>
             {/* Romantic Anniversary Banner if set */}
             {anniversaryDate && (
@@ -883,9 +1406,9 @@ export default function ChatInfoScreen() {
         )}
 
         {/* ========================================================= */}
-        {/* TAB 3: NOTES & VAULT                                      */}
+        {/* TAB 3: NOTES & VAULT (1-ON-1 ONLY)                        */}
         {/* ========================================================= */}
-        {activeTab === "notes" && (
+        {!isGroup && activeTab === "notes" && (
           <View style={styles.tabContentContainer}>
             {/* Notes Control Bar */}
             <View style={styles.vaultActionBar}>
@@ -1110,6 +1633,103 @@ export default function ChatInfoScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ========================================================= */}
+      {/* MODAL: ADD GROUP MEMBER                                   */}
+      {/* ========================================================= */}
+      <Modal
+        visible={addMemberModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddMemberModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Members to Group</Text>
+              <TouchableOpacity onPress={() => setAddMemberModalVisible(false)}>
+                <X size={20} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ padding: 18 }}>
+              <View style={styles.searchBox}>
+                <Search size={16} color={theme.textMuted} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search by username..."
+                  placeholderTextColor={theme.textMuted}
+                  value={memberSearchQuery}
+                  onChangeText={handleSearchUsers}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {searchingMembers && <ActivityIndicator size="small" color={theme.accent} />}
+              </View>
+
+              <ScrollView style={{ maxHeight: 300, marginTop: 12 }} showsVerticalScrollIndicator={false}>
+                {memberSearchResults.length === 0 ? (
+                  <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                    <Text style={{ color: theme.textMuted, fontSize: 13, fontFamily: "Josefin Sans", textAlign: "center" }}>
+                      {memberSearchQuery.trim() ? "No users found" : "Type a username above to search for people to add."}
+                    </Text>
+                  </View>
+                ) : (
+                  memberSearchResults.map((u) => (
+                    <View key={u.id} style={styles.searchUserRow}>
+                      <Image
+                        source={{
+                          uri:
+                            u.avatar_url ||
+                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                              u.display_name || u.username
+                            )}&background=5865F2&color=fff`,
+                        }}
+                        style={styles.searchUserAvatar}
+                      />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.searchUserName} numberOfLines={1}>
+                          {u.display_name || u.username}
+                        </Text>
+                        <Text style={styles.searchUserHandle}>@{u.username}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.addUserBtn}
+                        onPress={() => handleAddMember(u)}
+                        disabled={addingMemberId === u.id}
+                        activeOpacity={0.8}
+                      >
+                        {addingMemberId === u.id ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <>
+                            <UserPlus size={14} color="#fff" style={{ marginRight: 4 }} />
+                            <Text style={styles.addUserBtnText}>Add</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Group Settings & Customization Modal */}
+      {isGroup && (
+        <ChatSettingsModal
+          visible={settingsModalVisible}
+          onClose={() => setSettingsModalVisible(false)}
+          chatId={chatId}
+          userId={currentUserId}
+          isGroup={true}
+          onSettingsSaved={(newSettings: any) => {
+            if (newSettings?.wallpaper_url) setWallpaperUrl(newSettings.wallpaper_url);
+          }}
+        />
+      )}
 
       {/* Fullscreen Image Lightbox */}
       <ZoomableImageViewer
@@ -1824,6 +2444,303 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: "#f43f5e",
       fontSize: 14,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    avatarCameraBadge: {
+      position: "absolute",
+      bottom: 0,
+      right: 0,
+      backgroundColor: theme.accent || "#5865F2",
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 2,
+      borderColor: isAmoled ? "#000000" : "#ffffff",
+    },
+    groupTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 4,
+    },
+    editNameBtn: {
+      padding: 6,
+      borderRadius: 8,
+      backgroundColor: "rgba(255, 255, 255, 0.08)",
+    },
+    inlineEditNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 4,
+      maxWidth: 320,
+    },
+    inlineEditInput: {
+      flex: 1,
+      backgroundColor: cardBg,
+      borderWidth: 1,
+      borderColor: theme.accent || "#5865F2",
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 16,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    inlineEditConfirmBtn: {
+      backgroundColor: "#10b981",
+      padding: 8,
+      borderRadius: 10,
+    },
+    inlineEditCancelBtn: {
+      backgroundColor: "rgba(244, 63, 94, 0.8)",
+      padding: 8,
+      borderRadius: 10,
+    },
+    groupMemberCountSubtitle: {
+      color: theme.textMuted,
+      fontSize: 13,
+      fontWeight: "600",
+      marginTop: 4,
+      fontFamily: "Josefin Sans",
+    },
+    tabButtonActiveNeutral: {
+      backgroundColor: isAmoled ? "#27272a" : (isDark ? "#2a2d3d" : "#e2e8f0"),
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+    },
+    memberListContainer: {
+      gap: 10,
+    },
+    memberCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: cardBg,
+      padding: 12,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: borderCol,
+      backdropFilter: "blur(18px)",
+      WebkitBackdropFilter: "blur(18px)",
+    } as any,
+    memberAvatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+    },
+    memberInfo: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    memberName: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 14,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    memberUsername: {
+      color: theme.textMuted,
+      fontSize: 12,
+      marginTop: 2,
+      fontFamily: "Josefin Sans",
+    },
+    roleBadgeOwner: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(251, 191, 36, 0.16)",
+      borderColor: "rgba(251, 191, 36, 0.35)",
+      borderWidth: 1,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 10,
+    },
+    roleBadgeOwnerText: {
+      color: "#fbbf24",
+      fontSize: 10,
+      fontWeight: "800",
+      fontFamily: "Josefin Sans",
+    },
+    roleBadgeMember: {
+      backgroundColor: "rgba(255, 255, 255, 0.08)",
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 10,
+    },
+    roleBadgeMemberText: {
+      color: theme.textMuted,
+      fontSize: 10,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    memberActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    memberActionBtn: {
+      padding: 8,
+      borderRadius: 10,
+      backgroundColor: "rgba(255, 255, 255, 0.08)",
+    },
+    memberActionBtnDanger: {
+      backgroundColor: "rgba(244, 63, 94, 0.12)",
+    },
+    settingsSectionCard: {
+      backgroundColor: cardBg,
+      borderRadius: 18,
+      padding: 16,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: borderCol,
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+    } as any,
+    settingsSectionTitle: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 15,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+      marginBottom: 4,
+    },
+    settingsSectionSubtitle: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontFamily: "Josefin Sans",
+      marginBottom: 14,
+    },
+    settingsActionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.03)",
+      padding: 12,
+      borderRadius: 14,
+    },
+    settingsRowLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    settingsIconBox: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      backgroundColor: theme.accent || "#5865F2",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    settingsRowTitle: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 14,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    settingsRowSub: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontFamily: "Josefin Sans",
+      marginTop: 2,
+    },
+    infoRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: borderCol,
+    },
+    infoLabel: {
+      color: theme.textMuted,
+      fontSize: 13,
+      fontFamily: "Josefin Sans",
+    },
+    infoValue: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    dangerSectionCard: {
+      borderColor: "rgba(244, 63, 94, 0.25)",
+      backgroundColor: isAmoled ? "rgba(244, 63, 94, 0.06)" : "rgba(244, 63, 94, 0.04)",
+    },
+    dangerRowBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "rgba(244, 63, 94, 0.4)",
+      marginTop: 10,
+      backgroundColor: "transparent",
+    },
+    dangerRowBtnSolid: {
+      backgroundColor: "#f43f5e",
+      borderColor: "#f43f5e",
+    },
+    dangerRowBtnText: {
+      color: "#f43f5e",
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    searchBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: cardBg,
+      borderWidth: 1,
+      borderColor: borderCol,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    searchInput: {
+      flex: 1,
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 14,
+      fontFamily: "Josefin Sans",
+    },
+    searchUserRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: borderCol,
+    },
+    searchUserAvatar: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+    },
+    searchUserName: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    searchUserHandle: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontFamily: "Josefin Sans",
+    },
+    addUserBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.accent || "#5865F2",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 10,
+    },
+    addUserBtnText: {
+      color: "#ffffff",
+      fontSize: 12,
+      fontWeight: "700",
       fontFamily: "Josefin Sans",
     },
   });

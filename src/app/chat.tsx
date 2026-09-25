@@ -109,7 +109,7 @@ export default function ChatScreen() {
   const { theme } = useTheme();
   const isAmoled = theme.id === "black";
   const styles = React.useMemo(() => createStyles(isAmoled, theme, isDesktop), [isAmoled, theme, isDesktop]);
-  const { id, name, avatar } = useLocalSearchParams();
+  const { id, name, avatar, isGroup: isGroupParam } = useLocalSearchParams();
   const { user } = useAuth();
   const router = useRouter();
 
@@ -146,7 +146,7 @@ export default function ChatScreen() {
     percent: number;
   }>({ active: false, current: 0, total: 0, percent: 0 });
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
-  const [isGroup, setIsGroup] = useState(false);
+  const [isGroup, setIsGroup] = useState(isGroupParam === "true");
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const myProfileRef = useRef<UserProfile | null>(null);
   myProfileRef.current = myProfile;
@@ -2355,6 +2355,7 @@ export default function ChatScreen() {
     return (
       <MessageRow isAmoled={isAmoled} styles={styles} theme={theme}
         item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
+        isGroup={isGroup}
         hoveredMsg={hoveredMsg} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
         setEditingMsgId={setEditingMsgId} setInputText={setInputText} deleteMessage={deleteMessage}
         handleApplyWallpaper={handleApplyWallpaper} setSettingsVisible={setSettingsVisible} setImageViewerUrl={setImageViewerUrl}
@@ -2515,40 +2516,42 @@ export default function ChatScreen() {
                 styles.headerActionsPill,
                 headerGlassStyle,
               ]}>
-                <TouchableOpacity
-                  style={[
-                    styles.floatingIconBtn,
-                    isHeartGlowing && {
-                      backgroundColor: "rgba(244, 63, 94, 0.25)",
-                      borderRadius: 9999,
-                      shadowColor: "#f43f5e",
-                      shadowOffset: { width: 0, height: 0 },
-                      shadowOpacity: 1,
-                      shadowRadius: 16,
-                      elevation: 10,
-                      ...(Platform.OS === "web" ? {
-                        boxShadow: "0 0 16px #f43f5e, 0 0 30px rgba(244, 63, 94, 0.8)",
-                      } : {}),
-                    }
-                  ]}
-                  onPress={triggerHeartPing}
-                  activeOpacity={0.7}
-                  accessibilityLabel="Send heart ping"
-                >
-                  <RNAnimated.View style={{
-                    transform: [{ scale: heartAnim }],
-                    opacity: isHeartGlowing ? heartAnim.interpolate({
-                      inputRange: [1, 1.15, 1.35],
-                      outputRange: [1, 0.45, 1]
-                    }) : 1
-                  }}>
-                    <Heart
-                      size={20}
-                      color="#f43f5e"
-                      fill={isHeartGlowing || chatSettings?.anniversary_date ? "#f43f5e" : (theme.id === "pink" ? "#f472b6" : "rgba(244, 63, 94, 0.35)")}
-                    />
-                  </RNAnimated.View>
-                </TouchableOpacity>
+                {!isGroup && (
+                  <TouchableOpacity
+                    style={[
+                      styles.floatingIconBtn,
+                      isHeartGlowing && {
+                        backgroundColor: "rgba(244, 63, 94, 0.25)",
+                        borderRadius: 9999,
+                        shadowColor: "#f43f5e",
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 1,
+                        shadowRadius: 16,
+                        elevation: 10,
+                        ...(Platform.OS === "web" ? {
+                          boxShadow: "0 0 16px #f43f5e, 0 0 30px rgba(244, 63, 94, 0.8)",
+                        } : {}),
+                      }
+                    ]}
+                    onPress={triggerHeartPing}
+                    activeOpacity={0.7}
+                    accessibilityLabel="Send heart ping"
+                  >
+                    <RNAnimated.View style={{
+                      transform: [{ scale: heartAnim }],
+                      opacity: isHeartGlowing ? heartAnim.interpolate({
+                        inputRange: [1, 1.15, 1.35],
+                        outputRange: [1, 0.45, 1]
+                      }) : 1
+                    }}>
+                      <Heart
+                        size={20}
+                        color="#f43f5e"
+                        fill={isHeartGlowing || chatSettings?.anniversary_date ? "#f43f5e" : (theme.id === "pink" ? "#f472b6" : "rgba(244, 63, 94, 0.35)")}
+                      />
+                    </RNAnimated.View>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={styles.floatingIconBtn}
@@ -3432,6 +3435,7 @@ export default function ChatScreen() {
           onClose={() => setSettingsVisible(false)} 
           chatId={id as string} 
           userId={user.id} 
+          isGroup={isGroup}
           targetUser={targetUser}
           currentSettings={chatSettings} 
           onSettingsSaved={(newSettings) => {
@@ -4200,7 +4204,7 @@ const MessageHoverActions = ({
 };
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
+const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, isGroup, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
   if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
 
   // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
@@ -4542,7 +4546,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       e?.stopPropagation?.();
       window.dispatchEvent(
         new CustomEvent("open_ala_context_menu", {
-          detail: { x: e?.clientX || 120, y: e?.clientY || 220, type: "message", item },
+          detail: { x: e?.clientX || 120, y: e?.clientY || 220, type: "message", item, isGroup },
         })
       );
     }
@@ -4554,7 +4558,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       const y = e?.clientY || e?.nativeEvent?.pageY || (window.innerHeight / 2 - 120);
       window.dispatchEvent(
         new CustomEvent("open_ala_context_menu", {
-          detail: { x, y, type: "message", item },
+          detail: { x, y, type: "message", item, isGroup },
         })
       );
     }
