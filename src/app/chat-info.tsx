@@ -43,6 +43,17 @@ import {
   Settings,
   LogOut,
   MessageSquare,
+  MapPin,
+  Eye,
+  EyeOff,
+  Fingerprint,
+  CheckCircle2,
+  Circle,
+  ListTodo,
+  ShieldAlert,
+  Compass,
+  Clock,
+  Navigation,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -55,19 +66,24 @@ import { useAuth } from "../context/AuthContext";
 import { useAlaPin } from "../context/AlaPinContext";
 import { ZoomableImageViewer } from "../components/ZoomableImageViewer";
 import ChatSettingsModal from "../components/ChatSettingsModal";
+import VaultUnlockModal from "../components/VaultUnlockModal";
 import {
   MemoryItem,
   NoteItem,
+  ChecklistItem,
   fetchMemories,
   addMemory,
   deleteMemory,
   fetchNotes,
   saveNote,
   deleteNote,
+  toggleChecklistItem,
 } from "../utils/memoriesAndNotes";
 
 type ActiveTab = "media" | "memories" | "notes" | "members" | "settings";
 type MediaFilter = "all" | "images" | "videos" | "audio";
+type MemoryViewMode = "timeline" | "map" | "milestones";
+type MemoryFilter = "all" | "photos" | "voice" | "places" | "vault";
 
 const NOTE_COLORS = [
   "#5865F2", // Indigo
@@ -95,7 +111,18 @@ export default function ChatInfoScreen() {
 
   const { theme } = useTheme();
   const { user } = useAuth();
-  const { isPinEnabled, realPin } = useAlaPin();
+  const {
+    isPinEnabled,
+    realPin,
+    decoyPin,
+    isDecoyMode,
+    isBiometricSupported,
+    isBiometricEnabled,
+    vaultUnlocked,
+    setVaultUnlocked,
+    unlockVaultWithBiometrics,
+    lockVault,
+  } = useAlaPin();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === "web" && width >= 768;
   const isAmoled = theme.id === "black";
@@ -150,7 +177,10 @@ export default function ChatInfoScreen() {
   const [selectedViewerImage, setSelectedViewerImage] = useState<string | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
 
-  // Memories States
+  // Vault Unlock Modal State
+  const [vaultModalVisible, setVaultModalVisible] = useState(false);
+
+  // Memories States & Mapping
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [memoryModalVisible, setMemoryModalVisible] = useState(false);
@@ -158,12 +188,37 @@ export default function ChatInfoScreen() {
   const [newMemoryCaption, setNewMemoryCaption] = useState("");
   const [newMemoryImage, setNewMemoryImage] = useState<string | null>(null);
   const [newMemoryDate, setNewMemoryDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newMemoryLocation, setNewMemoryLocation] = useState("");
+  const [newMemoryMilestone, setNewMemoryMilestone] = useState("");
+  const [newMemoryIsVault, setNewMemoryIsVault] = useState(false);
   const [savingMemory, setSavingMemory] = useState(false);
 
-  // Notes & Vault States
+  // Memories Views & Privacy Veil
+  const [memoryViewMode, setMemoryViewMode] = useState<MemoryViewMode>("timeline");
+  const [memoryFilter, setMemoryFilter] = useState<MemoryFilter>("all");
+  const [privacyVeil, setPrivacyVeil] = useState(false);
+  const [peekingMemoryId, setPeekingMemoryId] = useState<string | null>(null);
+  const [selectedPlace, setSelectedPlace] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (chatId) {
+      AsyncStorage.getItem(`@chat_${chatId}_privacy_veil`).then((val) => {
+        if (val === "true") setPrivacyVeil(true);
+      });
+    }
+  }, [chatId]);
+
+  const togglePrivacyVeil = () => {
+    setPrivacyVeil((prev) => {
+      const next = !prev;
+      AsyncStorage.setItem(`@chat_${chatId}_privacy_veil`, next ? "true" : "false");
+      return next;
+    });
+  };
+
+  // Notes & Interactive Checklists
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
-  const [vaultUnlocked, setVaultUnlocked] = useState(false);
   const [noteModalVisible, setNoteModalVisible] = useState(false);
   const [editingNote, setEditingNote] = useState<NoteItem | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
@@ -171,6 +226,9 @@ export default function ChatInfoScreen() {
   const [noteColor, setNoteColor] = useState(NOTE_COLORS[0]);
   const [noteIsVault, setNoteIsVault] = useState(false);
   const [notePinned, setNotePinned] = useState(false);
+  const [noteType, setNoteType] = useState<"text" | "checklist">("text");
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [newChecklistText, setNewChecklistText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
 
   // Group edit states
@@ -518,11 +576,17 @@ export default function ChatInfoScreen() {
         media_type: newMemoryImage ? "image" : "text",
         memory_date: new Date(newMemoryDate).toISOString(),
         sender_name: user?.user_metadata?.username || user?.user_metadata?.name || "Me",
+        is_vault: newMemoryIsVault,
+        location_name: newMemoryLocation.trim() || undefined,
+        milestone_tag: newMemoryMilestone.trim() || undefined,
       });
       setMemoryModalVisible(false);
       setNewMemoryTitle("");
       setNewMemoryCaption("");
       setNewMemoryImage(null);
+      setNewMemoryLocation("");
+      setNewMemoryMilestone("");
+      setNewMemoryIsVault(false);
       await loadMemoriesData();
     } catch (e) {
       console.error("Failed to save memory:", e);
@@ -541,7 +605,7 @@ export default function ChatInfoScreen() {
   };
 
   // -------------------------------------------------------------
-  // NOTE CREATION & DELETION
+  // NOTE CREATION & DELETION & CHECKLISTS
   // -------------------------------------------------------------
   const openNewNoteModal = () => {
     setEditingNote(null);
@@ -550,6 +614,9 @@ export default function ChatInfoScreen() {
     setNoteColor(NOTE_COLORS[0]);
     setNoteIsVault(false);
     setNotePinned(false);
+    setNoteType("text");
+    setChecklistItems([]);
+    setNewChecklistText("");
     setNoteModalVisible(true);
   };
 
@@ -560,7 +627,41 @@ export default function ChatInfoScreen() {
     setNoteColor(note.color || NOTE_COLORS[0]);
     setNoteIsVault(!!note.is_vault);
     setNotePinned(!!note.pinned);
+    setNoteType(note.note_type || "text");
+    setChecklistItems(note.checklist_items || []);
+    setNewChecklistText("");
     setNoteModalVisible(true);
+  };
+
+  const handleAddChecklistItem = () => {
+    if (!newChecklistText.trim()) return;
+    const newItem: ChecklistItem = {
+      id: `it_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      text: newChecklistText.trim(),
+      done: false,
+    };
+    setChecklistItems(prev => [...prev, newItem]);
+    setNewChecklistText("");
+  };
+
+  const handleRemoveChecklistItem = (id: string) => {
+    setChecklistItems(prev => prev.filter(it => it.id !== id));
+  };
+
+  const handleToggleChecklistItem = async (noteId: string, itemId: string) => {
+    // Optimistic local state update
+    setNotes(prevNotes =>
+      prevNotes.map(n => {
+        if (n.id !== noteId || !n.checklist_items) return n;
+        return {
+          ...n,
+          checklist_items: n.checklist_items.map(it =>
+            it.id === itemId ? { ...it, done: !it.done } : it
+          ),
+        };
+      })
+    );
+    await toggleChecklistItem(chatId, noteId, itemId);
   };
 
   const handleSaveNote = async () => {
@@ -576,6 +677,8 @@ export default function ChatInfoScreen() {
         color: noteColor,
         is_vault: noteIsVault,
         pinned: notePinned,
+        note_type: noteType,
+        checklist_items: checklistItems,
       });
       setNoteModalVisible(false);
       await loadNotesData();
@@ -594,6 +697,25 @@ export default function ChatInfoScreen() {
     await deleteNote(chatId, noteId);
     setNotes(prev => prev.filter(n => n.id !== noteId));
     setNoteModalVisible(false);
+  };
+
+  // Vault Security Actions
+  const handleTriggerUnlockVault = async () => {
+    if (vaultUnlocked) {
+      lockVault();
+      return;
+    }
+    if (isBiometricSupported && isBiometricEnabled) {
+      const success = await unlockVaultWithBiometrics();
+      if (success) return;
+    }
+    setVaultModalVisible(true);
+  };
+
+  const handlePanicLock = () => {
+    lockVault();
+    setActiveTab("media");
+    setPeekingMemoryId(null);
   };
 
   // Group ownership check
@@ -809,14 +931,75 @@ export default function ChatInfoScreen() {
     return sharedMedia;
   }, [sharedMedia, mediaFilter]);
 
-  // Filtered Notes (visible vs locked vault)
+  // Filtered Notes (visible vs locked vault & Decoy Vanish Mode)
   const visibleNotes = useMemo(() => {
-    return notes.filter(n => !n.is_vault || vaultUnlocked);
-  }, [notes, vaultUnlocked]);
+    if (isDecoyMode) return notes.filter(n => !n.is_vault);
+    if (!vaultUnlocked) return notes.filter(n => !n.is_vault);
+    return notes;
+  }, [notes, isDecoyMode, vaultUnlocked]);
 
   const vaultCount = useMemo(() => {
-    return notes.filter(n => n.is_vault).length;
-  }, [notes]);
+    if (isDecoyMode) return 0;
+    return notes.filter(n => n.is_vault).length + memories.filter(m => m.is_vault).length;
+  }, [notes, memories, isDecoyMode]);
+
+  // Filtered Memories (Decoy Vanish Mode & Filters)
+  const visibleMemories = useMemo(() => {
+    let list = memories;
+    // Decoy Mode: Completely vanishes all secret vault memories!
+    if (isDecoyMode) {
+      list = list.filter(m => !m.is_vault);
+    }
+
+    if (memoryFilter === "photos") {
+      list = list.filter(m => m.media_type === "image" || !!m.media_url);
+    } else if (memoryFilter === "voice") {
+      list = list.filter(m => m.media_type === "audio");
+    } else if (memoryFilter === "places") {
+      list = list.filter(m => !!m.location_name);
+    } else if (memoryFilter === "vault") {
+      list = list.filter(m => !!m.is_vault);
+    }
+    return list;
+  }, [memories, isDecoyMode, memoryFilter]);
+
+  // "On This Day" Time Capsule Memories
+  const onThisDayMemories = useMemo(() => {
+    const today = new Date();
+    const todayMonth = today.getMonth();
+    const todayDate = today.getDate();
+    const thisYear = today.getFullYear();
+
+    return memories.filter(m => {
+      if (!m.memory_date) return false;
+      if (isDecoyMode && m.is_vault) return false;
+      const d = new Date(m.memory_date);
+      return (
+        d.getMonth() === todayMonth &&
+        d.getDate() === todayDate &&
+        d.getFullYear() !== thisYear
+      );
+    });
+  }, [memories, isDecoyMode]);
+
+  // Grouped by Place for Places & Map View
+  const placesMap = useMemo(() => {
+    const map = new Map<string, MemoryItem[]>();
+    visibleMemories.forEach(mem => {
+      const place = mem.location_name?.trim() || "Unspecified Place";
+      const existing = map.get(place) || [];
+      existing.push(mem);
+      map.set(place, existing);
+    });
+    return map;
+  }, [visibleMemories]);
+
+  // Sorted chronologically for Journey & Milestones Roadmap View
+  const milestoneMemories = useMemo(() => {
+    return [...visibleMemories].sort(
+      (a, b) => new Date(a.memory_date).getTime() - new Date(b.memory_date).getTime()
+    );
+  }, [visibleMemories]);
 
   // -------------------------------------------------------------
   // RENDER SECTIONS
@@ -864,7 +1047,34 @@ export default function ChatInfoScreen() {
           </Text>
         </View>
 
-        <View style={{ width: 68 }} />
+        <View style={styles.topHeaderRight}>
+          {!isGroup && !isDecoyMode && (
+            <TouchableOpacity
+              style={[
+                styles.panicHeaderBtn,
+                vaultUnlocked && styles.panicHeaderBtnUnlocked,
+              ]}
+              onPress={vaultUnlocked ? handlePanicLock : handleTriggerUnlockVault}
+              activeOpacity={0.75}
+            >
+              {vaultUnlocked ? (
+                <>
+                  <ShieldAlert size={14} color="#f43f5e" />
+                  <Text style={[styles.panicHeaderBtnText, { color: "#f43f5e" }]}>Lock</Text>
+                </>
+              ) : (
+                <>
+                  <Shield size={14} color="#a855f7" />
+                  {isBiometricSupported ? (
+                    <Fingerprint size={13} color="#a855f7" />
+                  ) : (
+                    <Text style={[styles.panicHeaderBtnText, { color: "#a855f7" }]}>Vault</Text>
+                  )}
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -1379,66 +1589,324 @@ export default function ChatInfoScreen() {
               </View>
             )}
 
-            {/* Add Memory Button */}
+            {/* "On This Day" Time Capsule Hero Banner */}
+            {onThisDayMemories.length > 0 && (
+              <View style={styles.timeCapsuleHeroCard}>
+                <View style={styles.timeCapsuleHeader}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Sparkles size={18} color="#ec4899" />
+                    <Text style={styles.timeCapsuleHeaderTitle}>On This Day in Your Journey ✨</Text>
+                  </View>
+                  <Text style={styles.timeCapsuleHeaderSub}>Relive this exact day from past years</Text>
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeCapsuleScroll}>
+                  {onThisDayMemories.map((mem) => {
+                    const yrDiff = new Date().getFullYear() - new Date(mem.memory_date).getFullYear();
+                    return (
+                      <TouchableOpacity
+                        key={mem.id}
+                        style={styles.timeCapsuleCard}
+                        onPress={() => (mem.media_url ? setSelectedViewerImage(mem.media_url) : null)}
+                        activeOpacity={0.85}
+                      >
+                        {mem.media_url ? (
+                          <Image source={{ uri: mem.media_url }} style={styles.timeCapsuleImage} />
+                        ) : (
+                          <View style={styles.timeCapsuleImagePlaceholder}>
+                            <Heart size={24} color="#ec4899" fill="#ec4899" />
+                          </View>
+                        )}
+                        <View style={styles.timeCapsuleBadge}>
+                          <Text style={styles.timeCapsuleBadgeText}>
+                            {yrDiff <= 1 ? "1 Year Ago" : `${yrDiff} Years Ago`}
+                          </Text>
+                        </View>
+                        <Text style={styles.timeCapsuleCardTitle} numberOfLines={1}>{mem.title}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Memories Control Bar */}
             <View style={styles.sectionActionBar}>
-              <Text style={styles.sectionHeading}>Cherished Moments ({memories.length})</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={styles.sectionHeading}>Cherished Moments ({visibleMemories.length})</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                {/* Privacy Veil Toggle */}
+                <TouchableOpacity
+                  style={[styles.veilToggleBtn, privacyVeil && styles.veilToggleBtnActive]}
+                  onPress={togglePrivacyVeil}
+                  activeOpacity={0.8}
+                >
+                  {privacyVeil ? <EyeOff size={14} color="#f43f5e" /> : <Eye size={14} color={theme.textMuted} />}
+                  <Text style={[styles.veilToggleBtnText, privacyVeil && { color: "#f43f5e" }]}>
+                    {privacyVeil ? "Veil: ON" : "Privacy Veil"}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Add Memory Button */}
+                <TouchableOpacity
+                  style={styles.addPrimaryBtn}
+                  onPress={() => setMemoryModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Sparkles size={15} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.addPrimaryBtnText}>Add Memory</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* View Mode Switcher */}
+            <View style={styles.viewModeSwitcher}>
               <TouchableOpacity
-                style={styles.addPrimaryBtn}
-                onPress={() => setMemoryModalVisible(true)}
+                style={[styles.viewModeBtn, memoryViewMode === "timeline" && styles.viewModeBtnActive]}
+                onPress={() => setMemoryViewMode("timeline")}
                 activeOpacity={0.8}
               >
-                <Sparkles size={16} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.addPrimaryBtnText}>Add Memory</Text>
+                <Clock size={13} color={memoryViewMode === "timeline" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.viewModeBtnText, memoryViewMode === "timeline" && styles.viewModeBtnTextActive]}>
+                  Timeline
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.viewModeBtn, memoryViewMode === "map" && styles.viewModeBtnActive]}
+                onPress={() => setMemoryViewMode("map")}
+                activeOpacity={0.8}
+              >
+                <MapPin size={13} color={memoryViewMode === "map" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.viewModeBtnText, memoryViewMode === "map" && styles.viewModeBtnTextActive]}>
+                  Places & Map
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.viewModeBtn, memoryViewMode === "milestones" && styles.viewModeBtnActive]}
+                onPress={() => setMemoryViewMode("milestones")}
+                activeOpacity={0.8}
+              >
+                <Compass size={13} color={memoryViewMode === "milestones" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.viewModeBtnText, memoryViewMode === "milestones" && styles.viewModeBtnTextActive]}>
+                  Roadmap
+                </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Quick Filter Chips Bar */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipRow}>
+              {(["all", "photos", "voice", "places", "vault"] as MemoryFilter[]).map((f) => {
+                if (f === "vault" && isDecoyMode) return null;
+                const label =
+                  f === "all"
+                    ? `All (${visibleMemories.length})`
+                    : f === "photos"
+                    ? "📸 Photos"
+                    : f === "voice"
+                    ? "🎙️ Voice"
+                    : f === "places"
+                    ? "📍 Places"
+                    : "🔒 Vault";
+                const active = memoryFilter === f;
+                return (
+                  <TouchableOpacity
+                    key={f}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                    onPress={() => setMemoryFilter(f)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
             {loadingMemories ? (
               <View style={styles.emptyState}>
                 <ActivityIndicator size="large" color="#ec4899" />
               </View>
-            ) : memories.length === 0 ? (
+            ) : visibleMemories.length === 0 ? (
               <View style={styles.emptyState}>
                 <Heart size={48} color="rgba(236, 72, 153, 0.4)" />
-                <Text style={styles.emptyStateTitle}>No memories saved yet</Text>
+                <Text style={styles.emptyStateTitle}>No memories found</Text>
                 <Text style={styles.emptyStateSub}>
-                  Right-click (PC) or long-press (Mobile) any message or photo in chat and choose "Save to Memories 💕", or tap "Add Memory"!
+                  {memoryFilter !== "all"
+                    ? "No moments match this filter. Tap 'All' or create a new memory!"
+                    : "Tap 'Add Memory' or long-press photos in chat to save cherished moments."}
                 </Text>
               </View>
-            ) : (
+            ) : memoryViewMode === "timeline" ? (
+              /* VIEW 1: TIMELINE FEED WITH HOLD-TO-PEEK PRIVACY VEIL */
               <View style={styles.memoriesTimeline}>
-                {memories.map((mem) => (
-                  <View key={mem.id} style={styles.memoryCard}>
-                    {mem.media_url && mem.media_type === "audio" ? (
-                      <View style={{ padding: 14, backgroundColor: "rgba(0,0,0,0.15)" }}>
-                        <AudioPlayerBubble audioUrl={mem.media_url} isMe={false} />
-                      </View>
-                    ) : mem.media_url ? (
-                      <TouchableOpacity
-                        activeOpacity={0.9}
-                        onPress={() => setSelectedViewerImage(mem.media_url!)}
-                      >
-                        <Image source={{ uri: mem.media_url }} style={styles.memoryCardImage} />
-                      </TouchableOpacity>
-                    ) : null}
+                {visibleMemories.map((mem) => {
+                  const isPeeking = peekingMemoryId === mem.id;
+                  const shouldBlur = privacyVeil && !isPeeking;
 
-                    <View style={styles.memoryCardBody}>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                        <Text style={styles.memoryCardTitle} numberOfLines={1}>{mem.title}</Text>
-                        <TouchableOpacity onPress={() => handleDeleteMemory(mem.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                          <Trash2 size={16} color="#f43f5e" />
+                  return (
+                    <View key={mem.id} style={styles.memoryCard}>
+                      {mem.media_url && mem.media_type === "audio" ? (
+                        <View style={{ padding: 14, backgroundColor: "rgba(0,0,0,0.15)" }}>
+                          <AudioPlayerBubble audioUrl={mem.media_url} isMe={false} />
+                        </View>
+                      ) : mem.media_url ? (
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => setSelectedViewerImage(mem.media_url!)}
+                          onPressIn={() => setPeekingMemoryId(mem.id)}
+                          onPressOut={() => setPeekingMemoryId(null)}
+                          style={{ position: "relative" }}
+                        >
+                          <Image
+                            source={{ uri: mem.media_url }}
+                            style={styles.memoryCardImage}
+                            blurRadius={shouldBlur ? (Platform.OS === "web" ? 28 : 22) : 0}
+                          />
+                          {shouldBlur && (
+                            <View style={styles.holdToPeekVeil}>
+                              <Eye size={18} color="#ffffff" />
+                              <Text style={styles.holdToPeekText}>Press & hold to peek</Text>
+                            </View>
+                          )}
                         </TouchableOpacity>
-                      </View>
-
-                      {mem.caption ? (
-                        <Text style={styles.memoryCardCaption}>{mem.caption}</Text>
                       ) : null}
 
-                      <View style={styles.memoryCardFooter}>
-                        <Calendar size={13} color={theme.textMuted} style={{ marginRight: 5 }} />
-                        <Text style={styles.memoryCardDate}>
+                      <View style={styles.memoryCardBody}>
+                        {/* Tags Row */}
+                        <View style={styles.memoryTagsRow}>
+                          {mem.is_vault && (
+                            <View style={styles.vaultTagPill}>
+                              <Lock size={10} color="#a855f7" />
+                              <Text style={styles.vaultTagPillText}>Secret Vault</Text>
+                            </View>
+                          )}
+                          {mem.location_name ? (
+                            <View style={styles.locationTagPill}>
+                              <MapPin size={10} color="#38bdf8" />
+                              <Text style={styles.locationTagPillText}>{mem.location_name}</Text>
+                            </View>
+                          ) : null}
+                          {mem.milestone_tag ? (
+                            <View style={styles.milestoneTagPill}>
+                              <Sparkles size={10} color="#f59e0b" />
+                              <Text style={styles.milestoneTagPillText}>{mem.milestone_tag}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text style={styles.memoryCardTitle} numberOfLines={1}>{mem.title}</Text>
+                          <TouchableOpacity onPress={() => handleDeleteMemory(mem.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <Trash2 size={16} color="#f43f5e" />
+                          </TouchableOpacity>
+                        </View>
+
+                        {mem.caption ? (
+                          <Text
+                            style={[
+                              styles.memoryCardCaption,
+                              shouldBlur && { opacity: 0.25 },
+                            ]}
+                          >
+                            {mem.caption}
+                          </Text>
+                        ) : null}
+
+                        <View style={styles.memoryCardFooter}>
+                          <Calendar size={13} color={theme.textMuted} style={{ marginRight: 5 }} />
+                          <Text style={styles.memoryCardDate}>
+                            {new Date(mem.memory_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : memoryViewMode === "map" ? (
+              /* VIEW 2: PLACES & MAP VIEW */
+              <View style={styles.placesContainer}>
+                {Array.from(placesMap.entries()).map(([placeName, placeMemories]) => (
+                  <View key={placeName} style={styles.placeCard}>
+                    <View style={styles.placeCardHeader}>
+                      <View style={styles.placeIconCircle}>
+                        <MapPin size={18} color="#38bdf8" />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.placeCardTitle}>{placeName}</Text>
+                        <Text style={styles.placeCardSub}>
+                          {placeMemories.length} {placeMemories.length === 1 ? "moment" : "moments"} recorded here
+                        </Text>
+                      </View>
+                    </View>
+
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.placeThumbnailsScroll}>
+                      {placeMemories.map((m) => (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={styles.placeThumbBox}
+                          onPress={() => (m.media_url ? setSelectedViewerImage(m.media_url) : null)}
+                          activeOpacity={0.85}
+                        >
+                          {m.media_url ? (
+                            <Image source={{ uri: m.media_url }} style={styles.placeThumbImg} />
+                          ) : (
+                            <View style={styles.placeThumbPlaceholder}>
+                              <Heart size={18} color="#ec4899" />
+                            </View>
+                          )}
+                          <Text style={styles.placeThumbTitle} numberOfLines={1}>{m.title}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              /* VIEW 3: JOURNEY ROADMAP & CONSTELLATION TIMELINE */
+              <View style={styles.roadmapContainer}>
+                <View style={styles.roadmapLine} />
+                {milestoneMemories.map((mem, idx) => (
+                  <View key={mem.id} style={styles.roadmapItemRow}>
+                    {/* Node Dot */}
+                    <View style={styles.roadmapNodeDot}>
+                      <View style={styles.roadmapNodeInner} />
+                    </View>
+
+                    {/* Milestone Content Card */}
+                    <View style={styles.roadmapContentCard}>
+                      <View style={styles.roadmapHeader}>
+                        <View style={styles.roadmapBadge}>
+                          <Sparkles size={11} color="#ec4899" />
+                          <Text style={styles.roadmapBadgeText}>
+                            {mem.milestone_tag || `Moment #${idx + 1}`}
+                          </Text>
+                        </View>
+                        <Text style={styles.roadmapDateText}>
                           {new Date(mem.memory_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                         </Text>
                       </View>
+
+                      {mem.media_url && (
+                        <TouchableOpacity
+                          onPress={() => setSelectedViewerImage(mem.media_url!)}
+                          activeOpacity={0.9}
+                        >
+                          <Image source={{ uri: mem.media_url }} style={styles.roadmapImage} />
+                        </TouchableOpacity>
+                      )}
+
+                      <Text style={styles.roadmapTitle}>{mem.title}</Text>
+                      {mem.caption ? <Text style={styles.roadmapCaption}>{mem.caption}</Text> : null}
+                      {mem.location_name ? (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
+                          <MapPin size={11} color="#38bdf8" />
+                          <Text style={styles.locationTagPillText}>{mem.location_name}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 ))}
@@ -1454,16 +1922,21 @@ export default function ChatInfoScreen() {
           <View style={styles.tabContentContainer}>
             {/* Notes Control Bar */}
             <View style={styles.vaultActionBar}>
-              <TouchableOpacity
-                style={[styles.vaultToggleBtn, vaultUnlocked && styles.vaultToggleBtnActive]}
-                onPress={() => setVaultUnlocked(prev => !prev)}
-                activeOpacity={0.8}
-              >
-                {vaultUnlocked ? <Unlock size={16} color="#10b981" /> : <Lock size={16} color="#fbbf24" />}
-                <Text style={[styles.vaultToggleBtnText, vaultUnlocked && { color: "#10b981" }]}>
-                  {vaultUnlocked ? "Vault Unlocked" : `Secret Vault (${vaultCount} locked)`}
-                </Text>
-              </TouchableOpacity>
+              {!isDecoyMode && (
+                <TouchableOpacity
+                  style={[styles.vaultToggleBtn, vaultUnlocked && styles.vaultToggleBtnActive]}
+                  onPress={handleTriggerUnlockVault}
+                  activeOpacity={0.8}
+                >
+                  {vaultUnlocked ? <Unlock size={16} color="#10b981" /> : <Lock size={16} color="#a855f7" />}
+                  <Text style={[styles.vaultToggleBtnText, vaultUnlocked && { color: "#10b981" }]}>
+                    {vaultUnlocked ? "Vault Unlocked (tap to lock)" : `Secret Vault (${vaultCount} locked)`}
+                  </Text>
+                  {isBiometricSupported && !vaultUnlocked && (
+                    <Fingerprint size={14} color="#a855f7" style={{ marginLeft: 6 }} />
+                  )}
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={styles.addPrimaryBtn}
@@ -1484,35 +1957,94 @@ export default function ChatInfoScreen() {
                 <FileText size={48} color="rgba(59, 130, 246, 0.4)" />
                 <Text style={styles.emptyStateTitle}>No notes here yet</Text>
                 <Text style={styles.emptyStateSub}>
-                  Keep shared to-do lists, links, passwords, and secret notes saved together.
+                  Keep shared to-do lists, bucket lists, and secret vault notes saved together.
                 </Text>
               </View>
             ) : (
               <View style={styles.notesGrid}>
-                {visibleNotes.map((note) => (
-                  <TouchableOpacity
-                    key={note.id}
-                    style={[styles.noteCard, { borderLeftColor: note.color || "#5865F2" }]}
-                    onPress={() => openEditNoteModal(note)}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.noteCardHeader}>
-                      <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 6 }}>
-                        {note.pinned && <Pin size={14} color="#f59e0b" fill="#f59e0b" />}
-                        {note.is_vault && <Lock size={14} color="#a855f7" />}
-                        <Text style={styles.noteCardTitle} numberOfLines={1}>{note.title}</Text>
+                {visibleNotes.map((note) => {
+                  const isChecklist = note.note_type === "checklist" && Array.isArray(note.checklist_items);
+                  const totalItems = isChecklist ? note.checklist_items!.length : 0;
+                  const completedItems = isChecklist
+                    ? note.checklist_items!.filter((it) => it.done).length
+                    : 0;
+
+                  return (
+                    <View
+                      key={note.id}
+                      style={[styles.noteCard, { borderLeftColor: note.color || "#5865F2" }]}
+                    >
+                      <View style={styles.noteCardHeader}>
+                        <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 6 }}>
+                          {note.pinned && <Pin size={14} color="#f59e0b" fill="#f59e0b" />}
+                          {note.is_vault && <Lock size={14} color="#a855f7" />}
+                          {isChecklist && <ListTodo size={14} color="#10b981" />}
+                          <Text style={styles.noteCardTitle} numberOfLines={1}>{note.title}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => openEditNoteModal(note)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <Edit3 size={15} color={theme.textMuted} />
+                        </TouchableOpacity>
                       </View>
+
+                      {/* Interactive Checklist Items on Note Card */}
+                      {isChecklist ? (
+                        <View style={styles.checklistCardContent}>
+                          {note.checklist_items!.slice(0, 5).map((it) => (
+                            <TouchableOpacity
+                              key={it.id}
+                              style={styles.checklistRow}
+                              onPress={() => handleToggleChecklistItem(note.id, it.id)}
+                              activeOpacity={0.7}
+                            >
+                              {it.done ? (
+                                <CheckCircle2 size={16} color="#10b981" />
+                              ) : (
+                                <Circle size={16} color={theme.textMuted} />
+                              )}
+                              <Text
+                                style={[
+                                  styles.checklistItemText,
+                                  it.done && styles.checklistItemTextDone,
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {it.text}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                          {totalItems > 5 && (
+                            <Text style={styles.checklistMoreText}>+{totalItems - 5} more items...</Text>
+                          )}
+
+                          {/* Progress Bar */}
+                          {totalItems > 0 && (
+                            <View style={styles.checklistProgressBox}>
+                              <View style={styles.checklistProgressBar}>
+                                <View
+                                  style={[
+                                    styles.checklistProgressFill,
+                                    { width: `${(completedItems / totalItems) * 100}%` },
+                                  ]}
+                                />
+                              </View>
+                              <Text style={styles.checklistProgressText}>
+                                {completedItems}/{totalItems} completed
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        <Text style={styles.noteCardContent} numberOfLines={4}>
+                          {note.content}
+                        </Text>
+                      )}
+
+                      <Text style={styles.noteCardDate}>
+                        Updated {new Date(note.updated_at).toLocaleDateString()}
+                      </Text>
                     </View>
-
-                    <Text style={styles.noteCardContent} numberOfLines={4}>
-                      {note.content}
-                    </Text>
-
-                    <Text style={styles.noteCardDate}>
-                      Updated {new Date(note.updated_at).toLocaleDateString()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                  );
+                })}
               </View>
             )}
           </View>
@@ -1551,6 +2083,47 @@ export default function ChatInfoScreen() {
                 onChangeText={setNewMemoryDate}
               />
 
+              <Text style={styles.inputLabel}>📍 Place / Location Tag (Optional)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Sunset Pier, Central Park, Favorite Cafe"
+                placeholderTextColor={theme.textMuted}
+                value={newMemoryLocation}
+                onChangeText={setNewMemoryLocation}
+              />
+
+              <Text style={styles.inputLabel}>🌟 Milestone Tag (Optional)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. First Date, Road Trip, Anniversary, Special Night"
+                placeholderTextColor={theme.textMuted}
+                value={newMemoryMilestone}
+                onChangeText={setNewMemoryMilestone}
+              />
+
+              {/* Quick Milestone Chips */}
+              <View style={styles.quickMilestonesRow}>
+                {["First Met", "First Date", "First Trip", "Anniversary", "Special Night"].map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[
+                      styles.quickMilestoneChip,
+                      newMemoryMilestone === m && styles.quickMilestoneChipActive,
+                    ]}
+                    onPress={() => setNewMemoryMilestone(m)}
+                  >
+                    <Text
+                      style={[
+                        styles.quickMilestoneChipText,
+                        newMemoryMilestone === m && styles.quickMilestoneChipTextActive,
+                      ]}
+                    >
+                      {m}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <Text style={styles.inputLabel}>Caption / Memory Story</Text>
               <TextInput
                 style={[styles.textInput, { height: 80, textAlignVertical: "top" }]}
@@ -1576,6 +2149,21 @@ export default function ChatInfoScreen() {
                 </TouchableOpacity>
               )}
 
+              {/* Secret Vault Toggle for Memory */}
+              <TouchableOpacity
+                style={[
+                  styles.togglePill,
+                  newMemoryIsVault && { borderColor: "#a855f7", backgroundColor: "rgba(168, 85, 247, 0.15)" },
+                  { marginTop: 14 },
+                ]}
+                onPress={() => setNewMemoryIsVault((prev) => !prev)}
+              >
+                <Lock size={15} color={newMemoryIsVault ? "#a855f7" : theme.textMuted} />
+                <Text style={[styles.togglePillText, newMemoryIsVault && { color: "#a855f7" }]}>
+                  Keep in Secret Vault (Requires PIN/Biometrics)
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.saveModalBtn, savingMemory && { opacity: 0.6 }]}
                 onPress={handleSaveMemory}
@@ -1589,7 +2177,7 @@ export default function ChatInfoScreen() {
       </Modal>
 
       {/* ========================================================= */}
-      {/* MODAL: ADD / EDIT NOTE                                    */}
+      {/* MODAL: ADD / EDIT NOTE & CHECKLIST                        */}
       {/* ========================================================= */}
       <Modal visible={noteModalVisible} transparent animationType="slide" onRequestClose={() => setNoteModalVisible(false)}>
         <View style={styles.modalBackdrop}>
@@ -1602,24 +2190,78 @@ export default function ChatInfoScreen() {
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 18 }} showsVerticalScrollIndicator={false}>
+              {/* Note Type Selector */}
+              <View style={styles.noteTypeSwitcher}>
+                <TouchableOpacity
+                  style={[styles.noteTypeBtn, noteType === "text" && styles.noteTypeBtnActive]}
+                  onPress={() => setNoteType("text")}
+                >
+                  <FileText size={14} color={noteType === "text" ? "#fff" : theme.textMuted} />
+                  <Text style={[styles.noteTypeBtnText, noteType === "text" && styles.noteTypeBtnTextActive]}>
+                    Standard Note
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.noteTypeBtn, noteType === "checklist" && styles.noteTypeBtnActive]}
+                  onPress={() => setNoteType("checklist")}
+                >
+                  <ListTodo size={14} color={noteType === "checklist" ? "#fff" : theme.textMuted} />
+                  <Text style={[styles.noteTypeBtnText, noteType === "checklist" && styles.noteTypeBtnTextActive]}>
+                    Checklist / Bucket List
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               <Text style={styles.inputLabel}>Title</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="Note title..."
+                placeholder="Note or list title..."
                 placeholderTextColor={theme.textMuted}
                 value={noteTitle}
                 onChangeText={setNoteTitle}
               />
 
-              <Text style={styles.inputLabel}>Content</Text>
-              <TextInput
-                style={[styles.textInput, { height: 120, textAlignVertical: "top" }]}
-                placeholder="Write your note, list, or secret thoughts..."
-                placeholderTextColor={theme.textMuted}
-                multiline
-                value={noteContent}
-                onChangeText={setNoteContent}
-              />
+              {noteType === "checklist" ? (
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={styles.inputLabel}>Checklist Items</Text>
+                  <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                    <TextInput
+                      style={[styles.textInput, { flex: 1, marginBottom: 0 }]}
+                      placeholder="Add an item (e.g. Visit Paris, Buy gifts)..."
+                      placeholderTextColor={theme.textMuted}
+                      value={newChecklistText}
+                      onChangeText={setNewChecklistText}
+                      onSubmitEditing={handleAddChecklistItem}
+                    />
+                    <TouchableOpacity style={styles.addChecklistBtn} onPress={handleAddChecklistItem}>
+                      <Plus size={18} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {checklistItems.map((it) => (
+                    <View key={it.id} style={styles.checklistModalItemRow}>
+                      <Circle size={15} color={theme.textMuted} />
+                      <Text style={styles.checklistModalItemText} numberOfLines={1}>{it.text}</Text>
+                      <TouchableOpacity onPress={() => handleRemoveChecklistItem(it.id)}>
+                        <X size={16} color="#f43f5e" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.inputLabel}>Content</Text>
+                  <TextInput
+                    style={[styles.textInput, { height: 120, textAlignVertical: "top" }]}
+                    placeholder="Write your note, thoughts, or shared secrets..."
+                    placeholderTextColor={theme.textMuted}
+                    multiline
+                    value={noteContent}
+                    onChangeText={setNoteContent}
+                  />
+                </>
+              )}
 
               {/* Color Selector */}
               <Text style={styles.inputLabel}>Accent Color</Text>
@@ -1675,6 +2317,15 @@ export default function ChatInfoScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ========================================================= */}
+      {/* MODAL: VAULT FINGERPRINT & PIN UNLOCK                     */}
+      {/* ========================================================= */}
+      <VaultUnlockModal
+        visible={vaultModalVisible}
+        onClose={() => setVaultModalVisible(false)}
+        onSuccess={() => setVaultUnlocked(true)}
+      />
 
       {/* ========================================================= */}
       {/* MODAL: ADD GROUP MEMBER                                   */}
@@ -2783,6 +3434,572 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: "#ffffff",
       fontSize: 12,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+
+    // -------------------------------------------------------------
+    // TOP HEADER PANIC & VAULT BUTTON
+    // -------------------------------------------------------------
+    topHeaderRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      minWidth: 68,
+    },
+    panicHeaderBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 12,
+      backgroundColor: isAmoled ? "rgba(168, 85, 247, 0.12)" : "rgba(168, 85, 247, 0.08)",
+      borderWidth: 1,
+      borderColor: "rgba(168, 85, 247, 0.25)",
+    },
+    panicHeaderBtnUnlocked: {
+      backgroundColor: isAmoled ? "rgba(244, 63, 94, 0.15)" : "rgba(244, 63, 94, 0.1)",
+      borderColor: "rgba(244, 63, 94, 0.35)",
+    },
+    panicHeaderBtnText: {
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+
+    // -------------------------------------------------------------
+    // ON THIS DAY TIME CAPSULE
+    // -------------------------------------------------------------
+    timeCapsuleHeroCard: {
+      backgroundColor: isAmoled ? "rgba(236, 72, 153, 0.08)" : "rgba(236, 72, 153, 0.05)",
+      borderRadius: 20,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: "rgba(236, 72, 153, 0.25)",
+      marginBottom: 18,
+    },
+    timeCapsuleHeader: {
+      marginBottom: 12,
+    },
+    timeCapsuleHeaderTitle: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 15,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    timeCapsuleHeaderSub: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontFamily: "Josefin Sans",
+      marginTop: 2,
+    },
+    timeCapsuleScroll: {
+      gap: 12,
+    },
+    timeCapsuleCard: {
+      width: 140,
+      backgroundColor: cardBg,
+      borderRadius: 16,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: borderCol,
+    },
+    timeCapsuleImage: {
+      width: 140,
+      height: 100,
+      resizeMode: "cover",
+    },
+    timeCapsuleImagePlaceholder: {
+      width: 140,
+      height: 100,
+      backgroundColor: "rgba(236, 72, 153, 0.12)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    timeCapsuleBadge: {
+      position: "absolute",
+      top: 6,
+      left: 6,
+      backgroundColor: "rgba(0, 0, 0, 0.65)",
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+    },
+    timeCapsuleBadgeText: {
+      color: "#ec4899",
+      fontSize: 10,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    timeCapsuleCardTitle: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+      padding: 8,
+    },
+
+    // -------------------------------------------------------------
+    // PRIVACY VEIL & VIEW SWITCHER
+    // -------------------------------------------------------------
+    veilToggleBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 12,
+      backgroundColor: cardBg,
+      borderWidth: 1,
+      borderColor: borderCol,
+    },
+    veilToggleBtnActive: {
+      backgroundColor: "rgba(244, 63, 94, 0.15)",
+      borderColor: "rgba(244, 63, 94, 0.4)",
+    },
+    veilToggleBtnText: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    viewModeSwitcher: {
+      flexDirection: "row",
+      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.04)",
+      padding: 4,
+      borderRadius: 14,
+      marginBottom: 12,
+      gap: 4,
+    },
+    viewModeBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 7,
+      borderRadius: 10,
+    },
+    viewModeBtnActive: {
+      backgroundColor: theme.accent || "#5865F2",
+    },
+    viewModeBtnText: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    viewModeBtnTextActive: {
+      color: "#ffffff",
+      fontWeight: "700",
+    },
+
+    // -------------------------------------------------------------
+    // FILTER CHIPS
+    // -------------------------------------------------------------
+    filterChipRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 14,
+    },
+    filterChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 12,
+      backgroundColor: cardBg,
+      borderWidth: 1,
+      borderColor: borderCol,
+    },
+    filterChipActive: {
+      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)",
+      borderColor: theme.accent || "#5865F2",
+    },
+    filterChipText: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    filterChipTextActive: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontWeight: "700",
+    },
+
+    // -------------------------------------------------------------
+    // HOLD-TO-PEEK & TAGS
+    // -------------------------------------------------------------
+    holdToPeekVeil: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0, 0, 0, 0.45)",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+    },
+    holdToPeekText: {
+      color: "#ffffff",
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    memoryTagsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginBottom: 6,
+    },
+    vaultTagPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(168, 85, 247, 0.15)",
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "rgba(168, 85, 247, 0.3)",
+    },
+    vaultTagPillText: {
+      color: "#a855f7",
+      fontSize: 10,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    locationTagPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(56, 189, 248, 0.15)",
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "rgba(56, 189, 248, 0.3)",
+    },
+    locationTagPillText: {
+      color: "#38bdf8",
+      fontSize: 10,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    milestoneTagPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(245, 158, 11, 0.15)",
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "rgba(245, 158, 11, 0.3)",
+    },
+    milestoneTagPillText: {
+      color: "#f59e0b",
+      fontSize: 10,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+
+    // -------------------------------------------------------------
+    // PLACES & MAP VIEW
+    // -------------------------------------------------------------
+    placesContainer: {
+      gap: 14,
+    },
+    placeCard: {
+      backgroundColor: cardBg,
+      borderRadius: 20,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: borderCol,
+    },
+    placeCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    placeIconCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "rgba(56, 189, 248, 0.15)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    placeCardTitle: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 15,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    placeCardSub: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontFamily: "Josefin Sans",
+    },
+    placeThumbnailsScroll: {
+      gap: 10,
+    },
+    placeThumbBox: {
+      width: 100,
+      borderRadius: 12,
+      overflow: "hidden",
+      backgroundColor: isAmoled ? "#18181f" : "rgba(0,0,0,0.04)",
+      borderWidth: 1,
+      borderColor: borderCol,
+    },
+    placeThumbImg: {
+      width: 100,
+      height: 80,
+      resizeMode: "cover",
+    },
+    placeThumbPlaceholder: {
+      width: 100,
+      height: 80,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    placeThumbTitle: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 11,
+      fontFamily: "Josefin Sans",
+      padding: 5,
+    },
+
+    // -------------------------------------------------------------
+    // ROADMAP & MILESTONES VIEW
+    // -------------------------------------------------------------
+    roadmapContainer: {
+      position: "relative",
+      paddingLeft: 22,
+      gap: 18,
+    },
+    roadmapLine: {
+      position: "absolute",
+      top: 14,
+      bottom: 14,
+      left: 7,
+      width: 2,
+      backgroundColor: isAmoled ? "rgba(236, 72, 153, 0.4)" : "rgba(236, 72, 153, 0.3)",
+      borderRadius: 1,
+    },
+    roadmapItemRow: {
+      position: "relative",
+      flexDirection: "row",
+      alignItems: "flex-start",
+    },
+    roadmapNodeDot: {
+      position: "absolute",
+      left: -22,
+      top: 14,
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: isAmoled ? "#000000" : theme.background,
+      borderWidth: 2,
+      borderColor: "#ec4899",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 2,
+    },
+    roadmapNodeInner: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "#ec4899",
+    },
+    roadmapContentCard: {
+      flex: 1,
+      backgroundColor: cardBg,
+      borderRadius: 18,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: borderCol,
+      marginLeft: 6,
+    },
+    roadmapHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 8,
+    },
+    roadmapBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      backgroundColor: "rgba(236, 72, 153, 0.15)",
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+    },
+    roadmapBadgeText: {
+      color: "#ec4899",
+      fontSize: 11,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    roadmapDateText: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontFamily: "Josefin Sans",
+    },
+    roadmapImage: {
+      width: "100%",
+      height: 140,
+      borderRadius: 12,
+      marginBottom: 8,
+      resizeMode: "cover",
+    },
+    roadmapTitle: {
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 14,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+      marginBottom: 4,
+    },
+    roadmapCaption: {
+      color: theme.textMuted,
+      fontSize: 12,
+      lineHeight: 16,
+      fontFamily: "Josefin Sans",
+    },
+
+    // -------------------------------------------------------------
+    // QUICK MILESTONE CHIPS (MODAL)
+    // -------------------------------------------------------------
+    quickMilestonesRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 6,
+      marginBottom: 6,
+    },
+    quickMilestoneChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 10,
+      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.04)",
+      borderWidth: 1,
+      borderColor: borderCol,
+    },
+    quickMilestoneChipActive: {
+      backgroundColor: "rgba(245, 158, 11, 0.2)",
+      borderColor: "#f59e0b",
+    },
+    quickMilestoneChipText: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    quickMilestoneChipTextActive: {
+      color: "#f59e0b",
+      fontWeight: "700",
+    },
+
+    // -------------------------------------------------------------
+    // NOTE TYPE SWITCHER & CHECKLISTS
+    // -------------------------------------------------------------
+    noteTypeSwitcher: {
+      flexDirection: "row",
+      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.04)",
+      padding: 4,
+      borderRadius: 14,
+      marginBottom: 12,
+      gap: 4,
+    },
+    noteTypeBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    noteTypeBtnActive: {
+      backgroundColor: theme.accent || "#5865F2",
+    },
+    noteTypeBtnText: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    noteTypeBtnTextActive: {
+      color: "#ffffff",
+      fontWeight: "700",
+    },
+    addChecklistBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      backgroundColor: theme.accent || "#5865F2",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    checklistModalItemRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.02)",
+      marginBottom: 6,
+    },
+    checklistModalItemText: {
+      flex: 1,
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 13,
+      fontFamily: "Josefin Sans",
+    },
+    checklistCardContent: {
+      marginVertical: 4,
+      gap: 6,
+    },
+    checklistRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 4,
+    },
+    checklistItemText: {
+      flex: 1,
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontSize: 13,
+      fontFamily: "Josefin Sans",
+    },
+    checklistItemTextDone: {
+      textDecorationLine: "line-through",
+      color: theme.textMuted,
+      opacity: 0.6,
+    },
+    checklistMoreText: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontFamily: "Josefin Sans",
+      fontStyle: "italic",
+      marginTop: 2,
+    },
+    checklistProgressBox: {
+      marginTop: 8,
+      gap: 4,
+    },
+    checklistProgressBar: {
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.08)",
+      overflow: "hidden",
+    },
+    checklistProgressFill: {
+      height: "100%",
+      backgroundColor: "#10b981",
+      borderRadius: 2,
+    },
+    checklistProgressText: {
+      color: theme.textMuted,
+      fontSize: 10,
+      fontWeight: "600",
       fontFamily: "Josefin Sans",
     },
   });

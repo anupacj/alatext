@@ -12,8 +12,16 @@ CREATE TABLE IF NOT EXISTS public.chat_memories (
   media_type TEXT NOT NULL DEFAULT 'text', -- 'image' | 'video' | 'audio' | 'text'
   original_message_id UUID,
   memory_date TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  is_vault BOOLEAN NOT NULL DEFAULT false,
+  location_name TEXT,
+  milestone_tag TEXT
 );
+
+-- Ensure columns exist if table was already created earlier:
+ALTER TABLE public.chat_memories ADD COLUMN IF NOT EXISTS is_vault BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.chat_memories ADD COLUMN IF NOT EXISTS location_name TEXT;
+ALTER TABLE public.chat_memories ADD COLUMN IF NOT EXISTS milestone_tag TEXT;
 
 -- 2. Create chat_notes table
 CREATE TABLE IF NOT EXISTS public.chat_notes (
@@ -26,12 +34,19 @@ CREATE TABLE IF NOT EXISTS public.chat_notes (
   color TEXT NOT NULL DEFAULT '#5865F2',
   pinned BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  note_type TEXT NOT NULL DEFAULT 'text',
+  checklist_items JSONB DEFAULT '[]'::jsonb
 );
+
+-- Ensure columns exist if table was already created earlier:
+ALTER TABLE public.chat_notes ADD COLUMN IF NOT EXISTS note_type TEXT NOT NULL DEFAULT 'text';
+ALTER TABLE public.chat_notes ADD COLUMN IF NOT EXISTS checklist_items JSONB DEFAULT '[]'::jsonb;
 
 -- 3. Enable Row Level Security (RLS)
 ALTER TABLE public.chat_memories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_notes ENABLE ROW LEVEL SECURITY;
+
 
 -- 4. RLS Policies for chat_memories
 DO $$

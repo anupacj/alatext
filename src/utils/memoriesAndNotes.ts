@@ -13,6 +13,15 @@ export interface MemoryItem {
   memory_date: string;
   created_at: string;
   sender_name?: string;
+  is_vault?: boolean;
+  location_name?: string;
+  milestone_tag?: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
 }
 
 export interface NoteItem {
@@ -26,6 +35,8 @@ export interface NoteItem {
   pinned?: boolean;
   created_at: string;
   updated_at: string;
+  note_type?: 'text' | 'checklist';
+  checklist_items?: ChecklistItem[];
 }
 
 // -------------------------------------------------------------
@@ -90,6 +101,9 @@ export async function addMemory(
     original_message_id?: string | null;
     memory_date?: string;
     sender_name?: string;
+    is_vault?: boolean;
+    location_name?: string;
+    milestone_tag?: string;
   }
 ): Promise<MemoryItem> {
   const newMemory: MemoryItem = {
@@ -104,6 +118,9 @@ export async function addMemory(
     memory_date: item.memory_date || new Date().toISOString(),
     created_at: new Date().toISOString(),
     sender_name: item.sender_name,
+    is_vault: item.is_vault ?? false,
+    location_name: item.location_name || undefined,
+    milestone_tag: item.milestone_tag || undefined,
   };
 
   // 1. Optimistic local cache update
@@ -113,7 +130,7 @@ export async function addMemory(
 
   // 2. Cloud insert
   try {
-    const { data, error } = await supabase.from("chat_memories").insert({
+    const payload: any = {
       chat_id: chatId,
       created_by: userId,
       title: newMemory.title,
@@ -122,10 +139,24 @@ export async function addMemory(
       media_type: newMemory.media_type,
       original_message_id: newMemory.original_message_id,
       memory_date: newMemory.memory_date,
-    }).select().single();
+      is_vault: newMemory.is_vault,
+      location_name: newMemory.location_name,
+      milestone_tag: newMemory.milestone_tag,
+    };
+
+    let { data, error } = await supabase.from("chat_memories").insert(payload).select().single();
+
+    // Fallback if extra columns don't exist yet on DB
+    if (error) {
+      delete payload.is_vault;
+      delete payload.location_name;
+      delete payload.milestone_tag;
+      const res = await supabase.from("chat_memories").insert(payload).select().single();
+      data = res.data;
+      error = res.error;
+    }
 
     if (!error && data) {
-      // replace placeholder ID with true DB uuid
       const finalMem: MemoryItem = { ...newMemory, id: data.id };
       const finalized = [finalMem, ...current.filter(m => m.id !== newMemory.id)];
       await saveMemoriesToLocal(chatId, finalized);
@@ -139,12 +170,10 @@ export async function addMemory(
 }
 
 export async function deleteMemory(chatId: string, memoryId: string): Promise<void> {
-  // Update local
   const current = await loadMemoriesFromLocal(chatId);
   const filtered = current.filter(m => m.id !== memoryId);
   await saveMemoriesToLocal(chatId, filtered);
 
-  // Cloud delete
   try {
     await supabase.from("chat_memories").delete().eq("id", memoryId);
   } catch (e) {}
@@ -183,6 +212,8 @@ export async function saveNote(
     is_vault?: boolean;
     color?: string;
     pinned?: boolean;
+    note_type?: 'text' | 'checklist';
+    checklist_items?: ChecklistItem[];
   }
 ): Promise<NoteItem> {
   const isExisting = !!note.id;
@@ -203,6 +234,8 @@ export async function saveNote(
       is_vault: note.is_vault ?? existing?.is_vault ?? false,
       color: note.color || existing?.color || "#5865F2",
       pinned: note.pinned ?? existing?.pinned ?? false,
+      note_type: note.note_type || existing?.note_type || 'text',
+      checklist_items: note.checklist_items || existing?.checklist_items || [],
       created_at: existing?.created_at || now,
       updated_at: now,
     };
@@ -218,6 +251,8 @@ export async function saveNote(
       is_vault: note.is_vault ?? false,
       color: note.color || "#5865F2",
       pinned: note.pinned ?? false,
+      note_type: note.note_type || 'text',
+      checklist_items: note.checklist_items || [],
       created_at: now,
       updated_at: now,
     };
@@ -226,33 +261,79 @@ export async function saveNote(
 
   // Cloud persistence
   try {
+    const dbPayload: any = {
+      title: updatedNote.title,
+      content: updatedNote.content,
+      is_vault: updatedNote.is_vault,
+      color: updatedNote.color,
+      pinned: updatedNote.pinned,
+      note_type: updatedNote.note_type,
+      checklist_items: updatedNote.checklist_items,
+      updated_at: now,
+    };
+
     if (isExisting) {
-      await supabase.from("chat_notes").update({
-        title: updatedNote.title,
-        content: updatedNote.content,
-        is_vault: updatedNote.is_vault,
-        color: updatedNote.color,
-        pinned: updatedNote.pinned,
-        updated_at: now,
-      }).eq("id", noteId);
+      let { error } = await supabase.from("chat_notes").update(dbPayload).eq("id", noteId);
+      if (error) {
+        delete dbPayload.note_type;
+        delete dbPayload.checklist_items;
+        await supabase.from("chat_notes").update(dbPayload).eq("id", noteId);
+      }
     } else {
-      const { data, error } = await supabase.from("chat_notes").insert({
+      let { data, error } = await supabase.from("chat_notes").insert({
         chat_id: chatId,
         created_by: userId,
-        title: updatedNote.title,
-        content: updatedNote.content,
-        is_vault: updatedNote.is_vault,
-        color: updatedNote.color,
-        pinned: updatedNote.pinned,
+        ...dbPayload,
       }).select().single();
 
-      if (!error && data) {
+      if (error) {
+        delete dbPayload.note_type;
+        delete dbPayload.checklist_items;
+        const res = await supabase.from("chat_notes").insert({
+          chat_id: chatId,
+          created_by: userId,
+          ...dbPayload,
+        }).select().single();
+        data = res.data;
+      }
+
+      if (data) {
         updatedNote.id = data.id;
         const currentNow = await loadNotesFromLocal(chatId);
         const replaced = currentNow.map(n => n.id === noteId ? updatedNote : n);
         await saveNotesToLocal(chatId, replaced);
       }
     }
+  } catch (e) {}
+
+  broadcastNotesUpdate(chatId);
+  return updatedNote;
+}
+
+export async function toggleChecklistItem(chatId: string, noteId: string, itemId: string): Promise<NoteItem | null> {
+  const currentNotes = await loadNotesFromLocal(chatId);
+  const note = currentNotes.find(n => n.id === noteId);
+  if (!note || !note.checklist_items) return null;
+
+  const updatedItems = note.checklist_items.map(it =>
+    it.id === itemId ? { ...it, done: !it.done } : it
+  );
+
+  const updatedNote: NoteItem = {
+    ...note,
+    checklist_items: updatedItems,
+    updated_at: new Date().toISOString(),
+  };
+
+  const updatedList = currentNotes.map(n => n.id === noteId ? updatedNote : n);
+  await saveNotesToLocal(chatId, updatedList);
+
+  // Sync to DB
+  try {
+    await supabase.from("chat_notes").update({
+      checklist_items: updatedItems,
+      updated_at: updatedNote.updated_at,
+    }).eq("id", noteId);
   } catch (e) {}
 
   broadcastNotesUpdate(chatId);

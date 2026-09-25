@@ -9,12 +9,19 @@ import {
   Vibration,
   Platform,
 } from "react-native";
-import { ShieldCheck, Lock, KeyRound, X } from "lucide-react-native";
+import { ShieldCheck, Lock, KeyRound, X, Fingerprint } from "lucide-react-native";
 import { useAlaPin } from "../context/AlaPinContext";
 import { useTheme } from "../context/ThemeContext";
 
 export default function AlaPinLockScreen() {
-  const { isLocked, unlockWithPin, isPinEnabled } = useAlaPin();
+  const {
+    isLocked,
+    unlockWithPin,
+    isPinEnabled,
+    isBiometricSupported,
+    isBiometricEnabled,
+    authenticateBiometrics,
+  } = useAlaPin();
   const { theme } = useTheme();
   const isAmoled = theme.id === "black";
 
@@ -26,10 +33,27 @@ export default function AlaPinLockScreen() {
     if (!isLocked) {
       setPin("");
       setErrorMsg("");
+    } else if (isBiometricEnabled && isBiometricSupported) {
+      // Auto prompt biometrics on lock screen appearance
+      handleBiometrics();
     }
   }, [isLocked]);
 
   if (!isPinEnabled || !isLocked) return null;
+
+  const handleBiometrics = async () => {
+    try {
+      const res = await authenticateBiometrics("Unlock AlaText with Biometrics");
+      if (!res.success && res.error) {
+        // Only set error if not cancelled
+        if (!res.error.toLowerCase().includes("cancel")) {
+          setErrorMsg(res.error);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const triggerShake = () => {
     if (Platform.OS !== "web") {
@@ -82,8 +106,8 @@ export default function AlaPinLockScreen() {
           <View style={[styles.iconCircle, { backgroundColor: isAmoled ? "#1a1a1a" : theme.surface }]}>
             <ShieldCheck size={36} color={theme.accent} />
           </View>
-          <Text style={[styles.title, { color: isAmoled ? "#ffffff" : theme.text }]}>AlaPin Protection</Text>
-          <Text style={[styles.subtitle, { color: theme.textMuted }]}>Enter 4-Digit Passcode to Unlock</Text>
+          <Text style={[styles.title, { color: isAmoled ? "#ffffff" : theme.text, fontFamily: "Josefin Sans" }]}>AlaPin Protection</Text>
+          <Text style={[styles.subtitle, { color: theme.textMuted, fontFamily: "Josefin Sans" }]}>Enter 4-Digit Passcode or Fingerprint</Text>
         </View>
 
         {/* 4 PIN Dots */}
@@ -105,7 +129,7 @@ export default function AlaPinLockScreen() {
         </Animated.View>
 
         {/* Error Message */}
-        {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : <View style={{ height: 20 }} />}
+        {errorMsg ? <Text style={[styles.errorText, { fontFamily: "Josefin Sans" }]}>{errorMsg}</Text> : <View style={{ height: 20 }} />}
 
         {/* Keypad */}
         <View style={styles.keypad}>
@@ -116,24 +140,34 @@ export default function AlaPinLockScreen() {
               onPress={() => handleKeyPress(num)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.keyText, { color: isAmoled ? "#ffffff" : theme.text }]}>{num}</Text>
+              <Text style={[styles.keyText, { color: isAmoled ? "#ffffff" : theme.text, fontFamily: "Josefin Sans" }]}>{num}</Text>
             </TouchableOpacity>
           ))}
 
-          <TouchableOpacity
-            style={[styles.keyBtn, styles.actionKeyBtn]}
-            onPress={handleClear}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.actionKeyText, { color: theme.textMuted }]}>CLR</Text>
-          </TouchableOpacity>
+          {isBiometricSupported ? (
+            <TouchableOpacity
+              style={[styles.keyBtn, styles.actionKeyBtn, { backgroundColor: "rgba(99,102,241,0.12)" }]}
+              onPress={handleBiometrics}
+              activeOpacity={0.7}
+            >
+              <Fingerprint size={28} color={theme.accent} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.keyBtn, styles.actionKeyBtn]}
+              onPress={handleClear}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.actionKeyText, { color: theme.textMuted, fontFamily: "Josefin Sans" }]}>CLR</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.keyBtn, { backgroundColor: isAmoled ? "#111111" : theme.surface }]}
             onPress={() => handleKeyPress("0")}
             activeOpacity={0.7}
           >
-            <Text style={[styles.keyText, { color: isAmoled ? "#ffffff" : theme.text }]}>0</Text>
+            <Text style={[styles.keyText, { color: isAmoled ? "#ffffff" : theme.text, fontFamily: "Josefin Sans" }]}>0</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

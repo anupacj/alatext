@@ -10,7 +10,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { X, ShieldCheck, Lock, Eye, EyeOff, Check, KeyRound, AlertTriangle } from "lucide-react-native";
+import { X, ShieldCheck, Lock, Eye, EyeOff, Check, KeyRound, AlertTriangle, Fingerprint } from "lucide-react-native";
 import { useAlaPin } from "../context/AlaPinContext";
 import { useTheme } from "../context/ThemeContext";
 
@@ -26,6 +26,9 @@ export default function AlaPinSettingsModal({ visible, onClose }: AlaPinSettings
     isPinEnabled,
     realPin,
     decoyPin,
+    isBiometricSupported,
+    isBiometricEnabled,
+    toggleBiometricEnabled,
     setupRealPin,
     setupDecoyPin,
     togglePinEnabled,
@@ -83,7 +86,7 @@ export default function AlaPinSettingsModal({ visible, onClose }: AlaPinSettings
           <View style={styles.header}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <ShieldCheck size={22} color={theme.accent} />
-              <Text style={[styles.title, { color: isAmoled ? "#ffffff" : theme.text }]}>
+              <Text style={[styles.title, { color: isAmoled ? "#ffffff" : theme.text, fontFamily: "Josefin Sans" }]}>
                 AlaPin Passcode Security
               </Text>
             </View>
@@ -95,10 +98,10 @@ export default function AlaPinSettingsModal({ visible, onClose }: AlaPinSettings
           {/* Enable Switch Row */}
           <View style={[styles.row, { borderColor: "rgba(255,255,255,0.08)" }]}>
             <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={[styles.label, { color: isAmoled ? "#ffffff" : theme.text }]}>
+              <Text style={[styles.label, { color: isAmoled ? "#ffffff" : theme.text, fontFamily: "Josefin Sans" }]}>
                 Enable AlaPin Protection
               </Text>
-              <Text style={[styles.sublabel, { color: theme.textMuted }]}>
+              <Text style={[styles.sublabel, { color: theme.textMuted, fontFamily: "Josefin Sans" }]}>
                 Require 4-digit passcode to access app
               </Text>
             </View>
@@ -110,9 +113,32 @@ export default function AlaPinSettingsModal({ visible, onClose }: AlaPinSettings
             />
           </View>
 
+          {/* Fingerprint / Biometric Toggle */}
+          {isBiometricSupported && (
+            <View style={[styles.row, { borderColor: "rgba(255,255,255,0.08)" }]}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Fingerprint size={16} color={theme.accent} />
+                  <Text style={[styles.label, { color: isAmoled ? "#ffffff" : theme.text, fontFamily: "Josefin Sans" }]}>
+                    Fingerprint / Biometric Unlock
+                  </Text>
+                </View>
+                <Text style={[styles.sublabel, { color: theme.textMuted, fontFamily: "Josefin Sans" }]}>
+                  Use fingerprint sensor or Face ID to unlock app and secret vault
+                </Text>
+              </View>
+              <Switch
+                value={isBiometricEnabled}
+                onValueChange={toggleBiometricEnabled}
+                trackColor={{ false: "#444", true: theme.accent }}
+                thumbColor="#ffffff"
+              />
+            </View>
+          )}
+
           {/* REAL PIN FIELD */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: isAmoled ? "#dddddd" : theme.text }]}>
+            <Text style={[styles.inputLabel, { color: isAmoled ? "#dddddd" : theme.text, fontFamily: "Josefin Sans" }]}>
               🔑 Real Account PIN (4 Digits)
             </Text>
             <View style={[styles.inputWrapper, { backgroundColor: isAmoled ? "#000" : theme.background }]}>
