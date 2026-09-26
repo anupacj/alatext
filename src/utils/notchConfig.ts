@@ -9,6 +9,7 @@ export interface NotchConfig {
   topOffset: number; // Pixels offset (-15 to +35)
   islandHeight: number; // 38 to 54
   islandWidthRatio: number; // 0.85 to 1.0
+  islandBorderRadius: number; // 28 to 48 (dynamic squircle curves)
   cameraTargetGuide: boolean; // Alignment guide overlay
 }
 
@@ -49,6 +50,7 @@ export const DEFAULT_NOTCH_CONFIG: NotchConfig = {
   topOffset: 0,
   islandHeight: 46,
   islandWidthRatio: 1.0,
+  islandBorderRadius: 42,
   cameraTargetGuide: false,
 };
 

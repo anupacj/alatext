@@ -80,6 +80,18 @@ import {
   DynamicCameraGuide,
   DynamicIslandExpandedView,
 } from "../components/DynamicIslandVisuals";
+import {
+  initiateCall,
+  acceptIncomingCall,
+  rejectIncomingCall,
+  endActiveCall,
+  toggleMicMute,
+  toggleVideoCamera,
+  subscribeCallState,
+  registerUserForIncomingCalls,
+  getCallState,
+  WebRTCCallState,
+} from "../utils/webrtcCall";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -261,26 +273,23 @@ export default function ChatScreen() {
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const highlightTimerRef = useRef<any>(null);
 
-  // Dynamic Island Spring States & In-Call States
+  // Dynamic Island Spring States & Real WebRTC In-Call States
   const islandAnim = useRef(new RNAnimated.Value(0)).current;
   const [isIslandExpanded, setIsIslandExpanded] = useState(false);
-  const [callActive, setCallActive] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
-  const [callType, setCallType] = useState<"audio" | "video">("audio");
+  const [callState, setCallState] = useState<WebRTCCallState>(() => getCallState());
 
   useEffect(() => {
-    let interval: any = null;
-    if (callActive) {
-      interval = setInterval(() => {
-        setCallDuration((d) => d + 1);
-      }, 1000);
-    } else {
-      setCallDuration(0);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [callActive]);
+    const unsubCall = subscribeCallState((st) => {
+      setCallState(st);
+    });
+    return unsubCall;
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const unsubRegister = registerUserForIncomingCalls(user.id);
+    return unsubRegister;
+  }, [user?.id]);
 
   useEffect(() => {
     if (!isDynamicIslandActive || !notchConfig.dynamicAnimationsEnabled) {
@@ -294,12 +303,12 @@ export default function ChatScreen() {
     }
 
     let target = 0;
-    if (isIslandExpanded || callActive) {
-      target = 2;
+    if (isIslandExpanded || callState.status !== "idle") {
+      target = 2; // Full expansion
     } else if (audioState.isPlaying || isTyping || isHeartGlowing) {
-      target = 1;
+      target = 1; // Active morph
     } else {
-      target = 0;
+      target = 0; // Resting pill
     }
 
     RNAnimated.spring(islandAnim, {
@@ -308,57 +317,72 @@ export default function ChatScreen() {
       tension: 85,
       useNativeDriver: false,
     }).start();
-  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, isIslandExpanded, callActive, audioState.isPlaying, isTyping, isHeartGlowing]);
+  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, isIslandExpanded, callState.status, audioState.isPlaying, isTyping, isHeartGlowing]);
 
+  // Left pill collapses width to 0 when island expands so center island is 100% symmetrical
   const leftPillAnimatedStyle = isDynamicIslandActive
     ? {
+        width: islandAnim.interpolate({
+          inputRange: [0, 1, 1.4, 2],
+          outputRange: [effectivePillHeight, effectivePillHeight, 0, 0],
+        }),
+        overflow: "hidden" as any,
         transform: [
           {
             translateX: islandAnim.interpolate({
               inputRange: [0, 1, 2],
-              outputRange: [0, -14, -60],
+              outputRange: [0, -10, -32],
             }),
           },
           {
             scale: islandAnim.interpolate({
               inputRange: [0, 1, 2],
-              outputRange: [1, 0.92, 0.7],
+              outputRange: [1, 0.94, 0.5],
             }),
           },
         ],
         opacity: islandAnim.interpolate({
-          inputRange: [0, 1, 1.3, 2],
-          outputRange: [1, 0.9, 0.1, 0],
+          inputRange: [0, 0.8, 1.3, 2],
+          outputRange: [1, 0.9, 0, 0],
         }),
       }
     : {};
 
+  // Right pill collapses width to 0 when island expands so center island is 100% symmetrical
+  const rightPillBaseWidth = isGroup ? effectivePillHeight : 86;
   const rightPillAnimatedStyle = isDynamicIslandActive
     ? {
+        width: islandAnim.interpolate({
+          inputRange: [0, 1, 1.4, 2],
+          outputRange: [rightPillBaseWidth, rightPillBaseWidth, 0, 0],
+        }),
+        overflow: "hidden" as any,
         transform: [
           {
             translateX: islandAnim.interpolate({
               inputRange: [0, 1, 2],
-              outputRange: [0, 14, 60],
+              outputRange: [0, 10, 32],
             }),
           },
           {
             scale: islandAnim.interpolate({
               inputRange: [0, 1, 2],
-              outputRange: [1, 0.92, 0.7],
+              outputRange: [1, 0.94, 0.5],
             }),
           },
         ],
         opacity: islandAnim.interpolate({
-          inputRange: [0, 1, 1.3, 2],
-          outputRange: [1, 0.9, 0.1, 0],
+          inputRange: [0, 0.8, 1.3, 2],
+          outputRange: [1, 0.9, 0, 0],
         }),
       }
     : {};
 
   const baseH = effectivePillHeight;
   const activeH = baseH + 6;
-  const expandedH = callActive ? 168 : 148;
+  const isVideoConnected = callState.status === "connected" && callState.callType === "video";
+  const expandedH = isVideoConnected ? 245 : (callState.status !== "idle" ? 168 : 148);
+  const dynamicBorderRadius = notchConfig.islandBorderRadius || 42;
 
   const centerIslandAnimatedStyle = isDynamicIslandActive
     ? {
@@ -368,21 +392,15 @@ export default function ChatScreen() {
         }),
         borderRadius: islandAnim.interpolate({
           inputRange: [0, 1, 2],
-          outputRange: [baseH / 2, activeH / 2, 28],
+          outputRange: [baseH / 2, activeH / 2, dynamicBorderRadius],
         }),
-        marginLeft: islandAnim.interpolate({
-          inputRange: [0, 1, 2],
-          outputRange: [0, -8, -52],
-        }),
-        marginRight: islandAnim.interpolate({
-          inputRange: [0, 1, 2],
-          outputRange: [0, -8, -52],
-        }),
+        marginLeft: 0,
+        marginRight: 0,
         transform: [
           {
             scale: islandAnim.interpolate({
               inputRange: [0, 0.5, 1, 1.5, 2],
-              outputRange: [1, 1.04, 1.02, 1.01, 1],
+              outputRange: [1, 1.03, 1.01, 1.005, 1],
             }),
           },
         ],
@@ -2599,13 +2617,12 @@ export default function ChatScreen() {
         />
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
-        {(isIslandExpanded || callActive) && (
+        {(isIslandExpanded || callState.status !== "idle") && (
           <Pressable
             style={[StyleSheet.absoluteFill, { zIndex: 45 }]}
             onPress={() => {
-              setIsIslandExpanded(false);
-              if (callActive) {
-                setCallActive(false);
+              if (callState.status === "idle") {
+                setIsIslandExpanded(false);
               }
             }}
           />
@@ -2691,26 +2708,49 @@ export default function ChatScreen() {
                   centerIslandAnimatedStyle,
                 ]}
               >
-                {isIslandExpanded || callActive ? (
+                {isIslandExpanded || callState.status !== "idle" ? (
                   <DynamicIslandExpandedView
                     targetUser={targetUser}
                     theme={theme}
                     audioState={audioState}
                     isTyping={isTyping}
                     typingUsername={typingUsername}
-                    isCalling={callActive}
-                    callDuration={callDuration}
-                    callType={callType}
+                    isCalling={callState.status !== "idle"}
+                    callDuration={callState.duration}
+                    callType={callState.callType}
+                    callStatus={callState.status}
+                    callIsMuted={callState.isMuted}
+                    callIsVideoOff={callState.isVideoOff}
+                    localStream={callState.localStream}
+                    remoteStream={callState.remoteStream}
+                    audioVolume={callState.audioVolume}
                     onStartCall={(type) => {
-                      setCallType(type);
-                      setCallActive(true);
-                      setCallDuration(0);
-                      playNotificationChime();
+                      if (!targetUser?.id) return;
+                      initiateCall({
+                        chatId: (currentChatId || id) as string,
+                        callerId: user?.id || "",
+                        callerName: (myProfile as any)?.nickname || myProfile?.display_name || myProfile?.username || user?.email?.split("@")[0] || "User",
+                        callerAvatar: myProfile?.avatar_url,
+                        partnerId: targetUser.id,
+                        partnerName: targetUser.nickname || targetUser.display_name || targetUser.username || name || "Partner",
+                        partnerAvatar: (targetUser.id && chatAvatars[targetUser.id]) || targetUser.avatar_url,
+                        callType: type,
+                      });
+                    }}
+                    onAcceptCall={() => {
+                      acceptIncomingCall();
+                    }}
+                    onRejectCall={() => {
+                      rejectIncomingCall();
                     }}
                     onEndCall={() => {
-                      setCallActive(false);
-                      setCallDuration(0);
-                      setIsIslandExpanded(false);
+                      endActiveCall();
+                    }}
+                    onToggleMute={() => {
+                      toggleMicMute();
+                    }}
+                    onToggleVideo={() => {
+                      toggleVideoCamera();
                     }}
                     onHeartPing={triggerHeartPing}
                     onOpenChatInfo={openChatInfo}

@@ -236,3 +236,164 @@ export async function playNotificationChime(explicitSoundId?: string, explicitCu
     console.error("Error playing notification sound:", e);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Real-Time Calling Ringtones & Telephony Tones (Web Audio API Synthesized)
+// ---------------------------------------------------------------------------
+
+let outgoingRingtoneInterval: any = null;
+let incomingRingtoneInterval: any = null;
+
+/**
+ * Starts looping telephone ring tone for caller ("tuuut... tuuut...")
+ */
+export function startOutgoingRingtone(): void {
+  stopOutgoingRingtone();
+  stopIncomingRingtone();
+
+  const playBurst = () => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = "sine";
+      osc2.type = "sine";
+      osc1.frequency.setValueAtTime(440, now);
+      osc2.frequency.setValueAtTime(480, now);
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.12, now + 0.05);
+      gain.gain.setValueAtTime(0.12, now + 1.2);
+      gain.gain.linearRampToValueAtTime(0, now + 1.3);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 1.35);
+      osc2.stop(now + 1.35);
+    } catch (e) {}
+  };
+
+  playBurst();
+  outgoingRingtoneInterval = setInterval(playBurst, 3500);
+}
+
+export function stopOutgoingRingtone(): void {
+  if (outgoingRingtoneInterval) {
+    clearInterval(outgoingRingtoneInterval);
+    outgoingRingtoneInterval = null;
+  }
+}
+
+/**
+ * Starts melodious incoming call ringtone for callee
+ */
+export function startIncomingRingtone(): void {
+  stopIncomingRingtone();
+  stopOutgoingRingtone();
+
+  const playMelody = () => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      // Melodious modern chime triad: E5 (659Hz), G#5 (830Hz), B5 (987Hz), E6 (1318Hz)
+      const notes = [659.25, 830.61, 987.77, 1318.51, 987.77, 1318.51];
+      notes.forEach((freq, idx) => {
+        const start = now + idx * 0.14;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.45);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(start);
+        osc.stop(start + 0.5);
+      });
+    } catch (e) {}
+  };
+
+  playMelody();
+  incomingRingtoneInterval = setInterval(playMelody, 2600);
+}
+
+export function stopIncomingRingtone(): void {
+  if (incomingRingtoneInterval) {
+    clearInterval(incomingRingtoneInterval);
+    incomingRingtoneInterval = null;
+  }
+}
+
+/**
+ * Plays cheerful ascending connection chime
+ */
+export function playCallConnectedTone(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+    notes.forEach((freq, idx) => {
+      const start = now + idx * 0.08;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, start);
+
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.18, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + 0.38);
+    });
+  } catch (e) {}
+}
+
+/**
+ * Plays gentle descending hangup tone
+ */
+export function playCallEndedTone(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const notes = [659.25, 440.0, 329.63]; // E5, A4, E4
+    notes.forEach((freq, idx) => {
+      const start = now + idx * 0.12;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, start);
+
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.14, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.4);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + 0.45);
+    });
+  } catch (e) {}
+}

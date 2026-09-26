@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity } from "react-native";
-import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, ChevronUp, Sparkles, Info } from "lucide-react-native";
+import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, VideoOff, ChevronUp, Sparkles, Info } from "lucide-react-native";
 import { NotchConfig, DynamicIslandAudioEvent } from "../utils/notchConfig";
 
 // --- FORMAT DURATION HELPER ---
@@ -232,8 +232,18 @@ export function DynamicIslandExpandedView({
   isCalling = false,
   callDuration = 0,
   callType = "audio",
+  callStatus = "idle",
+  callIsMuted = false,
+  callIsVideoOff = false,
+  localStream = null,
+  remoteStream = null,
+  audioVolume = 0,
   onStartCall,
+  onAcceptCall,
+  onRejectCall,
   onEndCall,
+  onToggleMute,
+  onToggleVideo,
   onHeartPing,
   onOpenChatInfo,
   onCollapse,
@@ -246,14 +256,43 @@ export function DynamicIslandExpandedView({
   isCalling?: boolean;
   callDuration?: number;
   callType?: "audio" | "video";
+  callStatus?: "idle" | "calling" | "ringing" | "connected" | "ended";
+  callIsMuted?: boolean;
+  callIsVideoOff?: boolean;
+  localStream?: MediaStream | null;
+  remoteStream?: MediaStream | null;
+  audioVolume?: number;
   onStartCall: (type: "audio" | "video") => void;
+  onAcceptCall?: () => void;
+  onRejectCall?: () => void;
   onEndCall: () => void;
+  onToggleMute?: () => void;
+  onToggleVideo?: () => void;
   onHeartPing: () => void;
   onOpenChatInfo: () => void;
   onCollapse: () => void;
 }) {
   const contactName =
     targetUser?.nickname || targetUser?.display_name || targetUser?.username || "Partner";
+
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play().catch(() => {});
+    }
+  }, [remoteStream]);
+
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
+    }
+  }, [localStream]);
+
+  const isCallActive = isCalling || callStatus !== "idle";
 
   return (
     <View style={visualStyles.expandedContainer}>
@@ -262,11 +301,22 @@ export function DynamicIslandExpandedView({
         <View
           style={[
             visualStyles.expandedAvatar,
-            { backgroundColor: isCalling ? "#10b981" : theme?.accent || "#5865F2" },
+            {
+              backgroundColor:
+                callStatus === "ringing"
+                  ? "#10b981"
+                  : isCallActive
+                  ? (callType === "video" ? "#a855f7" : "#10b981")
+                  : theme?.accent || "#5865F2",
+            },
           ]}
         >
-          {isCalling ? (
-            callType === "video" ? <Video size={16} color="#ffffff" /> : <Phone size={16} color="#ffffff" />
+          {isCallActive ? (
+            callType === "video" ? (
+              <Video size={16} color="#ffffff" />
+            ) : (
+              <Phone size={16} color="#ffffff" />
+            )
           ) : (
             <User size={16} color="#ffffff" />
           )}
@@ -277,7 +327,15 @@ export function DynamicIslandExpandedView({
             {contactName}
           </Text>
 
-          {isCalling ? (
+          {callStatus === "calling" ? (
+            <Text style={[visualStyles.expandedSubtitle, { color: "#38bdf8", fontWeight: "600" }]}>
+              Calling {callType === "video" ? "HD Video..." : "HD Audio..."}
+            </Text>
+          ) : callStatus === "ringing" ? (
+            <Text style={[visualStyles.expandedSubtitle, { color: "#10b981", fontWeight: "bold" }]}>
+              Incoming {callType === "video" ? "Video Call..." : "Audio Call..."}
+            </Text>
+          ) : callStatus === "connected" || isCalling ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Text style={[visualStyles.expandedSubtitle, { color: "#10b981", fontWeight: "bold" }]}>
                 {formatCallDuration(callDuration)}
@@ -288,14 +346,19 @@ export function DynamicIslandExpandedView({
             </View>
           ) : audioState?.isPlaying ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={[visualStyles.expandedSubtitle, { color: "#10b981", fontWeight: "bold" }]} numberOfLines={1}>
+              <Text
+                style={[visualStyles.expandedSubtitle, { color: "#10b981", fontWeight: "bold" }]}
+                numberOfLines={1}
+              >
                 {audioState.title ? `Playing ${audioState.title}` : "Voice Note Playing"}
               </Text>
               <DynamicEqualizerBars color="#10b981" active={true} />
             </View>
           ) : isTyping ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={[visualStyles.expandedSubtitle, { color: theme?.accent || "#5865F2", fontWeight: "bold" }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text
+                style={[visualStyles.expandedSubtitle, { color: theme?.accent || "#5865F2", fontWeight: "bold" }]}
+              >
                 {typingUsername ? `${typingUsername} is typing` : "typing message..."}
               </Text>
               <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
@@ -317,16 +380,130 @@ export function DynamicIslandExpandedView({
         </TouchableOpacity>
       </View>
 
+      {/* Video Stream Stage (When in active Video call) */}
+      {callStatus === "connected" && callType === "video" && (
+        <View style={visualStyles.videoStage}>
+          {Platform.OS === "web" ? (
+            <video
+              ref={remoteVideoRef as any}
+              autoPlay
+              playsInline
+              style={{
+                width: "100%",
+                height: 120,
+                borderRadius: 18,
+                backgroundColor: "#000",
+                objectFit: "cover",
+              } as any}
+            />
+          ) : (
+            <View style={[visualStyles.videoPlaceholder, { height: 120 }]}>
+              <Video size={28} color="#a855f7" />
+              <Text style={{ color: "#fff", fontSize: 12, marginTop: 4 }}>HD Video Active</Text>
+            </View>
+          )}
+
+          {/* Picture in picture local preview */}
+          {Platform.OS === "web" && localStream && !callIsVideoOff && (
+            <video
+              ref={localVideoRef as any}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                width: 64,
+                height: 48,
+                borderRadius: 10,
+                borderWidth: 1.5,
+                borderColor: "#fff",
+                backgroundColor: "#222",
+                objectFit: "cover",
+                transform: "scaleX(-1)",
+              } as any}
+            />
+          )}
+        </View>
+      )}
+
       {/* Middle/Bottom Actions */}
-      {isCalling ? (
+      {callStatus === "ringing" ? (
+        /* Callee: Incoming Call Answer & Decline buttons */
+        <View style={[visualStyles.callingRow, { justifyContent: "space-around" }]}>
+          <TouchableOpacity
+            style={[visualStyles.callHangupBtn, { backgroundColor: "#ef4444", paddingHorizontal: 20 }]}
+            onPress={onRejectCall}
+            activeOpacity={0.8}
+          >
+            <PhoneOff size={16} color="#ffffff" style={{ marginRight: 6 }} />
+            <Text style={visualStyles.callHangupText}>Decline</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[visualStyles.callHangupBtn, { backgroundColor: "#10b981", paddingHorizontal: 22 }]}
+            onPress={onAcceptCall}
+            activeOpacity={0.8}
+          >
+            <Phone size={16} color="#ffffff" style={{ marginRight: 6 }} />
+            <Text style={visualStyles.callHangupText}>Accept</Text>
+          </TouchableOpacity>
+        </View>
+      ) : callStatus === "calling" ? (
+        /* Caller: Ringing Outgoing */
+        <View style={visualStyles.callingRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={[visualStyles.callingPulseRing, { backgroundColor: "rgba(56, 189, 248, 0.2)" }]}>
+              <DynamicEqualizerBars color="#38bdf8" active={true} />
+            </View>
+            <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: "Josefin Sans" }}>
+              Ringing...
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={visualStyles.callHangupBtn}
+            onPress={onEndCall}
+            activeOpacity={0.8}
+          >
+            <PhoneOff size={16} color="#ffffff" style={{ marginRight: 6 }} />
+            <Text style={visualStyles.callHangupText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      ) : callStatus === "connected" || isCalling ? (
+        /* Active Connected Call Controls */
         <View style={visualStyles.callingRow}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <View style={visualStyles.callingPulseRing}>
               <DynamicEqualizerBars color="#10b981" active={true} />
             </View>
-            <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontFamily: "Josefin Sans" }}>
-              Audio Streaming
-            </Text>
+
+            {onToggleMute && (
+              <TouchableOpacity
+                onPress={onToggleMute}
+                style={[
+                  visualStyles.callIconControlBtn,
+                  callIsMuted && { backgroundColor: "rgba(239, 68, 68, 0.3)", borderColor: "#ef4444" },
+                ]}
+                activeOpacity={0.7}
+              >
+                {callIsMuted ? <MicOff size={15} color="#ef4444" /> : <Mic size={15} color="#ffffff" />}
+              </TouchableOpacity>
+            )}
+
+            {callType === "video" && onToggleVideo && (
+              <TouchableOpacity
+                onPress={onToggleVideo}
+                style={[
+                  visualStyles.callIconControlBtn,
+                  callIsVideoOff && { backgroundColor: "rgba(239, 68, 68, 0.3)", borderColor: "#ef4444" },
+                ]}
+                activeOpacity={0.7}
+              >
+                {callIsVideoOff ? <VideoOff size={15} color="#ef4444" /> : <Video size={15} color="#ffffff" />}
+              </TouchableOpacity>
+            )}
           </View>
 
           <TouchableOpacity
@@ -339,6 +516,7 @@ export function DynamicIslandExpandedView({
           </TouchableOpacity>
         </View>
       ) : (
+        /* Normal Quick Shortcuts Deck */
         <View style={visualStyles.quickActionsRow}>
           <TouchableOpacity
             style={visualStyles.quickActionBtn}
@@ -788,6 +966,32 @@ const visualStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     fontFamily: "Josefin Sans",
+  },
+  callIconControlBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoStage: {
+    width: "100%",
+    height: 120,
+    borderRadius: 18,
+    overflow: "hidden",
+    position: "relative",
+    marginVertical: 6,
+    backgroundColor: "#000000",
+  },
+  videoPlaceholder: {
+    width: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(168, 85, 247, 0.12)",
+    borderRadius: 18,
   },
   mockupFrame: {
     width: "100%",

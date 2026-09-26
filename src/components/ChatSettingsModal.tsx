@@ -2308,6 +2308,40 @@ export default function ChatSettingsModal({
           />
         </View>
 
+        {/* Dynamic Island Curvature (Corner Radius) */}
+        <View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <Text style={styles.sliderLabel}>
+              Corner Curvature: <Text style={{ color: theme.accent || "#5865F2", fontWeight: "bold" }}>{notchConfig.islandBorderRadius || 42}px</Text>
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <TouchableOpacity
+                style={styles.notchStepBtn}
+                onPress={() => updateNotch({ islandBorderRadius: Math.max(28, (notchConfig.islandBorderRadius || 42) - 2) })}
+              >
+                <Text style={{ color: theme.text, fontWeight: "bold" }}>-2</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.notchStepBtn}
+                onPress={() => updateNotch({ islandBorderRadius: Math.min(48, (notchConfig.islandBorderRadius || 42) + 2) })}
+              >
+                <Text style={{ color: theme.text, fontWeight: "bold" }}>+2</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <Slider
+            style={styles.slider}
+            minimumValue={28}
+            maximumValue={48}
+            step={1}
+            value={notchConfig.islandBorderRadius || 42}
+            onValueChange={(val) => updateNotch({ islandBorderRadius: Math.round(val) })}
+            minimumTrackTintColor={theme.accent || "#5865F2"}
+            maximumTrackTintColor={theme.border}
+            thumbTintColor={theme.accent || "#5865F2"}
+          />
+        </View>
+
         {/* Camera Alignment Reticle Toggle */}
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 8, borderTopWidth: 1, borderTopColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }}>
           <View style={{ flex: 1, marginRight: 12 }}>
