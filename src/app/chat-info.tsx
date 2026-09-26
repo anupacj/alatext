@@ -3595,41 +3595,10 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     },
 
     // -------------------------------------------------------------
-    // FILTER CHIPS
-    // -------------------------------------------------------------
-    filterChipRow: {
-      flexDirection: "row",
-      gap: 8,
-      marginBottom: 14,
-    },
-    filterChip: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 12,
-      backgroundColor: cardBg,
-      borderWidth: 1,
-      borderColor: borderCol,
-    },
-    filterChipActive: {
-      backgroundColor: isAmoled ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)",
-      borderColor: theme.accent || "#5865F2",
-    },
-    filterChipText: {
-      color: theme.textMuted,
-      fontSize: 12,
-      fontWeight: "600",
-      fontFamily: "Josefin Sans",
-    },
-    filterChipTextActive: {
-      color: isAmoled ? "#ffffff" : theme.text,
-      fontWeight: "700",
-    },
-
-    // -------------------------------------------------------------
     // HOLD-TO-PEEK & TAGS
     // -------------------------------------------------------------
     holdToPeekVeil: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: "rgba(0, 0, 0, 0.45)",
       alignItems: "center",
       justifyContent: "center",

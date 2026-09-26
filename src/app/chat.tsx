@@ -185,84 +185,6 @@ export default function ChatScreen() {
 
   const isDynamicIslandActive = !isDesktop && notchConfig.mode === "dynamic_island";
 
-  // Dynamic Island Spring States & In-Call States
-  const islandState = useSharedValue(0);
-  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
-  const [callActive, setCallActive] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
-  const [callType, setCallType] = useState<"audio" | "video">("audio");
-
-  useEffect(() => {
-    let interval: any = null;
-    if (callActive) {
-      interval = setInterval(() => {
-        setCallDuration((d) => d + 1);
-      }, 1000);
-    } else {
-      setCallDuration(0);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [callActive]);
-
-  useEffect(() => {
-    if (!isDynamicIslandActive || !notchConfig.dynamicAnimationsEnabled) {
-      islandState.value = 0;
-      return;
-    }
-
-    if (isIslandExpanded || callActive) {
-      islandState.value = withSpring(2, { damping: 18, stiffness: 220, mass: 0.85 });
-    } else if (audioState.isPlaying || isTyping || isHeartGlowing) {
-      islandState.value = withSpring(1, { damping: 16, stiffness: 240, mass: 0.8 });
-    } else {
-      islandState.value = withSpring(0, { damping: 20, stiffness: 260, mass: 0.85 });
-    }
-  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, isIslandExpanded, callActive, audioState.isPlaying, isTyping, isHeartGlowing]);
-
-  const leftPillAnimatedStyle = useAnimatedStyle(() => {
-    if (!isDynamicIslandActive) return {};
-    const translateX = interpolate(islandState.value, [0, 1, 2], [0, -14, -60]);
-    const opacity = interpolate(islandState.value, [0, 1, 1.2, 2], [1, 0.9, 0.2, 0]);
-    const scale = interpolate(islandState.value, [0, 1, 2], [1, 0.92, 0.7]);
-    return {
-      transform: [{ translateX }, { scale }],
-      opacity,
-    };
-  });
-
-  const rightPillAnimatedStyle = useAnimatedStyle(() => {
-    if (!isDynamicIslandActive) return {};
-    const translateX = interpolate(islandState.value, [0, 1, 2], [0, 14, 60]);
-    const opacity = interpolate(islandState.value, [0, 1, 1.2, 2], [1, 0.9, 0.2, 0]);
-    const scale = interpolate(islandState.value, [0, 1, 2], [1, 0.92, 0.7]);
-    return {
-      transform: [{ translateX }, { scale }],
-      opacity,
-    };
-  });
-
-  const centerIslandAnimatedStyle = useAnimatedStyle(() => {
-    if (!isDynamicIslandActive) return {};
-
-    const baseH = effectivePillHeight;
-    const activeH = baseH + 6;
-    const expandedH = callActive ? 168 : 148;
-
-    const height = interpolate(islandState.value, [0, 1, 2], [baseH, activeH, expandedH]);
-    const scale = interpolate(islandState.value, [0, 0.5, 1, 1.5, 2], [1, 1.04, 1.02, 1.01, 1]);
-    const marginHorizontal = interpolate(islandState.value, [0, 1, 2], [0, -8, -52]);
-    const borderRadius = interpolate(islandState.value, [0, 1, 2], [baseH / 2, activeH / 2, 28]);
-
-    return {
-      height,
-      transform: [{ scale }],
-      marginHorizontal,
-      borderRadius,
-    };
-  });
-
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -338,6 +260,134 @@ export default function ChatScreen() {
   const [myNicknameFromPartner, setMyNicknameFromPartner] = useState<string | null>(null);
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const highlightTimerRef = useRef<any>(null);
+
+  // Dynamic Island Spring States & In-Call States
+  const islandAnim = useRef(new RNAnimated.Value(0)).current;
+  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
+  const [callActive, setCallActive] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+  const [callType, setCallType] = useState<"audio" | "video">("audio");
+
+  useEffect(() => {
+    let interval: any = null;
+    if (callActive) {
+      interval = setInterval(() => {
+        setCallDuration((d) => d + 1);
+      }, 1000);
+    } else {
+      setCallDuration(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [callActive]);
+
+  useEffect(() => {
+    if (!isDynamicIslandActive || !notchConfig.dynamicAnimationsEnabled) {
+      RNAnimated.spring(islandAnim, {
+        toValue: 0,
+        friction: 6,
+        tension: 85,
+        useNativeDriver: false,
+      }).start();
+      return;
+    }
+
+    let target = 0;
+    if (isIslandExpanded || callActive) {
+      target = 2;
+    } else if (audioState.isPlaying || isTyping || isHeartGlowing) {
+      target = 1;
+    } else {
+      target = 0;
+    }
+
+    RNAnimated.spring(islandAnim, {
+      toValue: target,
+      friction: 6,
+      tension: 85,
+      useNativeDriver: false,
+    }).start();
+  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, isIslandExpanded, callActive, audioState.isPlaying, isTyping, isHeartGlowing]);
+
+  const leftPillAnimatedStyle = isDynamicIslandActive
+    ? {
+        transform: [
+          {
+            translateX: islandAnim.interpolate({
+              inputRange: [0, 1, 2],
+              outputRange: [0, -14, -60],
+            }),
+          },
+          {
+            scale: islandAnim.interpolate({
+              inputRange: [0, 1, 2],
+              outputRange: [1, 0.92, 0.7],
+            }),
+          },
+        ],
+        opacity: islandAnim.interpolate({
+          inputRange: [0, 1, 1.3, 2],
+          outputRange: [1, 0.9, 0.1, 0],
+        }),
+      }
+    : {};
+
+  const rightPillAnimatedStyle = isDynamicIslandActive
+    ? {
+        transform: [
+          {
+            translateX: islandAnim.interpolate({
+              inputRange: [0, 1, 2],
+              outputRange: [0, 14, 60],
+            }),
+          },
+          {
+            scale: islandAnim.interpolate({
+              inputRange: [0, 1, 2],
+              outputRange: [1, 0.92, 0.7],
+            }),
+          },
+        ],
+        opacity: islandAnim.interpolate({
+          inputRange: [0, 1, 1.3, 2],
+          outputRange: [1, 0.9, 0.1, 0],
+        }),
+      }
+    : {};
+
+  const baseH = effectivePillHeight;
+  const activeH = baseH + 6;
+  const expandedH = callActive ? 168 : 148;
+
+  const centerIslandAnimatedStyle = isDynamicIslandActive
+    ? {
+        height: islandAnim.interpolate({
+          inputRange: [0, 1, 2],
+          outputRange: [baseH, activeH, expandedH],
+        }),
+        borderRadius: islandAnim.interpolate({
+          inputRange: [0, 1, 2],
+          outputRange: [baseH / 2, activeH / 2, 28],
+        }),
+        marginLeft: islandAnim.interpolate({
+          inputRange: [0, 1, 2],
+          outputRange: [0, -8, -52],
+        }),
+        marginRight: islandAnim.interpolate({
+          inputRange: [0, 1, 2],
+          outputRange: [0, -8, -52],
+        }),
+        transform: [
+          {
+            scale: islandAnim.interpolate({
+              inputRange: [0, 0.5, 1, 1.5, 2],
+              outputRange: [1, 1.04, 1.02, 1.01, 1],
+            }),
+          },
+        ],
+      }
+    : {};
 
   // More ⋮ Animated Dropdown Menu State
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
@@ -2581,7 +2631,7 @@ export default function ChatScreen() {
               }}
             >
               {/* Left Pill (Back / Sidebar) - Springs away to the left */}
-              <Animated.View style={leftPillAnimatedStyle}>
+              <RNAnimated.View style={leftPillAnimatedStyle}>
                 {isDesktop ? (
                   <TouchableOpacity
                     onPress={toggleSidebar}
@@ -2618,10 +2668,10 @@ export default function ChatScreen() {
                     <ChevronLeft size={24} color={headerIconColor} />
                   </TouchableOpacity>
                 )}
-              </Animated.View>
+              </RNAnimated.View>
 
               {/* Center Dynamic Island - Springs bigger, wider, and expands */}
-              <Animated.View
+              <RNAnimated.View
                 style={[
                   styles.headerPill,
                   styles.headerProfilePill,
@@ -2744,10 +2794,10 @@ export default function ChatScreen() {
                     )}
                   </TouchableOpacity>
                 )}
-              </Animated.View>
+              </RNAnimated.View>
 
               {/* Right Pill (Heart & More) - Springs away to the right */}
-              <Animated.View style={rightPillAnimatedStyle}>
+              <RNAnimated.View style={rightPillAnimatedStyle}>
                 <View style={[
                   styles.headerPill,
                   styles.headerActionsPill,
@@ -2803,7 +2853,7 @@ export default function ChatScreen() {
                     <MoreVertical size={20} color={headerIconColor} />
                   </TouchableOpacity>
                 </View>
-              </Animated.View>
+              </RNAnimated.View>
             </RNAnimated.View>
           ) : (
             <RNAnimated.View

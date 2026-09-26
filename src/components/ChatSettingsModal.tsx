@@ -2996,7 +2996,7 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
       borderRadius: 14,
       padding: 12,
       marginBottom: 16,
-      transition: "all 0.2s ease" as any,
+      ...(Platform.OS === "web" ? ({ transition: "all 0.2s ease" } as any) : {}),
     },
     dropZoneContainerActive: {
       borderColor: theme.accent || "#5865F2",
