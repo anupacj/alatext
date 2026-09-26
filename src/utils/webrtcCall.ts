@@ -52,8 +52,11 @@ const stateListeners: Set<(state: WebRTCCallState) => void> = new Set();
 let peerConnection: RTCPeerConnection | null = null;
 let activeSignalingChannel: any = null;
 let userInboxChannel: any = null;
+let registeredUserId: string | null = null;
 let callDurationTimer: any = null;
 let pendingIceCandidates: RTCIceCandidateInit[] = [];
+let localGatheredIceCandidates: any[] = [];
+let storedIncomingOffer: any = null;
 let audioAnalyserNode: AnalyserNode | null = null;
 let audioMeterInterval: any = null;
 let remoteAudioElement: HTMLAudioElement | null = null;
@@ -65,7 +68,9 @@ const RTC_CONFIG: RTCConfiguration = {
     { urls: "stun:stun2.l.google.com:19302" },
     { urls: "stun:stun3.l.google.com:19302" },
     { urls: "stun:stun4.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" },
   ],
+  iceCandidatePoolSize: 10,
 };
 
 function notifyListeners() {
@@ -92,6 +97,12 @@ export function subscribeCallState(callback: (state: WebRTCCallState) => void): 
   return () => {
     stateListeners.delete(callback);
   };
+}
+
+export function formatCallDuration(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,21 +180,62 @@ function stopDurationTimer() {
   }
 }
 
+// Helper to ensure channel is subscribed before broadcasting
+async function broadcastSafely(channel: any, event: string, payload: any): Promise<boolean> {
+  if (!channel) return false;
+  try {
+    if (channel.state === "joined") {
+      await channel.send({ type: "broadcast", event, payload });
+      return true;
+    }
+    return await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          try {
+            channel.send({ type: "broadcast", event, payload }).catch(() => {});
+          } catch (e) {}
+          resolve(false);
+        }
+      }, 2500);
+
+      channel.subscribe(async (status: string) => {
+        if (status === "SUBSCRIBED" && !resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          try {
+            await channel.send({ type: "broadcast", event, payload });
+            resolve(true);
+          } catch (e) {
+            resolve(false);
+          }
+        }
+      });
+    });
+  } catch (e) {
+    console.error("broadcastSafely error:", e);
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // PeerConnection Helper
 // ---------------------------------------------------------------------------
-function createPeerConnection(chatId: string, callId: string, partnerId: string): RTCPeerConnection {
+function createPeerConnection(chatId: string, callId: string, partnerId: string, myUserId: string): RTCPeerConnection {
   const pc = new RTCPeerConnection(RTC_CONFIG);
 
   pc.onicecandidate = (event) => {
     if (event.candidate && activeSignalingChannel) {
+      const candJSON = event.candidate.toJSON();
+      localGatheredIceCandidates.push(candJSON);
       activeSignalingChannel.send({
         type: "broadcast",
         event: "ice_candidate",
         payload: {
           callId,
-          targetId: partnerId,
-          candidate: event.candidate.toJSON(),
+          senderId: myUserId,
+          candidate: candJSON,
         },
       });
     }
@@ -200,8 +252,6 @@ function createPeerConnection(chatId: string, callId: string, partnerId: string)
     if (pc.connectionState === "connected") {
       stopOutgoingRingtone();
       stopIncomingRingtone();
-      playCallConnectedTone();
-      startDurationTimer();
       updateState({ status: "connected" });
     } else if (
       pc.connectionState === "disconnected" ||
@@ -222,7 +272,44 @@ function createPeerConnection(chatId: string, callId: string, partnerId: string)
 // ---------------------------------------------------------------------------
 
 /**
- * Register the current logged-in user to receive incoming calls across the app
+ * Handle incoming call invite payload (shared between inbox and chat channels)
+ */
+export function handleIncomingCallInvite(payload: {
+  callId: string;
+  chatId: string;
+  callerId: string;
+  callerName: string;
+  callerAvatar?: string;
+  callType: "audio" | "video";
+  offer: any;
+}) {
+  if (!payload || !payload.callId) return;
+
+  // If already in a call or already ringing for this callId
+  if (currentState.status !== "idle") {
+    if (currentState.callId === payload.callId) return; // duplicate invite, ignore
+    // Send busy response
+    const chan = supabase.channel(`call_channel_${payload.callId}`);
+    broadcastSafely(chan, "call_busy", { callId: payload.callId, callerId: payload.callerId });
+    return;
+  }
+
+  storedIncomingOffer = payload.offer;
+  startIncomingRingtone();
+  updateState({
+    status: "ringing",
+    callId: payload.callId,
+    chatId: payload.chatId,
+    partnerId: payload.callerId,
+    partnerName: payload.callerName,
+    partnerAvatar: payload.callerAvatar,
+    callType: payload.callType || "audio",
+    isCaller: false,
+  });
+}
+
+/**
+ * Register the current logged-in user to receive incoming calls across the entire app
  */
 export function registerUserForIncomingCalls(
   currentUserId: string,
@@ -234,52 +321,32 @@ export function registerUserForIncomingCalls(
     chatId: string;
   }) => void
 ): () => void {
-  if (userInboxChannel) {
-    supabase.removeChannel(userInboxChannel);
+  if (!currentUserId) return () => {};
+
+  if (registeredUserId === currentUserId && userInboxChannel) {
+    return () => {};
   }
 
+  if (userInboxChannel) {
+    try {
+      supabase.removeChannel(userInboxChannel);
+    } catch (e) {}
+    userInboxChannel = null;
+  }
+
+  registeredUserId = currentUserId;
   const topic = `call_inbox_${currentUserId}`;
   const chan = supabase.channel(topic, { config: { broadcast: { self: false } } });
 
-  chan.on("broadcast", { event: "incoming_call_invite" }, async ({ payload }) => {
-    // If already in a call, send busy
-    if (currentState.status !== "idle") {
-      chan.send({
-        type: "broadcast",
-        event: "call_busy",
-        payload: { callId: payload.callId, callerId: payload.callerId },
-      });
-      return;
-    }
-
-    startIncomingRingtone();
-    updateState({
-      status: "ringing",
-      callId: payload.callId,
-      chatId: payload.chatId,
-      partnerId: payload.callerId,
-      partnerName: payload.callerName,
-      partnerAvatar: payload.callerAvatar,
-      callType: payload.callType || "audio",
-      isCaller: false,
-    });
-
-    // Store incoming offer in peer connection state
-    (chan as any)._incomingOffer = payload.offer;
-
-    if (onIncomingCallPrompt) {
-      onIncomingCallPrompt({
-        callerId: payload.callerId,
-        callerName: payload.callerName,
-        callerAvatar: payload.callerAvatar,
-        callType: payload.callType || "audio",
-        chatId: payload.chatId,
-      });
+  chan.on("broadcast", { event: "incoming_call_invite" }, ({ payload }) => {
+    handleIncomingCallInvite(payload);
+    if (onIncomingCallPrompt && payload) {
+      onIncomingCallPrompt(payload);
     }
   });
 
-  chan.on("broadcast", { event: "call_cancelled" }, () => {
-    if (currentState.status === "ringing") {
+  chan.on("broadcast", { event: "call_cancelled" }, ({ payload }) => {
+    if (currentState.status === "ringing" && (!payload?.callId || payload.callId === currentState.callId)) {
       stopIncomingRingtone();
       playCallEndedTone();
       cleanupMedia();
@@ -292,9 +359,12 @@ export function registerUserForIncomingCalls(
 
   return () => {
     if (userInboxChannel) {
-      supabase.removeChannel(userInboxChannel);
+      try {
+        supabase.removeChannel(userInboxChannel);
+      } catch (e) {}
       userInboxChannel = null;
     }
+    registeredUserId = null;
   };
 }
 
@@ -323,6 +393,8 @@ export async function initiateCall({
   if (currentState.status !== "idle") return;
 
   const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  localGatheredIceCandidates = [];
+  pendingIceCandidates = [];
 
   updateState({
     status: "calling",
@@ -356,7 +428,7 @@ export async function initiateCall({
     setupAudioVolumeMeter(localStream);
 
     // 2. Setup PeerConnection & Signaling
-    const pc = createPeerConnection(chatId, callId, partnerId);
+    const pc = createPeerConnection(chatId, callId, partnerId, callerId);
     peerConnection = pc;
 
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
@@ -369,19 +441,27 @@ export async function initiateCall({
 
     signalChannel.on("broadcast", { event: "call_answered" }, async ({ payload }) => {
       stopOutgoingRingtone();
-      if (pc.signalingState !== "closed") {
+      if (pc.signalingState !== "closed" && payload?.answer) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-        // Flush pending ICE candidates
+        // Flush pending ICE candidates received before answer
         while (pendingIceCandidates.length > 0) {
           const cand = pendingIceCandidates.shift();
           if (cand) await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+        }
+        // Resend all locally gathered candidates to make sure callee received them
+        for (const cand of localGatheredIceCandidates) {
+          signalChannel.send({
+            type: "broadcast",
+            event: "ice_candidate",
+            payload: { callId, senderId: callerId, candidate: cand },
+          });
         }
       }
     });
 
     signalChannel.on("broadcast", { event: "ice_candidate" }, async ({ payload }) => {
-      if (payload.targetId === callerId && payload.candidate) {
-        if (pc.remoteDescription) {
+      if (payload?.callId === callId && payload?.candidate && payload.senderId !== callerId) {
+        if (pc.remoteDescription && pc.remoteDescription.type) {
           await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
         } else {
           pendingIceCandidates.push(payload.candidate);
@@ -414,33 +494,37 @@ export async function initiateCall({
         });
         await pc.setLocalDescription(offer);
 
-        // Ring partner's user inbox channel
+        const invitePayload = {
+          callId,
+          chatId,
+          callerId,
+          callerName,
+          callerAvatar,
+          callType,
+          offer: { type: offer.type, sdp: offer.sdp },
+        };
+
+        // Dual delivery:
+        // A. Send to partner's personal call inbox
         const partnerInbox = supabase.channel(`call_inbox_${partnerId}`);
-        await partnerInbox.subscribe();
-        partnerInbox.send({
-          type: "broadcast",
-          event: "incoming_call_invite",
-          payload: {
-            callId,
-            chatId,
-            callerId,
-            callerName,
-            callerAvatar,
-            callType,
-            offer: { type: offer.type, sdp: offer.sdp },
-          },
-        });
+        broadcastSafely(partnerInbox, "incoming_call_invite", invitePayload);
+
+        // B. Send to chat's broadcast channel (if active chat)
+        if (chatId) {
+          const chatBroadcast = supabase.channel(`chat_broadcast_${chatId}`, { config: { broadcast: { self: false } } });
+          broadcastSafely(chatBroadcast, "incoming_call_invite", invitePayload);
+        }
       }
     });
 
-    // 4. Timeout after 35s if no answer
+    // 4. Timeout after 38s if no answer
     setTimeout(() => {
-      if (currentState.status === "calling") {
+      if (currentState.status === "calling" && currentState.callId === callId) {
         stopOutgoingRingtone();
         playCallEndedTone();
         endActiveCall();
       }
-    }, 35000);
+    }, 38000);
   } catch (err) {
     console.error("Failed to initiate call:", err);
     stopOutgoingRingtone();
@@ -461,6 +545,10 @@ export async function acceptIncomingCall(): Promise<void> {
   const partnerId = currentState.partnerId!;
   const callType = currentState.callType;
   const chatId = currentState.chatId || "direct";
+  const myUserId = registeredUserId || "callee";
+
+  localGatheredIceCandidates = [];
+  pendingIceCandidates = [];
 
   try {
     // 1. Acquire Local Media
@@ -482,7 +570,7 @@ export async function acceptIncomingCall(): Promise<void> {
     startDurationTimer();
 
     // 2. Setup PeerConnection & Signaling
-    const pc = createPeerConnection(chatId, callId, partnerId);
+    const pc = createPeerConnection(chatId, callId, partnerId, myUserId);
     peerConnection = pc;
 
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
@@ -493,8 +581,8 @@ export async function acceptIncomingCall(): Promise<void> {
     activeSignalingChannel = signalChannel;
 
     signalChannel.on("broadcast", { event: "ice_candidate" }, async ({ payload }) => {
-      if (payload.targetId !== partnerId && payload.candidate) {
-        if (pc.remoteDescription) {
+      if (payload?.callId === callId && payload?.candidate && payload.senderId !== myUserId) {
+        if (pc.remoteDescription && pc.remoteDescription.type) {
           await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
         } else {
           pendingIceCandidates.push(payload.candidate);
@@ -508,9 +596,14 @@ export async function acceptIncomingCall(): Promise<void> {
 
     signalChannel.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
-        const incomingOffer = (userInboxChannel as any)?._incomingOffer;
-        if (incomingOffer) {
-          await pc.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+        if (storedIncomingOffer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(storedIncomingOffer));
+          // Flush pending candidates
+          while (pendingIceCandidates.length > 0) {
+            const cand = pendingIceCandidates.shift();
+            if (cand) await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          }
+
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
 
@@ -522,6 +615,15 @@ export async function acceptIncomingCall(): Promise<void> {
               answer: { type: answer.type, sdp: answer.sdp },
             },
           });
+
+          // Resend any candidates gathered so far
+          for (const cand of localGatheredIceCandidates) {
+            signalChannel.send({
+              type: "broadcast",
+              event: "ice_candidate",
+              payload: { callId, senderId: myUserId, candidate: cand },
+            });
+          }
         }
       }
     });
@@ -540,6 +642,16 @@ export function rejectIncomingCall(reason: string = "declined"): void {
 
   if (activeSignalingChannel) {
     activeSignalingChannel.send({
+      type: "broadcast",
+      event: "call_rejected",
+      payload: { callId: currentState.callId, reason },
+    });
+  }
+
+  // Also notify partner on user inbox
+  if (currentState.partnerId) {
+    const partnerInbox = supabase.channel(`call_inbox_${currentState.partnerId}`);
+    partnerInbox.send({
       type: "broadcast",
       event: "call_rejected",
       payload: { callId: currentState.callId, reason },
@@ -576,6 +688,14 @@ export function endActiveCall(): void {
       event: "call_cancelled",
       payload: { callId: currentState.callId },
     });
+    if (currentState.chatId) {
+      const chatBroadcast = supabase.channel(`chat_broadcast_${currentState.chatId}`);
+      chatBroadcast.send({
+        type: "broadcast",
+        event: "call_cancelled",
+        payload: { callId: currentState.callId },
+      });
+    }
   }
 
   cleanupMedia();
@@ -590,17 +710,23 @@ function cleanupMedia() {
     currentState.remoteStream.getTracks().forEach((track) => track.stop());
   }
   if (peerConnection) {
-    peerConnection.close();
+    try {
+      peerConnection.close();
+    } catch (e) {}
     peerConnection = null;
   }
   if (activeSignalingChannel) {
-    supabase.removeChannel(activeSignalingChannel);
+    try {
+      supabase.removeChannel(activeSignalingChannel);
+    } catch (e) {}
     activeSignalingChannel = null;
   }
   if (remoteAudioElement) {
     remoteAudioElement.srcObject = null;
   }
   pendingIceCandidates = [];
+  localGatheredIceCandidates = [];
+  storedIncomingOffer = null;
 }
 
 /**

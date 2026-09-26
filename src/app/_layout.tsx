@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
 import AlaContextMenu from '../components/AlaContextMenu';
+import GlobalCallManager from '../components/GlobalCallManager';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -121,6 +122,7 @@ export default function Layout() {
           <RootNavigator />
           <AlaPinLockScreen />
           <AlaContextMenu />
+          <GlobalCallManager />
         </AlaPinProvider>
       </ThemeProvider>
     </AuthProvider>

@@ -89,6 +89,7 @@ import {
   toggleVideoCamera,
   subscribeCallState,
   registerUserForIncomingCalls,
+  handleIncomingCallInvite,
   getCallState,
   WebRTCCallState,
 } from "../utils/webrtcCall";
@@ -1646,6 +1647,16 @@ export default function ChatScreen() {
           }
         }
       })
+      .on("broadcast", { event: "incoming_call_invite" }, (payload: any) => {
+        const p = payload?.payload;
+        if (!p || p.callerId === user.id) return;
+        handleIncomingCallInvite(p);
+      })
+      .on("broadcast", { event: "call_cancelled" }, () => {
+        if (getCallState().status === "ringing") {
+          endActiveCall();
+        }
+      })
       .on("broadcast", { event: "custom_alert" }, (payload) => {
         setCustomAlert(payload.payload);
       })
@@ -3067,6 +3078,66 @@ export default function ChatScreen() {
                 },
               ]}
             >
+              {/* Item: Voice Call */}
+              {!isGroup && targetUser && (
+                <>
+                  <TouchableOpacity
+                    style={styles.moreDropdownItem}
+                    onPress={() => {
+                      closeMoreMenu();
+                      initiateCall({
+                        chatId: (currentChatId || id) as string,
+                        callerId: user?.id || "",
+                        callerName: (myProfile as any)?.nickname || myProfile?.display_name || myProfile?.username || user?.email?.split("@")[0] || "User",
+                        callerAvatar: myProfile?.avatar_url,
+                        partnerId: targetUser.id,
+                        partnerName: targetUser.nickname || targetUser.display_name || targetUser.username || name || "Partner",
+                        partnerAvatar: (targetUser.id && chatAvatars[targetUser.id]) || targetUser.avatar_url,
+                        callType: "audio",
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.moreDropdownIconCircle, { backgroundColor: isAmoled ? '#222' : 'rgba(16,185,129,0.15)' }]}>
+                      <Phone size={16} color="#10b981" />
+                    </View>
+                    <Text style={[styles.moreDropdownItemText, { color: theme.text }]}>
+                      Voice Call
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={[styles.moreDropdownDivider, { backgroundColor: isAmoled ? '#222' : (theme.id === 'pink' ? 'rgba(219,39,119,0.12)' : theme.border) }]} />
+
+                  {/* Item: Video Call */}
+                  <TouchableOpacity
+                    style={styles.moreDropdownItem}
+                    onPress={() => {
+                      closeMoreMenu();
+                      initiateCall({
+                        chatId: (currentChatId || id) as string,
+                        callerId: user?.id || "",
+                        callerName: (myProfile as any)?.nickname || myProfile?.display_name || myProfile?.username || user?.email?.split("@")[0] || "User",
+                        callerAvatar: myProfile?.avatar_url,
+                        partnerId: targetUser.id,
+                        partnerName: targetUser.nickname || targetUser.display_name || targetUser.username || name || "Partner",
+                        partnerAvatar: (targetUser.id && chatAvatars[targetUser.id]) || targetUser.avatar_url,
+                        callType: "video",
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.moreDropdownIconCircle, { backgroundColor: isAmoled ? '#222' : 'rgba(168,85,247,0.15)' }]}>
+                      <Video size={16} color="#a855f7" />
+                    </View>
+                    <Text style={[styles.moreDropdownItemText, { color: theme.text }]}>
+                      Video Call
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={[styles.moreDropdownDivider, { backgroundColor: isAmoled ? '#222' : (theme.id === 'pink' ? 'rgba(219,39,119,0.12)' : theme.border) }]} />
+                </>
+              )}
+
               {/* Item 1: Search in Chat */}
               <TouchableOpacity
                 style={styles.moreDropdownItem}
