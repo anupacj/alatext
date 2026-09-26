@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator } from "react-native";
 import { Play, Pause, Volume2 } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
+import { broadcastAudioState } from "../utils/notchConfig";
 
 interface AudioPlayerBubbleProps {
   audioUrl: string;
@@ -38,6 +39,7 @@ export default function AudioPlayerBubble({ audioUrl, isMe }: AudioPlayerBubbleP
       const handleEnded = () => {
         setIsPlaying(false);
         setCurrentTime(0);
+        broadcastAudioState({ isPlaying: false });
       };
 
       audio.addEventListener("loadeddata", handleLoadedData);
@@ -47,6 +49,7 @@ export default function AudioPlayerBubble({ audioUrl, isMe }: AudioPlayerBubbleP
 
       return () => {
         audio.pause();
+        broadcastAudioState({ isPlaying: false });
         audio.removeEventListener("loadeddata", handleLoadedData);
         audio.removeEventListener("loadedmetadata", handleLoadedData);
         audio.removeEventListener("timeupdate", handleTimeUpdate);
@@ -60,6 +63,7 @@ export default function AudioPlayerBubble({ audioUrl, isMe }: AudioPlayerBubbleP
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      broadcastAudioState({ isPlaying: false });
     } else {
       setIsLoading(true);
       audioRef.current
@@ -67,10 +71,12 @@ export default function AudioPlayerBubble({ audioUrl, isMe }: AudioPlayerBubbleP
         .then(() => {
           setIsPlaying(true);
           setIsLoading(false);
+          broadcastAudioState({ isPlaying: true });
         })
         .catch((e: any) => {
           console.error("Audio playback error:", e);
           setIsLoading(false);
+          broadcastAudioState({ isPlaying: false });
         });
     }
   };

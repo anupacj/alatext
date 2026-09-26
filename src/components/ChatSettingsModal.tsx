@@ -6,6 +6,7 @@ import {
   X, Upload, Trash2, Image as ImageIcon, AlertTriangle, Bell, Sparkles, Heart,
   Moon, Sun, Check, RefreshCw, Layers, Edit3, Camera, RotateCcw, User, Lock,
   Volume2, Play, Pause, Music, Plus, Palette, FolderPlus, ChevronLeft, ChevronRight,
+  Smartphone,
 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { uploadImageToR2, uploadChatAvatarToR2, uploadCustomChimeToR2, deleteFileFromR2ByUrl } from "../lib/r2";
@@ -14,6 +15,20 @@ import { useRouter } from "expo-router";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
 import { useTheme } from "../context/ThemeContext";
 import { extractPaletteFromImageUrl } from "../utils/colorExtractor";
+import {
+  NotchConfig,
+  NotchMode,
+  NOTCH_PROFILES,
+  DEFAULT_NOTCH_CONFIG,
+  getNotchConfig,
+  saveNotchConfig,
+} from "../utils/notchConfig";
+import {
+  DynamicEqualizerBars,
+  DynamicTypingDots,
+  DynamicCameraGuide,
+  DynamicIslandPreviewMockup,
+} from "./DynamicIslandVisuals";
 import {
   WallpaperSlot,
   WallpaperGroup,
@@ -186,13 +201,14 @@ export const FONT_OPTIONS = [
   { label: "Silkscreen", value: "Silkscreen" },
 ];
 
-export type SettingsTab = "profile" | "appearance" | "wallpaper" | "sound" | "danger";
+export type SettingsTab = "profile" | "appearance" | "wallpaper" | "sound" | "notch" | "danger";
 
 export const SETTINGS_TABS: { id: SettingsTab; label: string; icon: any; subtitle: string }[] = [
   { id: "profile", label: "Secret PFP & Name", icon: Lock, subtitle: "Chat photo & nickname" },
   { id: "appearance", label: "Themes & Bubbles", icon: Sparkles, subtitle: "Colors, shapes & fonts" },
   { id: "wallpaper", label: "Wallpaper Deck", icon: Layers, subtitle: "Collections, moods & effects" },
   { id: "sound", label: "Sounds & Icons", icon: Volume2, subtitle: "Chimes & send button" },
+  { id: "notch", label: "Dynamic Island & Notch", icon: Smartphone, subtitle: "Camera cutout, pill & tuner" },
   { id: "danger", label: "Alerts & Danger", icon: AlertTriangle, subtitle: "Broadcast & delete" },
 ];
 
@@ -232,6 +248,7 @@ export default function ChatSettingsModal({
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === "web" && width >= 768;
   const styles = useMemo(() => createStyles(theme, isDesktop), [theme, isDesktop]);
+  const isDark = theme.isDark ?? (theme.id !== "light" && theme.id !== "pink");
 
   const availableTabs = useMemo(() => {
     if (isGroup) {
@@ -247,6 +264,26 @@ export default function ChatSettingsModal({
       setActiveTab("appearance");
     }
   }, [isGroup]);
+
+  // Notch & Dynamic Island settings state
+  const [notchConfig, setNotchConfig] = useState<NotchConfig>(DEFAULT_NOTCH_CONFIG);
+  const [testTyping, setTestTyping] = useState(false);
+  const [testAudio, setTestAudio] = useState(false);
+  const [testHeart, setTestHeart] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      getNotchConfig().then((cfg) => setNotchConfig(cfg));
+    }
+  }, [visible]);
+
+  const updateNotch = (patch: Partial<NotchConfig>) => {
+    setNotchConfig((prev) => {
+      const updated = { ...prev, ...patch };
+      saveNotchConfig(updated);
+      return updated;
+    });
+  };
 
   const [loading, setLoading] = useState(false);
   const [deck, setDeck] = useState<WallpaperDeckConfig>(() => createDefaultDeck(currentSettings?.wallpaper_url, userId));
@@ -2020,7 +2057,261 @@ export default function ChatSettingsModal({
     </View>
   );
 
-  // 5. Danger Zone & Alerts Tab
+  // 5. Dynamic Island & Hardware Notch Tab
+  const renderNotchTab = () => (
+    <View>
+      <Text style={styles.sectionTitle}>🏝️ Dynamic Island & Hardware Notch</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 13, lineHeight: 18, marginBottom: 16, fontFamily: "Josefin Sans" }}>
+        Calibrate how your floating header interacts with your front-facing camera punch-hole cutout.
+      </Text>
+
+      {/* Live Calibration Mockup Box */}
+      <View style={{ marginBottom: 16 }}>
+        <DynamicIslandPreviewMockup
+          notchConfig={notchConfig}
+          theme={theme}
+          testTyping={testTyping}
+          testAudio={testAudio}
+          testHeart={testHeart}
+        />
+      </View>
+
+      {/* Test Trigger Action Buttons */}
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 8, fontFamily: "Josefin Sans", textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Interactive Animation Playground
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <TouchableOpacity
+            style={[
+              styles.notchTestBtn,
+              testTyping && styles.notchTestBtnActive,
+            ]}
+            onPress={() => setTestTyping(!testTyping)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14 }}>💬</Text>
+            <Text style={[styles.notchTestBtnText, testTyping && styles.notchTestBtnTextActive]}>
+              {testTyping ? "Stop Typing" : "Simulate Typing Wave"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.notchTestBtn,
+              testAudio && styles.notchTestBtnActive,
+            ]}
+            onPress={() => setTestAudio(!testAudio)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14 }}>🎵</Text>
+            <Text style={[styles.notchTestBtnText, testAudio && styles.notchTestBtnTextActive]}>
+              {testAudio ? "Stop Audio" : "Simulate Equalizer Wave"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.notchTestBtn,
+              testHeart && styles.notchTestBtnActive,
+            ]}
+            onPress={() => setTestHeart(!testHeart)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14 }}>💖</Text>
+            <Text style={[styles.notchTestBtnText, testHeart && styles.notchTestBtnTextActive]}>
+              {testHeart ? "Stop Heart" : "Simulate Heart Glow"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Profiles */}
+      <Text style={styles.sectionTitle}>📐 Hardware Profile Preset</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12, fontFamily: "Josefin Sans" }}>
+        Select the profile that matches your screen layout. On PC/Desktop, Classic Floating is automatically preserved.
+      </Text>
+
+      <View style={styles.notchProfileGrid}>
+        {NOTCH_PROFILES.map((prof) => {
+          const isSelected = notchConfig.mode === prof.id;
+          return (
+            <TouchableOpacity
+              key={prof.id}
+              style={[
+                styles.notchProfileCard,
+                isSelected && styles.notchProfileCardActive,
+              ]}
+              onPress={() => updateNotch({ mode: prof.id })}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 20 }}>{prof.icon}</Text>
+                  <Text style={[styles.notchProfileCardTitle, isSelected && { color: theme.accent || "#5865F2" }]}>
+                    {prof.name}
+                  </Text>
+                </View>
+                <View style={[styles.notchBadge, isSelected && styles.notchBadgeActive]}>
+                  <Text style={[styles.notchBadgeText, isSelected && styles.notchBadgeTextActive]}>
+                    {prof.badge}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.notchProfileCardDesc}>
+                {prof.description}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Dynamic Animations Opt-Out */}
+      <View style={{ marginTop: 8, marginBottom: 24, padding: 14, backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", borderRadius: 14, borderWidth: 1, borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)" }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View style={{ flex: 1, marginRight: 14 }}>
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: "700", fontFamily: "Josefin Sans" }}>
+              Live Dynamic Island Animations
+            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 3, lineHeight: 16, fontFamily: "Josefin Sans" }}>
+              Morphing equalizer wave when listening to voice notes, typing bounce dots, and heart ping aura. Turn off to keep a static sleek bar hugging the camera.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.notchToggleSwitch,
+              notchConfig.dynamicAnimationsEnabled && { backgroundColor: theme.accent || "#5865F2" },
+            ]}
+            onPress={() => updateNotch({ dynamicAnimationsEnabled: !notchConfig.dynamicAnimationsEnabled })}
+            activeOpacity={0.8}
+          >
+            <View
+              style={[
+                styles.notchToggleThumb,
+                notchConfig.dynamicAnimationsEnabled && { transform: [{ translateX: 20 }] },
+              ]}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Precision Hardware Calibration Sliders */}
+      <Text style={styles.sectionTitle}>🎛️ Precision Hardware Tuner</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 14, fontFamily: "Josefin Sans" }}>
+        Fine-tune pixel offsets to line up perfectly with your phone's specific punch-hole height and cutout size.
+      </Text>
+
+      <View style={{ backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)", gap: 16 }}>
+        {/* Vertical Shift (Y-Offset) */}
+        <View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <Text style={styles.sliderLabel}>
+              Vertical Shift (Y-Offset): <Text style={{ color: theme.accent || "#5865F2", fontWeight: "bold" }}>{notchConfig.topOffset > 0 ? `+${notchConfig.topOffset}px` : `${notchConfig.topOffset}px`}</Text>
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <TouchableOpacity
+                style={styles.notchStepBtn}
+                onPress={() => updateNotch({ topOffset: Math.max(-15, (notchConfig.topOffset || 0) - 1) })}
+              >
+                <Text style={{ color: theme.text, fontWeight: "bold" }}>-1</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.notchStepBtn}
+                onPress={() => updateNotch({ topOffset: Math.min(35, (notchConfig.topOffset || 0) + 1) })}
+              >
+                <Text style={{ color: theme.text, fontWeight: "bold" }}>+1</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <Slider
+            style={styles.slider}
+            minimumValue={-15}
+            maximumValue={35}
+            step={1}
+            value={notchConfig.topOffset || 0}
+            onValueChange={(val) => updateNotch({ topOffset: Math.round(val) })}
+            minimumTrackTintColor={theme.accent || "#5865F2"}
+            maximumTrackTintColor={theme.border}
+            thumbTintColor={theme.accent || "#5865F2"}
+          />
+        </View>
+
+        {/* Island Height Slider */}
+        <View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <Text style={styles.sliderLabel}>
+              Capsule Height: <Text style={{ color: theme.accent || "#5865F2", fontWeight: "bold" }}>{notchConfig.islandHeight || 46}px</Text>
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <TouchableOpacity
+                style={styles.notchStepBtn}
+                onPress={() => updateNotch({ islandHeight: Math.max(38, (notchConfig.islandHeight || 46) - 1) })}
+              >
+                <Text style={{ color: theme.text, fontWeight: "bold" }}>-1</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.notchStepBtn}
+                onPress={() => updateNotch({ islandHeight: Math.min(54, (notchConfig.islandHeight || 46) + 1) })}
+              >
+                <Text style={{ color: theme.text, fontWeight: "bold" }}>+1</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <Slider
+            style={styles.slider}
+            minimumValue={38}
+            maximumValue={54}
+            step={1}
+            value={notchConfig.islandHeight || 46}
+            onValueChange={(val) => updateNotch({ islandHeight: Math.round(val) })}
+            minimumTrackTintColor={theme.accent || "#5865F2"}
+            maximumTrackTintColor={theme.border}
+            thumbTintColor={theme.accent || "#5865F2"}
+          />
+        </View>
+
+        {/* Camera Alignment Reticle Toggle */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 8, borderTopWidth: 1, borderTopColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: "600", fontFamily: "Josefin Sans" }}>
+              🎯 Camera Target Reticle
+            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: 11, fontFamily: "Josefin Sans" }}>
+              Displays a glowing cyan crosshair on the live chat screen so you can match the hardware camera lens.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.notchToggleSwitch,
+              notchConfig.cameraTargetGuide && { backgroundColor: "#06b6d4" },
+            ]}
+            onPress={() => updateNotch({ cameraTargetGuide: !notchConfig.cameraTargetGuide })}
+            activeOpacity={0.8}
+          >
+            <View
+              style={[
+                styles.notchToggleThumb,
+                notchConfig.cameraTargetGuide && { transform: [{ translateX: 20 }] },
+              ]}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Reset to Defaults */}
+        <TouchableOpacity
+          style={{ alignSelf: "flex-start", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.08)", marginTop: 4 }}
+          onPress={() => updateNotch(DEFAULT_NOTCH_CONFIG)}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: theme.textMuted, fontSize: 12, fontFamily: "Josefin Sans", fontWeight: "600" }}>
+            ↺ Reset Tuner to Defaults
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // 6. Danger Zone & Alerts Tab
   const renderDangerTab = () => (
     <View>
       {isFeatureEnabled("custom_alerts", activeProfile, activePublicFeatures) && (
@@ -2121,6 +2412,7 @@ export default function ChatSettingsModal({
                   {activeTab === "appearance" && renderAppearanceTab()}
                   {activeTab === "wallpaper" && renderWallpaperTab()}
                   {activeTab === "sound" && renderSoundTab()}
+                  {activeTab === "notch" && renderNotchTab()}
                   {activeTab === "danger" && renderDangerTab()}
                   <View style={{ height: 40 }} />
                 </ScrollView>
@@ -2165,6 +2457,7 @@ export default function ChatSettingsModal({
                 {activeTab === "appearance" && renderAppearanceTab()}
                 {activeTab === "wallpaper" && renderWallpaperTab()}
                 {activeTab === "sound" && renderSoundTab()}
+                {activeTab === "notch" && renderNotchTab()}
                 {activeTab === "danger" && renderDangerTab()}
                 <View style={{ height: 40 }} />
               </ScrollView>
@@ -3464,6 +3757,108 @@ const createStyles = (theme: any, isDesktop: boolean = false) => {
     emojiPickBtnSelected: {
       borderColor: theme.accent || "#5865F2",
       backgroundColor: "rgba(88,101,242,0.15)",
+    },
+    notchTestBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 10,
+      backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.05)",
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
+    },
+    notchTestBtnActive: {
+      backgroundColor: isDark ? "rgba(88, 101, 242, 0.22)" : "rgba(88, 101, 242, 0.15)",
+      borderColor: theme.accent || "#5865F2",
+    },
+    notchTestBtnText: {
+      color: theme.text,
+      fontSize: 12,
+      fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    notchTestBtnTextActive: {
+      color: theme.accent || "#5865F2",
+      fontWeight: "700",
+    },
+    notchProfileGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      marginBottom: 20,
+    },
+    notchProfileCard: {
+      flex: 1,
+      minWidth: isDesktop ? 220 : "47%",
+      backgroundColor: isDark ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)",
+      borderRadius: 14,
+      padding: 12,
+      borderWidth: 1.5,
+      borderColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)",
+    },
+    notchProfileCardActive: {
+      borderColor: theme.accent || "#5865F2",
+      backgroundColor: isDark ? "rgba(88, 101, 242, 0.14)" : "rgba(88, 101, 242, 0.08)",
+    },
+    notchProfileCardTitle: {
+      color: theme.text,
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    notchProfileCardDesc: {
+      color: theme.textMuted,
+      fontSize: 11,
+      lineHeight: 15,
+      fontFamily: "Josefin Sans",
+      marginTop: 4,
+    },
+    notchBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)",
+    },
+    notchBadgeActive: {
+      backgroundColor: theme.accent || "#5865F2",
+    },
+    notchBadgeText: {
+      color: theme.textMuted,
+      fontSize: 9,
+      fontWeight: "bold",
+      fontFamily: "Josefin Sans",
+    },
+    notchBadgeTextActive: {
+      color: "#ffffff",
+    },
+    notchToggleSwitch: {
+      width: 48,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: isDark ? "rgba(255, 255, 255, 0.16)" : "rgba(0, 0, 0, 0.16)",
+      padding: 2,
+      justifyContent: "center",
+    },
+    notchToggleThumb: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: "#ffffff",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3,
+      elevation: 3,
+    },
+    notchStepBtn: {
+      width: 32,
+      height: 28,
+      borderRadius: 6,
+      backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)",
+      justifyContent: "center",
+      alignItems: "center",
     },
   });
 };

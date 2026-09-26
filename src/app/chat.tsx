@@ -67,6 +67,18 @@ import { tabTitleManager } from "../utils/tabTitleManager";
 import { playNotificationChime } from "../utils/soundManager";
 import { EmojiAutocomplete, searchEmojis, EmojiMatch } from "../components/EmojiAutocomplete";
 import { addMemory, saveNote } from "../utils/memoriesAndNotes";
+import {
+  NotchConfig,
+  DEFAULT_NOTCH_CONFIG,
+  subscribeNotchConfig,
+  subscribeAudioState,
+  DynamicIslandAudioEvent,
+} from "../utils/notchConfig";
+import {
+  DynamicEqualizerBars,
+  DynamicTypingDots,
+  DynamicCameraGuide,
+} from "../components/DynamicIslandVisuals";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -130,6 +142,47 @@ export default function ChatScreen() {
   wallpaperDeckRef.current = wallpaperDeck;
   // showWallpaper must come AFTER chatSettings useState - never show wallpaper in AMOLED
   const showWallpaper = !isAmoled && !!chatSettings?.wallpaper_url;
+
+  // Notch & Dynamic Island state
+  const [notchConfig, setNotchConfig] = useState<NotchConfig>(DEFAULT_NOTCH_CONFIG);
+  const [audioState, setAudioState] = useState<DynamicIslandAudioEvent>({ isPlaying: false });
+
+  useEffect(() => {
+    const unsubNotch = subscribeNotchConfig(cfg => setNotchConfig(cfg));
+    const unsubAudio = subscribeAudioState(ev => setAudioState(ev));
+    return () => {
+      unsubNotch();
+      unsubAudio();
+    };
+  }, []);
+
+  const headerPaddingTop = React.useMemo(() => {
+    if (isDesktop) return 16;
+    const base = Platform.OS === "ios" ? 52 : 44;
+    const offset = notchConfig.topOffset || 0;
+
+    if (notchConfig.mode === "dynamic_island") {
+      // Anchors snugly to top around camera cutout
+      return Math.max(8, 20 + offset);
+    } else if (notchConfig.mode === "floating_breathe") {
+      // Drops header down to give open space for camera cutout
+      return base + 16 + offset;
+    } else if (notchConfig.mode === "edge_dot") {
+      return base + 4 + offset;
+    } else {
+      // Classic
+      return base + offset;
+    }
+  }, [isDesktop, notchConfig.mode, notchConfig.topOffset]);
+
+  const effectivePillHeight = React.useMemo(() => {
+    if (!isDesktop && notchConfig.mode === "dynamic_island") {
+      return notchConfig.islandHeight || 46;
+    }
+    return 46;
+  }, [isDesktop, notchConfig.mode, notchConfig.islandHeight]);
+
+  const isDynamicIslandActive = !isDesktop && notchConfig.mode === "dynamic_island";
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -2416,7 +2469,16 @@ export default function ChatScreen() {
         />
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
-        <View style={styles.floatingHeaderWrapper}>
+        <View
+          style={[
+            styles.floatingHeaderWrapper,
+            { paddingTop: headerPaddingTop },
+            !isDesktop && notchConfig.mode === "edge_dot" && { paddingLeft: 16 },
+          ]}
+        >
+          {notchConfig.cameraTargetGuide && !isDesktop && (
+            <DynamicCameraGuide topOffset={notchConfig.topOffset} />
+          )}
           {!isSearchActive ? (
             <RNAnimated.View
               style={{
@@ -2451,6 +2513,11 @@ export default function ChatScreen() {
                     styles.headerPill,
                     styles.headerBackPill,
                     headerGlassStyle,
+                    isDynamicIslandActive && {
+                      height: effectivePillHeight,
+                      width: effectivePillHeight,
+                      borderRadius: effectivePillHeight / 2,
+                    },
                   ]}
                   activeOpacity={0.7}
                   accessibilityLabel="Back"
@@ -2464,6 +2531,19 @@ export default function ChatScreen() {
                   styles.headerPill,
                   styles.headerProfilePill,
                   headerGlassStyle,
+                  isDynamicIslandActive && {
+                    height: effectivePillHeight,
+                    borderRadius: effectivePillHeight / 2,
+                    backgroundColor: isAmoled
+                      ? "#000000"
+                      : "rgba(10, 12, 18, 0.94)",
+                    borderColor: isHeartGlowing
+                      ? "#f43f5e"
+                      : "rgba(255, 255, 255, 0.16)",
+                    ...(Platform.OS === "web" && isHeartGlowing
+                      ? { boxShadow: "0 0 20px rgba(244, 63, 94, 0.75)" }
+                      : {}),
+                  },
                 ]}
                 onPress={openChatInfo} 
                 activeOpacity={0.8}
@@ -2490,7 +2570,18 @@ export default function ChatScreen() {
                   >
                     {isGroup ? (groupChatData?.name || name || "Group Chat") : (targetUser?.nickname || targetUser?.display_name || targetUser?.username || name || "chat")}
                   </Text>
-                  {isGroup ? (
+                  {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying ? (
+                    <Text style={[styles.lastSeenText, { color: "#10b981", fontWeight: "600" }]} numberOfLines={1}>
+                      {audioState.title ? `Playing ${audioState.title}...` : "Playing audio letter..."}
+                    </Text>
+                  ) : isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && isTyping ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Text style={[styles.lastSeenText, { color: theme.accent || "#5865F2", fontWeight: "600" }]} numberOfLines={1}>
+                        {typingUsername ? `${typingUsername} is typing` : "typing"}
+                      </Text>
+                      <DynamicTypingDots color={theme.accent || "#5865F2"} active={true} />
+                    </View>
+                  ) : isGroup ? (
                     <Text style={[styles.groupSubtitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
                       {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
                     </Text>
@@ -2504,12 +2595,28 @@ export default function ChatScreen() {
                     </Text>
                   ) : null}
                 </View>
+
+                {/* Dynamic Island Animated Indicator on the Right Side */}
+                {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying && (
+                  <View style={{ marginRight: 8 }}>
+                    <DynamicEqualizerBars color="#10b981" active={true} />
+                  </View>
+                )}
+                {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && !audioState.isPlaying && isTyping && (
+                  <View style={{ marginRight: 8 }}>
+                    <DynamicTypingDots color={theme.accent || "#5865F2"} active={true} />
+                  </View>
+                )}
               </TouchableOpacity>
 
               <View style={[
                 styles.headerPill,
                 styles.headerActionsPill,
                 headerGlassStyle,
+                isDynamicIslandActive && {
+                  height: effectivePillHeight,
+                  borderRadius: effectivePillHeight / 2,
+                },
               ]}>
                 {!isGroup && (
                   <TouchableOpacity
@@ -2565,7 +2672,7 @@ export default function ChatScreen() {
                 headerGlassStyle,
                 {
                   flex: 1,
-                  height: 46,
+                  height: effectivePillHeight,
                   paddingHorizontal: 8,
                   flexDirection: "row",
                   alignItems: "center",
@@ -2711,6 +2818,7 @@ export default function ChatScreen() {
                 styles.moreDropdownMenu,
                 headerGlassStyle,
                 {
+                  top: headerPaddingTop + effectivePillHeight + 6,
                   opacity: moreMenuAnim,
                   transform: [
                     {
@@ -2897,6 +3005,9 @@ export default function ChatScreen() {
             style={[{ flex: 1 }, Platform.OS === 'web' && ({ overscrollBehaviorY: 'contain' } as any)]}
             contentContainerStyle={[
               styles.listContainer,
+              !isDesktop && {
+                paddingTop: (Platform.OS === "web" ? 82 : 98) + (notchConfig.topOffset || 0) + (notchConfig.mode === "floating_breathe" ? 16 : 0),
+              },
               isGlassKeyboardOpen && !isDesktop && {
                 paddingTop: (Platform.OS === "web" ? (isDesktop ? 74 : 82) : 98) + 290,
               },
