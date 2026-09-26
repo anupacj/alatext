@@ -1,7 +1,14 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity } from "react-native";
-import { User, Heart, ChevronLeft, MoreVertical, Volume2 } from "lucide-react-native";
-import { NotchConfig } from "../utils/notchConfig";
+import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, ChevronUp, Sparkles, Info } from "lucide-react-native";
+import { NotchConfig, DynamicIslandAudioEvent } from "../utils/notchConfig";
+
+// --- FORMAT DURATION HELPER ---
+export function formatCallDuration(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
 
 // --- ANIMATED EQUALIZER BARS ---
 export function DynamicEqualizerBars({
@@ -215,6 +222,173 @@ export function DynamicCameraGuide({
   );
 }
 
+// --- EXPANDED DYNAMIC ISLAND CARD VIEW ---
+export function DynamicIslandExpandedView({
+  targetUser,
+  theme,
+  audioState,
+  isTyping,
+  typingUsername,
+  isCalling = false,
+  callDuration = 0,
+  callType = "audio",
+  onStartCall,
+  onEndCall,
+  onHeartPing,
+  onOpenChatInfo,
+  onCollapse,
+}: {
+  targetUser?: any;
+  theme?: any;
+  audioState?: DynamicIslandAudioEvent;
+  isTyping?: boolean;
+  typingUsername?: string | null;
+  isCalling?: boolean;
+  callDuration?: number;
+  callType?: "audio" | "video";
+  onStartCall: (type: "audio" | "video") => void;
+  onEndCall: () => void;
+  onHeartPing: () => void;
+  onOpenChatInfo: () => void;
+  onCollapse: () => void;
+}) {
+  const contactName =
+    targetUser?.nickname || targetUser?.display_name || targetUser?.username || "Partner";
+
+  return (
+    <View style={visualStyles.expandedContainer}>
+      {/* Top Header Row */}
+      <View style={visualStyles.expandedTopRow}>
+        <View
+          style={[
+            visualStyles.expandedAvatar,
+            { backgroundColor: isCalling ? "#10b981" : theme?.accent || "#5865F2" },
+          ]}
+        >
+          {isCalling ? (
+            callType === "video" ? <Video size={16} color="#ffffff" /> : <Phone size={16} color="#ffffff" />
+          ) : (
+            <User size={16} color="#ffffff" />
+          )}
+        </View>
+
+        <View style={{ flex: 1, marginLeft: 10, justifyContent: "center" }}>
+          <Text style={visualStyles.expandedTitle} numberOfLines={1}>
+            {contactName}
+          </Text>
+
+          {isCalling ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={[visualStyles.expandedSubtitle, { color: "#10b981", fontWeight: "bold" }]}>
+                {formatCallDuration(callDuration)}
+              </Text>
+              <Text style={visualStyles.expandedSubtitle}>
+                • {callType === "video" ? "HD Video Active" : "HD Audio Connected"}
+              </Text>
+            </View>
+          ) : audioState?.isPlaying ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={[visualStyles.expandedSubtitle, { color: "#10b981", fontWeight: "bold" }]} numberOfLines={1}>
+                {audioState.title ? `Playing ${audioState.title}` : "Voice Note Playing"}
+              </Text>
+              <DynamicEqualizerBars color="#10b981" active={true} />
+            </View>
+          ) : isTyping ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={[visualStyles.expandedSubtitle, { color: theme?.accent || "#5865F2", fontWeight: "bold" }]}>
+                {typingUsername ? `${typingUsername} is typing` : "typing message..."}
+              </Text>
+              <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
+            </View>
+          ) : (
+            <Text style={visualStyles.expandedSubtitle}>
+              ● Online • Dynamic Island Connected
+            </Text>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={visualStyles.expandedCollapseBtn}
+          onPress={onCollapse}
+          activeOpacity={0.7}
+          accessibilityLabel="Collapse Island"
+        >
+          <ChevronUp size={16} color="#ffffff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Middle/Bottom Actions */}
+      {isCalling ? (
+        <View style={visualStyles.callingRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={visualStyles.callingPulseRing}>
+              <DynamicEqualizerBars color="#10b981" active={true} />
+            </View>
+            <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontFamily: "Josefin Sans" }}>
+              Audio Streaming
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={visualStyles.callHangupBtn}
+            onPress={onEndCall}
+            activeOpacity={0.8}
+          >
+            <PhoneOff size={16} color="#ffffff" style={{ marginRight: 6 }} />
+            <Text style={visualStyles.callHangupText}>End Call</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={visualStyles.quickActionsRow}>
+          <TouchableOpacity
+            style={visualStyles.quickActionBtn}
+            onPress={() => onStartCall("audio")}
+            activeOpacity={0.75}
+          >
+            <View style={[visualStyles.quickActionIconBox, { backgroundColor: "rgba(16, 185, 129, 0.2)" }]}>
+              <Phone size={15} color="#10b981" />
+            </View>
+            <Text style={visualStyles.quickActionText}>Audio</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={visualStyles.quickActionBtn}
+            onPress={() => onStartCall("video")}
+            activeOpacity={0.75}
+          >
+            <View style={[visualStyles.quickActionIconBox, { backgroundColor: "rgba(168, 85, 247, 0.2)" }]}>
+              <Video size={15} color="#a855f7" />
+            </View>
+            <Text style={visualStyles.quickActionText}>Video</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={visualStyles.quickActionBtn}
+            onPress={onHeartPing}
+            activeOpacity={0.75}
+          >
+            <View style={[visualStyles.quickActionIconBox, { backgroundColor: "rgba(244, 63, 94, 0.2)" }]}>
+              <Heart size={15} color="#f43f5e" fill="#f43f5e" />
+            </View>
+            <Text style={visualStyles.quickActionText}>Heart</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={visualStyles.quickActionBtn}
+            onPress={onOpenChatInfo}
+            activeOpacity={0.75}
+          >
+            <View style={[visualStyles.quickActionIconBox, { backgroundColor: "rgba(255, 255, 255, 0.12)" }]}>
+              <Info size={15} color="#ffffff" />
+            </View>
+            <Text style={visualStyles.quickActionText}>Info</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // --- INTERACTIVE CALIBRATION PREVIEW FOR SETTINGS ---
 export function DynamicIslandPreviewMockup({
   notchConfig,
@@ -222,32 +396,41 @@ export function DynamicIslandPreviewMockup({
   testTyping = false,
   testAudio = false,
   testHeart = false,
+  testExpanded = false,
+  testCalling = false,
 }: {
   notchConfig: NotchConfig;
   theme: any;
   testTyping?: boolean;
   testAudio?: boolean;
   testHeart?: boolean;
+  testExpanded?: boolean;
+  testCalling?: boolean;
 }) {
   const isAmoled = theme?.id === "black";
   const { mode, topOffset, islandHeight, dynamicAnimationsEnabled, cameraTargetGuide } = notchConfig;
 
-  // Compute mock paddingTop based on profile
-  let mockPaddingTop = 26;
+  let mockPaddingTop = 24;
   if (mode === "dynamic_island") {
-    mockPaddingTop = Math.max(6, 14 + topOffset);
+    mockPaddingTop = Math.max(6, 12 + topOffset);
   } else if (mode === "floating_breathe") {
     mockPaddingTop = 38 + topOffset;
   } else if (mode === "edge_dot") {
-    mockPaddingTop = 28 + topOffset;
-  } else {
     mockPaddingTop = 26 + topOffset;
+  } else {
+    mockPaddingTop = 24 + topOffset;
   }
 
-  const effectiveHeight = mode === "dynamic_island" ? (islandHeight || 46) : 46;
+  const isWideActive = testTyping || testAudio || testHeart;
+  const isBigCard = (testExpanded || testCalling) && mode === "dynamic_island";
+  const effectiveHeight = isBigCard ? 130 : mode === "dynamic_island" ? (islandHeight || 46) : 46;
+
+  // Spring push away simulation for side pills
+  const sidePillShift = isBigCard ? 50 : isWideActive ? 12 : 0;
+  const sidePillOpacity = isBigCard ? 0 : 1;
 
   return (
-    <View style={visualStyles.mockupFrame}>
+    <View style={[visualStyles.mockupFrame, isBigCard && { height: 230 }]}>
       {/* Phone chassis top bezel */}
       <View style={visualStyles.mockupChassisBezel}>
         <View style={visualStyles.mockupSpeakerEarpiece} />
@@ -277,104 +460,160 @@ export function DynamicIslandPreviewMockup({
 
       {/* Header Container inside Mockup */}
       <View style={[visualStyles.mockupHeaderRow, { paddingTop: mockPaddingTop }]}>
-        {/* Back Button Pill */}
+        {/* Back Button Pill (Pushed away to the left) */}
         <View
           style={[
             visualStyles.mockupBackPill,
-            { height: effectiveHeight, borderRadius: effectiveHeight / 2 },
+            {
+              height: 46,
+              borderRadius: 23,
+              transform: [{ translateX: -sidePillShift }],
+              opacity: sidePillOpacity,
+            },
           ]}
         >
           <ChevronLeft size={18} color="#ffffff" />
         </View>
 
-        {/* Center Dynamic Island Pill */}
+        {/* Center Dynamic Island Pill (Expands larger) */}
         <View
           style={[
             visualStyles.mockupCenterPill,
             {
               height: effectiveHeight,
-              borderRadius: effectiveHeight / 2,
+              borderRadius: isBigCard ? 24 : effectiveHeight / 2,
               backgroundColor: mode === "dynamic_island"
-                ? (isAmoled ? "#000000" : "rgba(15, 17, 23, 0.95)")
+                ? (isAmoled ? "#000000" : "rgba(10, 12, 18, 0.96)")
                 : "rgba(255, 255, 255, 0.08)",
               borderColor: testHeart
                 ? "#f43f5e"
                 : mode === "dynamic_island"
                 ? "rgba(255, 255, 255, 0.18)"
                 : "rgba(255, 255, 255, 0.12)",
+              marginHorizontal: isBigCard ? -40 : isWideActive ? -8 : 0,
             },
             testHeart && {
               shadowColor: "#f43f5e",
               shadowOffset: { width: 0, height: 0 },
               shadowOpacity: 0.8,
-              shadowRadius: 12,
+              shadowRadius: 14,
               elevation: 8,
               ...(Platform.OS === "web" ? { boxShadow: "0 0 16px rgba(244, 63, 94, 0.6)" } : {}),
             },
           ]}
         >
-          {/* Avatar */}
-          <View
-            style={[
-              visualStyles.mockupAvatar,
-              {
-                width: effectiveHeight - 12,
-                height: effectiveHeight - 12,
-                borderRadius: (effectiveHeight - 12) / 2,
-                backgroundColor: theme?.accent || "#5865F2",
-              },
-            ]}
-          >
-            <User size={14} color="#ffffff" />
-          </View>
-
-          {/* Titles & Indicators */}
-          <View style={{ flex: 1, marginLeft: 8, justifyContent: "center" }}>
-            <Text style={visualStyles.mockupTitle} numberOfLines={1}>
-              {testAudio && dynamicAnimationsEnabled
-                ? "Voice Note (0:42)"
-                : testTyping && dynamicAnimationsEnabled
-                ? "Partner"
-                : "Partner"}
-            </Text>
-
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              {testAudio && dynamicAnimationsEnabled ? (
-                <Text style={[visualStyles.mockupSubtext, { color: "#10b981" }]}>
-                  Playing audio letter...
-                </Text>
-              ) : testTyping && dynamicAnimationsEnabled ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Text style={[visualStyles.mockupSubtext, { color: theme?.accent || "#5865F2" }]}>
-                    typing
+          {isBigCard ? (
+            <View style={{ flex: 1, padding: 10, justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View
+                  style={[
+                    visualStyles.expandedAvatar,
+                    { backgroundColor: testCalling ? "#10b981" : theme?.accent || "#5865F2" },
+                  ]}
+                >
+                  {testCalling ? <Phone size={14} color="#fff" /> : <User size={14} color="#fff" />}
+                </View>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={visualStyles.mockupTitle} numberOfLines={1}>
+                    Partner
                   </Text>
-                  <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
+                  <Text style={[visualStyles.mockupSubtext, testCalling && { color: "#10b981", fontWeight: "bold" }]}>
+                    {testCalling ? "00:18 • Calling HD..." : "● Online • Spring Expanded"}
+                  </Text>
+                </View>
+                <View style={visualStyles.expandedCollapseBtn}>
+                  <ChevronUp size={14} color="#fff" />
+                </View>
+              </View>
+
+              {testCalling ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 8 }}>
+                  <DynamicEqualizerBars color="#10b981" active={true} />
+                  <View style={visualStyles.callHangupBtn}>
+                    <PhoneOff size={13} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={{ color: "#fff", fontSize: 11, fontWeight: "bold" }}>End</Text>
+                  </View>
                 </View>
               ) : (
-                <Text style={visualStyles.mockupSubtext}>
-                  ● Online
-                </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 8 }}>
+                  <View style={visualStyles.mockActionChip}><Text style={{ fontSize: 10, color: "#10b981" }}>📞 Audio</Text></View>
+                  <View style={visualStyles.mockActionChip}><Text style={{ fontSize: 10, color: "#a855f7" }}>📹 Video</Text></View>
+                  <View style={visualStyles.mockActionChip}><Text style={{ fontSize: 10, color: "#f43f5e" }}>💖 Heart</Text></View>
+                  <View style={visualStyles.mockActionChip}><Text style={{ fontSize: 10, color: "#38bdf8" }}>ℹ️ Info</Text></View>
+                </View>
               )}
             </View>
-          </View>
+          ) : (
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 6 }}>
+              {/* Avatar */}
+              <View
+                style={[
+                  visualStyles.mockupAvatar,
+                  {
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    backgroundColor: theme?.accent || "#5865F2",
+                  },
+                ]}
+              >
+                <User size={14} color="#ffffff" />
+              </View>
 
-          {/* Right Action within Island */}
-          {dynamicAnimationsEnabled && testAudio ? (
-            <View style={{ marginRight: 8 }}>
-              <DynamicEqualizerBars color="#10b981" active={true} />
+              {/* Titles & Indicators */}
+              <View style={{ flex: 1, marginLeft: 8, justifyContent: "center" }}>
+                <Text style={visualStyles.mockupTitle} numberOfLines={1}>
+                  {testAudio && dynamicAnimationsEnabled
+                    ? "Voice Note (0:42)"
+                    : testTyping && dynamicAnimationsEnabled
+                    ? "Partner"
+                    : "Partner"}
+                </Text>
+
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  {testAudio && dynamicAnimationsEnabled ? (
+                    <Text style={[visualStyles.mockupSubtext, { color: "#10b981" }]}>
+                      Playing audio letter...
+                    </Text>
+                  ) : testTyping && dynamicAnimationsEnabled ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Text style={[visualStyles.mockupSubtext, { color: theme?.accent || "#5865F2" }]}>
+                        typing
+                      </Text>
+                      <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
+                    </View>
+                  ) : (
+                    <Text style={visualStyles.mockupSubtext}>
+                      ● Online
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Right Action within Island */}
+              {dynamicAnimationsEnabled && testAudio ? (
+                <View style={{ marginRight: 8 }}>
+                  <DynamicEqualizerBars color="#10b981" active={true} />
+                </View>
+              ) : dynamicAnimationsEnabled && testTyping ? (
+                <View style={{ marginRight: 8 }}>
+                  <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
+                </View>
+              ) : null}
             </View>
-          ) : dynamicAnimationsEnabled && testTyping ? (
-            <View style={{ marginRight: 8 }}>
-              <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
-            </View>
-          ) : null}
+          )}
         </View>
 
-        {/* Right Action Pill */}
+        {/* Right Action Pill (Pushed away to the right) */}
         <View
           style={[
             visualStyles.mockupRightPill,
-            { height: effectiveHeight, borderRadius: effectiveHeight / 2 },
+            {
+              height: 46,
+              borderRadius: 23,
+              transform: [{ translateX: sidePillShift }],
+              opacity: sidePillOpacity,
+            },
           ]}
         >
           <Heart
@@ -387,14 +626,16 @@ export function DynamicIslandPreviewMockup({
       </View>
 
       {/* Screen mock chat space */}
-      <View style={visualStyles.mockupChatContent}>
-        <View style={visualStyles.mockupChatBubbleLeft}>
-          <Text style={visualStyles.mockupBubbleText}>Hey! Notice how smooth this looks?</Text>
+      {!isBigCard && (
+        <View style={visualStyles.mockupChatContent}>
+          <View style={visualStyles.mockupChatBubbleLeft}>
+            <Text style={visualStyles.mockupBubbleText}>Notice the spring physics pushing pills away!</Text>
+          </View>
+          <View style={visualStyles.mockupChatBubbleRight}>
+            <Text style={visualStyles.mockupBubbleTextRight}>Center capsule expands smoothly.</Text>
+          </View>
         </View>
-        <View style={visualStyles.mockupChatBubbleRight}>
-          <Text style={visualStyles.mockupBubbleTextRight}>Camera cutout aligns cleanly now!</Text>
-        </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -452,6 +693,101 @@ const visualStyles = StyleSheet.create({
     height: 14,
     width: 1,
     backgroundColor: "rgba(6, 182, 212, 0.6)",
+  },
+  expandedContainer: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
+    justifyContent: "space-between",
+  },
+  expandedTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  expandedAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  expandedTitle: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "bold",
+    fontFamily: "Josefin Sans",
+  },
+  expandedSubtitle: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 11,
+    fontFamily: "Josefin Sans",
+    marginTop: 1,
+  },
+  expandedCollapseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  quickActionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
+  },
+  quickActionBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  quickActionIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  quickActionText: {
+    color: "rgba(255, 255, 255, 0.8)",
+    fontSize: 10,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+  },
+  callingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
+  },
+  callingPulseRing: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(16, 185, 129, 0.16)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  callHangupBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ef4444",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 9999,
+  },
+  callHangupText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "bold",
+    fontFamily: "Josefin Sans",
   },
   mockupFrame: {
     width: "100%",
@@ -528,7 +864,7 @@ const visualStyles = StyleSheet.create({
   },
   mockupHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingHorizontal: 12,
     gap: 6,
     zIndex: 20,
@@ -543,10 +879,8 @@ const visualStyles = StyleSheet.create({
   },
   mockupCenterPill: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 6,
     borderWidth: 1,
+    overflow: "hidden",
   },
   mockupAvatar: {
     justifyContent: "center",
@@ -571,6 +905,12 @@ const visualStyles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
+  },
+  mockActionChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
   mockupChatContent: {
     flex: 1,

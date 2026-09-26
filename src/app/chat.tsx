@@ -78,6 +78,7 @@ import {
   DynamicEqualizerBars,
   DynamicTypingDots,
   DynamicCameraGuide,
+  DynamicIslandExpandedView,
 } from "../components/DynamicIslandVisuals";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -183,6 +184,85 @@ export default function ChatScreen() {
   }, [isDesktop, notchConfig.mode, notchConfig.islandHeight]);
 
   const isDynamicIslandActive = !isDesktop && notchConfig.mode === "dynamic_island";
+
+  // Dynamic Island Spring States & In-Call States
+  const islandState = useSharedValue(0);
+  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
+  const [callActive, setCallActive] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+  const [callType, setCallType] = useState<"audio" | "video">("audio");
+
+  useEffect(() => {
+    let interval: any = null;
+    if (callActive) {
+      interval = setInterval(() => {
+        setCallDuration((d) => d + 1);
+      }, 1000);
+    } else {
+      setCallDuration(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [callActive]);
+
+  useEffect(() => {
+    if (!isDynamicIslandActive || !notchConfig.dynamicAnimationsEnabled) {
+      islandState.value = 0;
+      return;
+    }
+
+    if (isIslandExpanded || callActive) {
+      islandState.value = withSpring(2, { damping: 18, stiffness: 220, mass: 0.85 });
+    } else if (audioState.isPlaying || isTyping || isHeartGlowing) {
+      islandState.value = withSpring(1, { damping: 16, stiffness: 240, mass: 0.8 });
+    } else {
+      islandState.value = withSpring(0, { damping: 20, stiffness: 260, mass: 0.85 });
+    }
+  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, isIslandExpanded, callActive, audioState.isPlaying, isTyping, isHeartGlowing]);
+
+  const leftPillAnimatedStyle = useAnimatedStyle(() => {
+    if (!isDynamicIslandActive) return {};
+    const translateX = interpolate(islandState.value, [0, 1, 2], [0, -14, -60]);
+    const opacity = interpolate(islandState.value, [0, 1, 1.2, 2], [1, 0.9, 0.2, 0]);
+    const scale = interpolate(islandState.value, [0, 1, 2], [1, 0.92, 0.7]);
+    return {
+      transform: [{ translateX }, { scale }],
+      opacity,
+    };
+  });
+
+  const rightPillAnimatedStyle = useAnimatedStyle(() => {
+    if (!isDynamicIslandActive) return {};
+    const translateX = interpolate(islandState.value, [0, 1, 2], [0, 14, 60]);
+    const opacity = interpolate(islandState.value, [0, 1, 1.2, 2], [1, 0.9, 0.2, 0]);
+    const scale = interpolate(islandState.value, [0, 1, 2], [1, 0.92, 0.7]);
+    return {
+      transform: [{ translateX }, { scale }],
+      opacity,
+    };
+  });
+
+  const centerIslandAnimatedStyle = useAnimatedStyle(() => {
+    if (!isDynamicIslandActive) return {};
+
+    const baseH = effectivePillHeight;
+    const activeH = baseH + 6;
+    const expandedH = callActive ? 168 : 148;
+
+    const height = interpolate(islandState.value, [0, 1, 2], [baseH, activeH, expandedH]);
+    const scale = interpolate(islandState.value, [0, 0.5, 1, 1.5, 2], [1, 1.04, 1.02, 1.01, 1]);
+    const marginHorizontal = interpolate(islandState.value, [0, 1, 2], [0, -8, -52]);
+    const borderRadius = interpolate(islandState.value, [0, 1, 2], [baseH / 2, activeH / 2, 28]);
+
+    return {
+      height,
+      transform: [{ scale }],
+      marginHorizontal,
+      borderRadius,
+    };
+  });
+
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; sender: string } | null>(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -2469,6 +2549,17 @@ export default function ChatScreen() {
         />
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
+        {(isIslandExpanded || callActive) && (
+          <Pressable
+            style={[StyleSheet.absoluteFill, { zIndex: 45 }]}
+            onPress={() => {
+              setIsIslandExpanded(false);
+              if (callActive) {
+                setCallActive(false);
+              }
+            }}
+          />
+        )}
         <View
           style={[
             styles.floatingHeaderWrapper,
@@ -2489,181 +2580,230 @@ export default function ChatScreen() {
                 opacity: searchHeaderAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
               }}
             >
-              {isDesktop ? (
-                <TouchableOpacity
-                  onPress={toggleSidebar}
-                  style={[
-                    styles.headerPill,
-                    styles.headerBackPill,
-                    headerGlassStyle,
-                  ]}
-                  activeOpacity={0.7}
-                  accessibilityLabel={sidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"}
-                >
-                  {sidebarCollapsed ? (
-                    <PanelLeftOpen size={22} color={headerIconColor} />
-                  ) : (
-                    <PanelLeftClose size={22} color={headerIconColor} />
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
-                  style={[
-                    styles.headerPill,
-                    styles.headerBackPill,
-                    headerGlassStyle,
-                    isDynamicIslandActive && {
-                      height: effectivePillHeight,
-                      width: effectivePillHeight,
-                      borderRadius: effectivePillHeight / 2,
-                    },
-                  ]}
-                  activeOpacity={0.7}
-                  accessibilityLabel="Back"
-                >
-                  <ChevronLeft size={24} color={headerIconColor} />
-                </TouchableOpacity>
-              )}
+              {/* Left Pill (Back / Sidebar) - Springs away to the left */}
+              <Animated.View style={leftPillAnimatedStyle}>
+                {isDesktop ? (
+                  <TouchableOpacity
+                    onPress={toggleSidebar}
+                    style={[
+                      styles.headerPill,
+                      styles.headerBackPill,
+                      headerGlassStyle,
+                    ]}
+                    activeOpacity={0.7}
+                    accessibilityLabel={sidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"}
+                  >
+                    {sidebarCollapsed ? (
+                      <PanelLeftOpen size={22} color={headerIconColor} />
+                    ) : (
+                      <PanelLeftClose size={22} color={headerIconColor} />
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
+                    style={[
+                      styles.headerPill,
+                      styles.headerBackPill,
+                      headerGlassStyle,
+                      isDynamicIslandActive && {
+                        height: effectivePillHeight,
+                        width: effectivePillHeight,
+                        borderRadius: effectivePillHeight / 2,
+                      },
+                    ]}
+                    activeOpacity={0.7}
+                    accessibilityLabel="Back"
+                  >
+                    <ChevronLeft size={24} color={headerIconColor} />
+                  </TouchableOpacity>
+                )}
+              </Animated.View>
 
-              <TouchableOpacity 
+              {/* Center Dynamic Island - Springs bigger, wider, and expands */}
+              <Animated.View
                 style={[
                   styles.headerPill,
                   styles.headerProfilePill,
                   headerGlassStyle,
                   isDynamicIslandActive && {
-                    height: effectivePillHeight,
-                    borderRadius: effectivePillHeight / 2,
                     backgroundColor: isAmoled
                       ? "#000000"
-                      : "rgba(10, 12, 18, 0.94)",
+                      : "rgba(10, 12, 18, 0.96)",
                     borderColor: isHeartGlowing
                       ? "#f43f5e"
                       : "rgba(255, 255, 255, 0.16)",
+                    overflow: "hidden",
                     ...(Platform.OS === "web" && isHeartGlowing
-                      ? { boxShadow: "0 0 20px rgba(244, 63, 94, 0.75)" }
+                      ? { boxShadow: "0 0 24px rgba(244, 63, 94, 0.85)" }
                       : {}),
                   },
+                  centerIslandAnimatedStyle,
                 ]}
-                onPress={openChatInfo} 
-                activeOpacity={0.8}
               >
-                {isGroup ? (
-                  <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
-                    <Users size={18} color="#fff" />
-                  </View>
-                ) : ((targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url) ? (
-                  <Image source={{ uri: (targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url }} style={styles.floatingAvatar} />
+                {isIslandExpanded || callActive ? (
+                  <DynamicIslandExpandedView
+                    targetUser={targetUser}
+                    theme={theme}
+                    audioState={audioState}
+                    isTyping={isTyping}
+                    typingUsername={typingUsername}
+                    isCalling={callActive}
+                    callDuration={callDuration}
+                    callType={callType}
+                    onStartCall={(type) => {
+                      setCallType(type);
+                      setCallActive(true);
+                      setCallDuration(0);
+                      playNotificationChime();
+                    }}
+                    onEndCall={() => {
+                      setCallActive(false);
+                      setCallDuration(0);
+                      setIsIslandExpanded(false);
+                    }}
+                    onHeartPing={triggerHeartPing}
+                    onOpenChatInfo={openChatInfo}
+                    onCollapse={() => setIsIslandExpanded(false)}
+                  />
                 ) : (
-                  <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
-                    <User size={18} color="#fff" />
-                  </View>
-                )}
-                <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
-                  <Text 
-                    style={[
-                      styles.headerTitle, 
-                      { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") },
-                      chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-                    ]} 
-                    numberOfLines={1}
-                  >
-                    {isGroup ? (groupChatData?.name || name || "Group Chat") : (targetUser?.nickname || targetUser?.display_name || targetUser?.username || name || "chat")}
-                  </Text>
-                  {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying ? (
-                    <Text style={[styles.lastSeenText, { color: "#10b981", fontWeight: "600" }]} numberOfLines={1}>
-                      {audioState.title ? `Playing ${audioState.title}...` : "Playing audio letter..."}
-                    </Text>
-                  ) : isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && isTyping ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <Text style={[styles.lastSeenText, { color: theme.accent || "#5865F2", fontWeight: "600" }]} numberOfLines={1}>
-                        {typingUsername ? `${typingUsername} is typing` : "typing"}
-                      </Text>
-                      <DynamicTypingDots color={theme.accent || "#5865F2"} active={true} />
-                    </View>
-                  ) : isGroup ? (
-                    <Text style={[styles.groupSubtitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
-                      {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
-                    </Text>
-                  ) : targetUser ? (
-                    <Text style={[
-                      styles.lastSeenText, 
-                      !isTargetOnline && styles.offlineText,
-                      chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-                    ]}>
-                      {formatLastSeenText(targetUser, isTargetOnline)}
-                    </Text>
-                  ) : null}
-                </View>
-
-                {/* Dynamic Island Animated Indicator on the Right Side */}
-                {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying && (
-                  <View style={{ marginRight: 8 }}>
-                    <DynamicEqualizerBars color="#10b981" active={true} />
-                  </View>
-                )}
-                {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && !audioState.isPlaying && isTyping && (
-                  <View style={{ marginRight: 8 }}>
-                    <DynamicTypingDots color={theme.accent || "#5865F2"} active={true} />
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              <View style={[
-                styles.headerPill,
-                styles.headerActionsPill,
-                headerGlassStyle,
-                isDynamicIslandActive && {
-                  height: effectivePillHeight,
-                  borderRadius: effectivePillHeight / 2,
-                },
-              ]}>
-                {!isGroup && (
-                  <TouchableOpacity
-                    style={[
-                      styles.floatingIconBtn,
-                      isHeartGlowing && {
-                        backgroundColor: "rgba(244, 63, 94, 0.25)",
-                        borderRadius: 9999,
-                        shadowColor: "#f43f5e",
-                        shadowOffset: { width: 0, height: 0 },
-                        shadowOpacity: 1,
-                        shadowRadius: 16,
-                        elevation: 10,
-                        ...(Platform.OS === "web" ? {
-                          boxShadow: "0 0 16px #f43f5e, 0 0 30px rgba(244, 63, 94, 0.8)",
-                        } : {}),
+                  <TouchableOpacity 
+                    style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
+                    onPress={() => {
+                      if (isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled) {
+                        setIsIslandExpanded(true);
+                      } else {
+                        openChatInfo();
                       }
-                    ]}
-                    onPress={triggerHeartPing}
-                    activeOpacity={0.7}
-                    accessibilityLabel="Send heart ping"
+                    }}
+                    onLongPress={() => {
+                      if (isDynamicIslandActive) {
+                        setIsIslandExpanded(true);
+                      }
+                    }}
+                    activeOpacity={0.85}
                   >
-                    <RNAnimated.View style={{
-                      transform: [{ scale: heartAnim }],
-                      opacity: isHeartGlowing ? heartAnim.interpolate({
-                        inputRange: [1, 1.15, 1.35],
-                        outputRange: [1, 0.45, 1]
-                      }) : 1
-                    }}>
-                      <Heart
-                        size={20}
-                        color="#f43f5e"
-                        fill={isHeartGlowing || chatSettings?.anniversary_date ? "#f43f5e" : (theme.id === "pink" ? "#f472b6" : "rgba(244, 63, 94, 0.35)")}
-                      />
-                    </RNAnimated.View>
+                    {isGroup ? (
+                      <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
+                        <Users size={18} color="#fff" />
+                      </View>
+                    ) : ((targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url) ? (
+                      <Image source={{ uri: (targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url }} style={styles.floatingAvatar} />
+                    ) : (
+                      <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
+                        <User size={18} color="#fff" />
+                      </View>
+                    )}
+                    <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }}>
+                      <Text 
+                        style={[
+                          styles.headerTitle, 
+                          { color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111111" : theme.id === "pink" ? "#5c0a2e" : "#ffffff") },
+                          chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                        ]} 
+                        numberOfLines={1}
+                      >
+                        {isGroup ? (groupChatData?.name || name || "Group Chat") : (targetUser?.nickname || targetUser?.display_name || targetUser?.username || name || "chat")}
+                      </Text>
+                      {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying ? (
+                        <Text style={[styles.lastSeenText, { color: "#10b981", fontWeight: "600" }]} numberOfLines={1}>
+                          {audioState.title ? `Playing ${audioState.title}...` : "Playing audio letter..."}
+                        </Text>
+                      ) : isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && isTyping ? (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Text style={[styles.lastSeenText, { color: theme.accent || "#5865F2", fontWeight: "600" }]} numberOfLines={1}>
+                            {typingUsername ? `${typingUsername} is typing` : "typing"}
+                          </Text>
+                          <DynamicTypingDots color={theme.accent || "#5865F2"} active={true} />
+                        </View>
+                      ) : isGroup ? (
+                        <Text style={[styles.groupSubtitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
+                          {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
+                        </Text>
+                      ) : targetUser ? (
+                        <Text style={[
+                          styles.lastSeenText, 
+                          !isTargetOnline && styles.offlineText,
+                          chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                        ]}>
+                          {formatLastSeenText(targetUser, isTargetOnline)}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {/* Dynamic Island Animated Indicator on the Right Side */}
+                    {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying && (
+                      <View style={{ marginRight: 8 }}>
+                        <DynamicEqualizerBars color="#10b981" active={true} />
+                      </View>
+                    )}
+                    {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && !audioState.isPlaying && isTyping && (
+                      <View style={{ marginRight: 8 }}>
+                        <DynamicTypingDots color={theme.accent || "#5865F2"} active={true} />
+                      </View>
+                    )}
                   </TouchableOpacity>
                 )}
+              </Animated.View>
 
-                <TouchableOpacity
-                  style={styles.floatingIconBtn}
-                  onPress={() => (moreMenuVisible ? closeMoreMenu() : openMoreMenu())}
-                  activeOpacity={0.7}
-                  accessibilityLabel="More options"
-                >
-                  <MoreVertical size={20} color={headerIconColor} />
-                </TouchableOpacity>
-              </View>
+              {/* Right Pill (Heart & More) - Springs away to the right */}
+              <Animated.View style={rightPillAnimatedStyle}>
+                <View style={[
+                  styles.headerPill,
+                  styles.headerActionsPill,
+                  headerGlassStyle,
+                  isDynamicIslandActive && {
+                    height: effectivePillHeight,
+                    borderRadius: effectivePillHeight / 2,
+                  },
+                ]}>
+                  {!isGroup && (
+                    <TouchableOpacity
+                      style={[
+                        styles.floatingIconBtn,
+                        isHeartGlowing && {
+                          backgroundColor: "rgba(244, 63, 94, 0.25)",
+                          borderRadius: 9999,
+                          shadowColor: "#f43f5e",
+                          shadowOffset: { width: 0, height: 0 },
+                          shadowOpacity: 1,
+                          shadowRadius: 16,
+                          elevation: 10,
+                          ...(Platform.OS === "web" ? {
+                            boxShadow: "0 0 16px #f43f5e, 0 0 30px rgba(244, 63, 94, 0.8)",
+                          } : {}),
+                        }
+                      ]}
+                      onPress={triggerHeartPing}
+                      activeOpacity={0.7}
+                      accessibilityLabel="Send heart ping"
+                    >
+                      <RNAnimated.View style={{
+                        transform: [{ scale: heartAnim }],
+                        opacity: isHeartGlowing ? heartAnim.interpolate({
+                          inputRange: [1, 1.15, 1.35],
+                          outputRange: [1, 0.45, 1]
+                        }) : 1
+                      }}>
+                        <Heart
+                          size={20}
+                          color="#f43f5e"
+                          fill={isHeartGlowing || chatSettings?.anniversary_date ? "#f43f5e" : (theme.id === "pink" ? "#f472b6" : "rgba(244, 63, 94, 0.35)")}
+                        />
+                      </RNAnimated.View>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.floatingIconBtn}
+                    onPress={() => (moreMenuVisible ? closeMoreMenu() : openMoreMenu())}
+                    activeOpacity={0.7}
+                    accessibilityLabel="More options"
+                  >
+                    <MoreVertical size={20} color={headerIconColor} />
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
             </RNAnimated.View>
           ) : (
             <RNAnimated.View

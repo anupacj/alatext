@@ -270,6 +270,8 @@ export default function ChatSettingsModal({
   const [testTyping, setTestTyping] = useState(false);
   const [testAudio, setTestAudio] = useState(false);
   const [testHeart, setTestHeart] = useState(false);
+  const [testExpanded, setTestExpanded] = useState(false);
+  const [testCalling, setTestCalling] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -2073,6 +2075,8 @@ export default function ChatSettingsModal({
           testTyping={testTyping}
           testAudio={testAudio}
           testHeart={testHeart}
+          testExpanded={testExpanded}
+          testCalling={testCalling}
         />
       </View>
 
@@ -2085,6 +2089,40 @@ export default function ChatSettingsModal({
           <TouchableOpacity
             style={[
               styles.notchTestBtn,
+              testExpanded && styles.notchTestBtnActive,
+            ]}
+            onPress={() => {
+              setTestExpanded(!testExpanded);
+              if (testCalling) setTestCalling(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14 }}>📲</Text>
+            <Text style={[styles.notchTestBtnText, testExpanded && styles.notchTestBtnTextActive]}>
+              {testExpanded ? "Collapse Island" : "Test Spring Expand"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.notchTestBtn,
+              testCalling && styles.notchTestBtnActive,
+            ]}
+            onPress={() => {
+              setTestCalling(!testCalling);
+              if (testExpanded) setTestExpanded(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14 }}>📞</Text>
+            <Text style={[styles.notchTestBtnText, testCalling && styles.notchTestBtnTextActive]}>
+              {testCalling ? "End Call Test" : "Test In-Call Island"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.notchTestBtn,
               testTyping && styles.notchTestBtnActive,
             ]}
             onPress={() => setTestTyping(!testTyping)}
@@ -2092,7 +2130,7 @@ export default function ChatSettingsModal({
           >
             <Text style={{ fontSize: 14 }}>💬</Text>
             <Text style={[styles.notchTestBtnText, testTyping && styles.notchTestBtnTextActive]}>
-              {testTyping ? "Stop Typing" : "Simulate Typing Wave"}
+              {testTyping ? "Stop Typing" : "Typing Wave (Push Pills)"}
             </Text>
           </TouchableOpacity>
 
@@ -2106,7 +2144,7 @@ export default function ChatSettingsModal({
           >
             <Text style={{ fontSize: 14 }}>🎵</Text>
             <Text style={[styles.notchTestBtnText, testAudio && styles.notchTestBtnTextActive]}>
-              {testAudio ? "Stop Audio" : "Simulate Equalizer Wave"}
+              {testAudio ? "Stop Audio" : "Equalizer Wave"}
             </Text>
           </TouchableOpacity>
 
@@ -2120,7 +2158,7 @@ export default function ChatSettingsModal({
           >
             <Text style={{ fontSize: 14 }}>💖</Text>
             <Text style={[styles.notchTestBtnText, testHeart && styles.notchTestBtnTextActive]}>
-              {testHeart ? "Stop Heart" : "Simulate Heart Glow"}
+              {testHeart ? "Stop Heart" : "Heart Glow"}
             </Text>
           </TouchableOpacity>
         </View>
