@@ -182,7 +182,7 @@ export default function AlaContextMenu() {
     setVisible(false);
     try {
       if (!isFullscreenActive()) {
-        tryEnterFullscreen();
+        tryEnterFullscreen(true);
       } else {
         exitFullscreen();
       }

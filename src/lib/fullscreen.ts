@@ -5,9 +5,24 @@ export function isFullscreenActive(): boolean {
   return !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
 }
 
-export function tryEnterFullscreen() {
+export function isMobileDevice(): boolean {
+  if (Platform.OS !== "web") return true;
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+  const isNarrow = window.innerWidth < 768;
+  return isMobileUA || (isTouch && isNarrow);
+}
+
+export function tryEnterFullscreen(forceOnDesktop = false) {
   if (Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined") return;
   if (isFullscreenActive()) return;
+
+  // STRICT REQUIREMENT: Only enter fullscreen automatically on MOBILE devices. Never on Web PC.
+  if (!forceOnDesktop && !isMobileDevice()) {
+    return;
+  }
 
   try {
     const el = document.documentElement as any;

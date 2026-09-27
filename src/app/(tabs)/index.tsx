@@ -491,7 +491,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   modeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 8, borderRadius: 6, gap: 6 },
   modeBtnActive: { backgroundColor: theme.accent },
   modeBtnText: { color: theme.textMuted, fontSize: 14, fontWeight: "600", fontFamily: "Josefin Sans" },
-  modeBtnTextActive: { color: theme.text, fontFamily: "Josefin Sans" },
+  modeBtnTextActive: { color: "#ffffff", fontWeight: "700", fontFamily: "Josefin Sans" },
   modalSubtitle: { color: theme.textMuted, fontSize: 14, fontFamily: "Josefin Sans", marginBottom: 16, textAlign: "center" },
   errorText: { color: "#f23f43", fontSize: 13, fontFamily: "Josefin Sans", marginBottom: 12, textAlign: "center" },
   modalInput: { backgroundColor: theme.border, color: theme.text, borderRadius: 4, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, fontFamily: "Josefin Sans", marginBottom: 16 },
@@ -505,7 +505,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   cancelButton: { backgroundColor: "transparent" },
   cancelButtonText: { color: theme.text, fontSize: 14, fontWeight: "600", fontFamily: "Josefin Sans" },
   startButton: { backgroundColor: theme.accent },
-  startButtonText: { color: theme.text, fontSize: 14, fontWeight: "600", fontFamily: "Josefin Sans" },
+  startButtonText: { color: "#ffffff", fontSize: 14, fontWeight: "700", fontFamily: "Josefin Sans" },
 });
 
 

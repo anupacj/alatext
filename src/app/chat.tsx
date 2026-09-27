@@ -1085,14 +1085,16 @@ export default function ChatScreen() {
     };
   }, [fontPickerOpen]);
 
-  // Automatically enter fullscreen when entering a chat
+  // Automatically enter fullscreen when entering a chat (MOBILE ONLY)
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    if (Platform.OS !== "web" || typeof document === "undefined" || isDesktop) return;
 
     tryEnterFullscreen();
 
     const handleFirstTap = () => {
-      tryEnterFullscreen();
+      if (!isDesktop) {
+        tryEnterFullscreen();
+      }
       window.removeEventListener("pointerdown", handleFirstTap, true);
       window.removeEventListener("touchstart", handleFirstTap, true);
     };
@@ -1104,7 +1106,7 @@ export default function ChatScreen() {
       window.removeEventListener("pointerdown", handleFirstTap, true);
       window.removeEventListener("touchstart", handleFirstTap, true);
     };
-  }, []);
+  }, [isDesktop]);
 
   // Listen for context menu resolution requests from AlaContextMenu
   useEffect(() => {
@@ -2677,10 +2679,11 @@ export default function ChatScreen() {
   }, [customAlert, user, id]);
 
   const openChatInfo = useCallback((initialTab = "media", openVault = false) => {
+    const safeChatId = (Array.isArray(id) ? id[0] : id) || currentChatId || "";
     router.push({
       pathname: "/chat-info",
       params: {
-        id: id as string,
+        id: safeChatId,
         isGroup: isGroup ? "true" : "false",
         targetUserId: targetUser?.id || "",
         targetUsername: targetUser?.username || "",
@@ -4568,7 +4571,7 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
   const border = isAmoled ? '#222222' : (theme.border || '#1e1f22');
   const text = isAmoled ? '#ffffff' : (theme.text || '#dbdee1');
   const textMuted = isAmoled ? '#888888' : (theme.textMuted || '#949ba4');
-  const accent = isAmoled ? '#ffffff' : (theme.accent || '#5865F2');
+  const accent = theme.accent || '#5865F2';
   const inputBg = isAmoled ? '#000000' : (theme.surface || '#2b2d31');
   const screenRadius = theme.screenRadius ?? 0;
 

@@ -481,19 +481,23 @@ export default function ChatInfoScreen() {
       if (!m) return false;
       if (m.type === "sticker") return false;
       const str = (typeof m.content === "string" ? m.content : typeof m.text === "string" ? m.text : "") || "";
+      if (!str) return false;
+
+      // Exclude stickers
       if (
         str.includes("/stickers/") ||
         str.includes("/sticker-packs/") ||
-        str.includes("sticker") ||
         str.includes("t.me/addstickers")
       ) {
         return false;
       }
 
+      // Explicit media types (image, video, audio)
       if (m.type === "image" || m.type === "video" || m.type === "audio") {
-        return !!(m.content || m.text);
+        return true;
       }
 
+      // URL patterns for media files
       if (
         str.includes("/chat-images/") ||
         str.includes("/chat-videos/") ||
@@ -551,45 +555,29 @@ export default function ChatInfoScreen() {
         .from("messages")
         .select("id, content, type, created_at, sender_id")
         .eq("chat_id", chatId)
-        .in("type", ["image", "video", "audio"])
         .order("created_at", { ascending: false });
 
       if (!error && Array.isArray(data) && data.length > 0) {
         remoteMedia = data
           .filter(isMediaMsg)
           .map((m: any) => ({
-            ...m,
-            content: m.content || m.text || "",
+            id: m.id,
+            content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
             type: resolveType(m),
+            created_at: m.created_at || new Date().toISOString(),
+            sender_id: m.sender_id || "",
           }))
           .filter((m: any) => !!m.content);
-      }
-
-      // Fallback in case types were stored as text or other fallback
-      if (remoteMedia.length === 0) {
-        const fallback = await supabase
-          .from("messages")
-          .select("id, content, type, created_at, sender_id")
-          .eq("chat_id", chatId)
-          .order("created_at", { ascending: false })
-          .limit(100);
-
-        if (fallback.data && fallback.data.length > 0) {
-          remoteMedia = fallback.data
-            .filter(isMediaMsg)
-            .map((m: any) => ({
-              ...m,
-              content: m.content || m.text || "",
-              type: resolveType(m),
-            }))
-            .filter((m: any) => !!m.content);
-        }
       }
 
       // Merge local cache and remote messages by ID without duplicates
       setSharedMedia((prev) => {
         const mergedMap = new Map<string, any>();
+        // Retain cached media
+        cachedMedia.forEach((m) => mergedMap.set(m.id, m));
+        // Add fresh remote media
         remoteMedia.forEach((m) => mergedMap.set(m.id, m));
+        // Preserve any existing media already in state
         prev.forEach((m) => {
           if (!mergedMap.has(m.id) && isMediaMsg(m)) {
             mergedMap.set(m.id, m);
@@ -2838,8 +2826,8 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       WebkitBackdropFilter: "blur(16px)",
     } as any,
     filterChipActive: {
-      backgroundColor: isAmoled ? "#ffffff" : (theme.accent || "#5865F2"),
-      borderColor: isAmoled ? "#ffffff" : (theme.accent || "#5865F2"),
+      backgroundColor: theme.accent || "#5865F2",
+      borderColor: theme.accent || "#5865F2",
     },
     filterChipText: {
       color: isAmoled ? "#a1a1aa" : theme.textMuted,
@@ -2848,7 +2836,7 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       fontFamily: "Josefin Sans",
     },
     filterChipTextActive: {
-      color: isAmoled ? "#000000" : "#ffffff",
+      color: "#ffffff",
       fontWeight: "700",
       fontFamily: "Josefin Sans",
     },

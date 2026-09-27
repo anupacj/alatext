@@ -192,12 +192,13 @@ export default function ChatInfoModal({
 
     try {
       // 1. Instant local cache load
+      let cachedMedia: any[] = [];
       try {
         const cachedRaw = await AsyncStorage.getItem(`chat_${chatId}_messages`);
         if (cachedRaw) {
           const cachedMsgs = JSON.parse(cachedRaw);
           if (Array.isArray(cachedMsgs)) {
-            const local = cachedMsgs
+            cachedMedia = cachedMsgs
               .filter(isMediaPhoto)
               .map((m: any) => ({
                 id: m.id,
@@ -206,7 +207,7 @@ export default function ChatInfoModal({
                 sender_id: m.sender_id || "",
               }))
               .filter((m: any) => !!m.content);
-            if (local.length > 0) setSharedMedia(local);
+            if (cachedMedia.length > 0) setSharedMedia(cachedMedia);
           }
         }
       } catch (e) {}
@@ -217,42 +218,23 @@ export default function ChatInfoModal({
         .from("messages")
         .select("id, content, created_at, sender_id")
         .eq("chat_id", chatId)
-        .eq("type", "image")
         .order("created_at", { ascending: false });
 
       if (!error && Array.isArray(data) && data.length > 0) {
         remotePhotos = data
           .filter(isMediaPhoto)
           .map((m: any) => ({
-            ...m,
-            content: m.content || m.text || "",
+            id: m.id,
+            content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
+            created_at: m.created_at || new Date().toISOString(),
+            sender_id: m.sender_id || "",
           }))
           .filter((m: any) => !!m.content);
       }
 
-      if (remotePhotos.length === 0) {
-        const fallback = await supabase
-          .from("messages")
-          .select("id, content, type, created_at, sender_id")
-          .eq("chat_id", chatId)
-          .order("created_at", { ascending: false })
-          .limit(100);
-
-        if (fallback.data && fallback.data.length > 0) {
-          remotePhotos = fallback.data
-            .filter(isMediaPhoto)
-            .map((m: any) => ({
-              id: m.id,
-              content: m.content || m.text || "",
-              created_at: m.created_at,
-              sender_id: m.sender_id,
-            }))
-            .filter((m: any) => !!m.content);
-        }
-      }
-
       setSharedMedia((prev) => {
         const map = new Map<string, any>();
+        cachedMedia.forEach((m) => map.set(m.id, m));
         remotePhotos.forEach((m) => map.set(m.id, m));
         prev.forEach((m) => {
           if (!map.has(m.id) && isMediaPhoto(m)) map.set(m.id, m);
