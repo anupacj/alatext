@@ -2929,9 +2929,6 @@ export default function ChatScreen() {
         transform: [{ translateX: screenSlideAnim }],
       }}
     >
-      <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive} screenRadius={screenRadius} />
-      <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
-
       <SleepyByeBlocker
         chatId={currentChatId}
         visible={!!(chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now())}
@@ -2980,6 +2977,9 @@ export default function ChatScreen() {
         />
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
+        {/* Apple Intelligence perimeter glow (zIndex: 50, strictly behind floatingHeaderWrapper zIndex: 9999) */}
+        <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive || isHeartGlowing} screenRadius={screenRadius} />
+        <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
         {(isIslandExpanded || callState.status !== "idle") && (
           <Pressable
             style={[StyleSheet.absoluteFill, { zIndex: 45 }]}
