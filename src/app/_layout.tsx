@@ -24,10 +24,30 @@ function RootNavigator() {
   }, [theme.background]);
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: theme.background },
+        animation: 'slide_from_right',
+      }}
+    >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="chat" options={{ headerShown: false, animation: 'fade' }} />
-      <Stack.Screen name="chat-info" options={{ headerShown: false, animation: 'fade_from_bottom' }} />
+      <Stack.Screen
+        name="chat"
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          fullScreenGestureEnabled: true,
+        }}
+      />
+      <Stack.Screen
+        name="chat-info"
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          fullScreenGestureEnabled: true,
+        }}
+      />
       <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
     </Stack>
   );

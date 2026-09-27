@@ -1,8 +1,10 @@
 import React, { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity } from "react-native";
-import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, VideoOff, ChevronUp, Sparkles, Info, Compass, MapPin, RotateCcw } from "lucide-react-native";
+import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity, Image } from "react-native";
+import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, VideoOff, ChevronUp, Sparkles, Info, Compass, MapPin, RotateCcw, Navigation } from "lucide-react-native";
 import { NotchConfig, DynamicIslandAudioEvent } from "../utils/notchConfig";
 import { formatCoupleDistance, formatDataAge } from "../utils/coupleRadar";
+import { CoupleMood, isMoodActive, formatMoodRemaining } from "../utils/coupleMood";
+import { triggerHeartbeatHaptic } from "../utils/heartbeatHaptics";
 
 // --- FORMAT DURATION HELPER ---
 export function formatCallDuration(sec: number): string {
@@ -230,150 +232,14 @@ function getCompassDirection(deg: number): string {
   return directions[index];
 }
 
-// --- COUPLE COMPASS & DISTANCE RADAR WIDGET ---
-export function CoupleCompassRadarWidget({
-  distanceKm,
-  bearing,
-  lastUpdated,
-  partnerName,
-  onHeartPing,
-  onOpenChatInfo,
-  onRefreshRadar,
-}: {
-  distanceKm?: number | null;
-  bearing?: number | null;
-  lastUpdated?: number | null;
-  partnerName: string;
-  onHeartPing: () => void;
-  onOpenChatInfo: () => void;
-  onRefreshRadar?: () => void;
-}) {
-  const needleAnim = useRef(new Animated.Value(bearing ?? 0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (bearing !== null && bearing !== undefined) {
-      Animated.spring(needleAnim, {
-        toValue: bearing,
-        friction: 7,
-        tension: 40,
-        useNativeDriver: false,
-      }).start();
-    } else {
-      const swayLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(needleAnim, { toValue: 22, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
-          Animated.timing(needleAnim, { toValue: -22, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
-        ])
-      );
-      swayLoop.start();
-      return () => swayLoop.stop();
-    }
-  }, [bearing]);
-
-  useEffect(() => {
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.14, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-      ])
-    );
-    pulseLoop.start();
-    return () => pulseLoop.stop();
-  }, []);
-
-  const spinInterpolation = needleAnim.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ["-360deg", "360deg"],
-  });
-
-  const distText = formatCoupleDistance(distanceKm ?? null);
-  const ageText = lastUpdated ? formatDataAge(lastUpdated) : "Live";
-
-  return (
-    <View style={visualStyles.coupleWidgetContainer}>
-      <View style={visualStyles.radarStage}>
-        {/* Animated Compass Rose */}
-        <View style={visualStyles.compassCircle}>
-          {/* Concentric radar rings */}
-          <Animated.View
-            style={[
-              visualStyles.compassInnerRing,
-              { transform: [{ scale: pulseAnim }] },
-            ]}
-          />
-          <View style={visualStyles.compassInnerRingSmall} />
-
-          {/* Cardinal Directions */}
-          <Text style={[visualStyles.cardinalText, visualStyles.cardinalN]}>N</Text>
-          <Text style={[visualStyles.cardinalText, visualStyles.cardinalS]}>S</Text>
-          <Text style={[visualStyles.cardinalText, visualStyles.cardinalE]}>E</Text>
-          <Text style={[visualStyles.cardinalText, visualStyles.cardinalW]}>W</Text>
-
-          {/* Rotating Compass Needle */}
-          <Animated.View
-            style={[
-              visualStyles.compassNeedleContainer,
-              { transform: [{ rotate: spinInterpolation }] },
-            ]}
-          >
-            <View style={visualStyles.needleNorth} />
-            <View style={visualStyles.needleCenterDot} />
-            <View style={visualStyles.needleSouth} />
-          </Animated.View>
-        </View>
-
-        {/* Distance and Ephemeral Cache Stats */}
-        <View style={visualStyles.radarInfoColumn}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-            <Compass size={14} color="#f43f5e" />
-            <Text style={visualStyles.distanceHighlight} numberOfLines={1}>
-              {distText}
-            </Text>
-          </View>
-
-          <Text style={visualStyles.bearingText} numberOfLines={1}>
-            {bearing !== null && bearing !== undefined
-              ? `Heading ${Math.round(bearing)}° • ${getCompassDirection(bearing)}`
-              : "Locating partner bearing..."}
-          </Text>
-
-          <View style={visualStyles.cacheBadge}>
-            <View style={visualStyles.cacheGreenDot} />
-            <Text style={visualStyles.cacheBadgeText}>
-              {`Updated ${ageText} • 40m ephemeral`}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Action Buttons: Quick Heart Ping & Morphing Profile Button */}
-      <View style={visualStyles.coupleActionsRow}>
-        <TouchableOpacity
-          style={visualStyles.heartPingBtn}
-          onPress={onHeartPing}
-          activeOpacity={0.8}
-        >
-          <Heart size={14} color="#f43f5e" fill="#f43f5e" />
-          <Text style={visualStyles.heartPingBtnText}>Thinking of you</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={visualStyles.openProfileBtn}
-          onPress={onOpenChatInfo}
-          activeOpacity={0.8}
-        >
-          <User size={14} color="#ffffff" />
-          <Text style={visualStyles.openProfileBtnText}>Profile</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// --- EXPANDED DYNAMIC ISLAND CARD VIEW ---
+// --- EXPANDED DYNAMIC ISLAND CARD VIEW (MINIMAL APPLE CAPSULE) ---
 export function DynamicIslandExpandedView({
   targetUser,
+  isTargetOnline = false,
+  lastSeenText = "",
+  partnerMood = null,
+  myMood = null,
+  onOpenMoodPicker,
   theme,
   audioState,
   isTyping,
@@ -402,6 +268,11 @@ export function DynamicIslandExpandedView({
   onCollapse,
 }: {
   targetUser?: any;
+  isTargetOnline?: boolean;
+  lastSeenText?: string;
+  partnerMood?: CoupleMood | null;
+  myMood?: CoupleMood | null;
+  onOpenMoodPicker?: () => void;
   theme?: any;
   audioState?: DynamicIslandAudioEvent;
   isTyping?: boolean;
@@ -434,6 +305,24 @@ export function DynamicIslandExpandedView({
 
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  const needleAnim = useRef(new Animated.Value(radarBearing ?? 0)).current;
+
+  useEffect(() => {
+    if (radarBearing !== null && radarBearing !== undefined) {
+      Animated.spring(needleAnim, {
+        toValue: radarBearing,
+        friction: 7,
+        tension: 40,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [radarBearing]);
+
+  const spinInterpolation = needleAnim.interpolate({
+    inputRange: [-360, 360],
+    outputRange: ["-360deg", "360deg"],
+  });
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
@@ -474,6 +363,8 @@ export function DynamicIslandExpandedView({
             ) : (
               <Phone size={16} color="#ffffff" />
             )
+          ) : targetUser?.avatar_url ? (
+            <Image source={{ uri: targetUser.avatar_url }} style={visualStyles.avatarImg} />
           ) : (
             <User size={16} color="#ffffff" />
           )}
@@ -521,11 +412,43 @@ export function DynamicIslandExpandedView({
               <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
             </View>
           ) : (
-            <Text style={visualStyles.expandedSubtitle}>
-              ● Online
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <View
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: isTargetOnline ? "#10b981" : "rgba(255, 255, 255, 0.3)",
+                }}
+              />
+              <Text
+                style={[
+                  visualStyles.expandedSubtitle,
+                  isTargetOnline && { color: "#10b981", fontWeight: "600" },
+                ]}
+                numberOfLines={1}
+              >
+                {isTargetOnline ? "Online" : (lastSeenText || "Offline")}
+              </Text>
+            </View>
           )}
         </View>
+
+        {/* Minimal Distance Complication Chip */}
+        {!isCallActive && radarDistanceKm !== null && radarDistanceKm !== undefined && (
+          <TouchableOpacity
+            style={visualStyles.minimalDistanceChip}
+            onPress={onRefreshRadar}
+            activeOpacity={0.75}
+          >
+            <Animated.View style={{ transform: [{ rotate: spinInterpolation }] }}>
+              <Navigation size={10} color="#f43f5e" fill="#f43f5e" />
+            </Animated.View>
+            <Text style={visualStyles.minimalDistanceText}>
+              {formatCoupleDistance(radarDistanceKm)}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={visualStyles.expandedCollapseBtn}
@@ -585,9 +508,8 @@ export function DynamicIslandExpandedView({
         </View>
       )}
 
-      {/* Middle/Bottom Actions */}
+      {/* Calling Row or Minimal Couple Deck */}
       {callStatus === "ringing" ? (
-        /* Callee: Incoming Call Answer & Decline buttons */
         <View style={[visualStyles.callingRow, { justifyContent: "space-around" }]}>
           <TouchableOpacity
             style={[visualStyles.callHangupBtn, { backgroundColor: "#ef4444", paddingHorizontal: 20 }]}
@@ -608,7 +530,6 @@ export function DynamicIslandExpandedView({
           </TouchableOpacity>
         </View>
       ) : callStatus === "calling" ? (
-        /* Caller: Ringing Outgoing */
         <View style={visualStyles.callingRow}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <View style={[visualStyles.callingPulseRing, { backgroundColor: "rgba(56, 189, 248, 0.2)" }]}>
@@ -629,7 +550,6 @@ export function DynamicIslandExpandedView({
           </TouchableOpacity>
         </View>
       ) : callStatus === "connected" || isCalling ? (
-        /* Active Connected Call Controls */
         <View style={visualStyles.callingRow}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <View style={visualStyles.callingPulseRing}>
@@ -673,16 +593,60 @@ export function DynamicIslandExpandedView({
           </TouchableOpacity>
         </View>
       ) : (
-        /* Couple Compass & Distance Radar Card */
-        <CoupleCompassRadarWidget
-          distanceKm={radarDistanceKm}
-          bearing={radarBearing}
-          lastUpdated={radarLastUpdated}
-          partnerName={contactName}
-          onHeartPing={onHeartPing}
-          onOpenChatInfo={onOpenChatInfo}
-          onRefreshRadar={onRefreshRadar}
-        />
+        /* Minimal Apple Capsule Deck */
+        <>
+          {/* Middle Row: 6-Hour Ephemeral Mood */}
+          <View style={visualStyles.minimalMoodRow}>
+            {partnerMood && isMoodActive(partnerMood) && (
+              <View style={visualStyles.partnerMoodBadge}>
+                <Text style={{ fontSize: 12 }}>{partnerMood.emoji}</Text>
+                <Text style={visualStyles.partnerMoodText} numberOfLines={1}>
+                  {partnerMood.text}
+                </Text>
+                <Text style={visualStyles.partnerMoodTime}>
+                  • {formatMoodRemaining(partnerMood.timestamp)}
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={visualStyles.myMoodBtn}
+              onPress={onOpenMoodPicker}
+              activeOpacity={0.75}
+            >
+              <Sparkles size={11} color="#f43f5e" />
+              <Text style={visualStyles.myMoodBtnText} numberOfLines={1}>
+                {myMood && isMoodActive(myMood)
+                  ? `${myMood.emoji} ${myMood.text}`
+                  : "+ Set 6h Mood"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Bottom Actions: Thinking of you (with Lub-Dub Haptic) & Profile */}
+          <View style={visualStyles.coupleActionsRow}>
+            <TouchableOpacity
+              style={visualStyles.heartPingBtn}
+              onPress={() => {
+                triggerHeartbeatHaptic();
+                onHeartPing();
+              }}
+              activeOpacity={0.8}
+            >
+              <Heart size={14} color="#f43f5e" fill="#f43f5e" />
+              <Text style={visualStyles.heartPingBtnText}>Thinking of you</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={visualStyles.openProfileBtn}
+              onPress={onOpenChatInfo}
+              activeOpacity={0.8}
+            >
+              <User size={14} color="#ffffff" />
+              <Text style={visualStyles.openProfileBtnText}>Profile</Text>
+            </TouchableOpacity>
+          </View>
+        </>
       )}
     </View>
   );
@@ -1058,138 +1022,76 @@ const visualStyles = StyleSheet.create({
     fontWeight: "600",
     fontFamily: "Josefin Sans",
   },
-  coupleWidgetContainer: {
-    paddingTop: 4,
-    gap: 8,
-  },
-  radarStage: {
+  minimalDistanceChip: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 4,
     paddingHorizontal: 8,
-    gap: 12,
-  },
-  compassCircle: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
-    borderWidth: 1.5,
-    borderColor: "rgba(244, 63, 94, 0.35)",
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
-  compassInnerRing: {
-    position: "absolute",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(244, 63, 94, 0.2)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    marginRight: 6,
   },
-  compassInnerRingSmall: {
-    position: "absolute",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
-  cardinalText: {
-    position: "absolute",
-    fontSize: 9,
-    fontWeight: "800",
-    color: "rgba(255, 255, 255, 0.45)",
-    fontFamily: "Josefin Sans",
-  },
-  cardinalN: {
-    top: 2,
-    color: "#f43f5e",
-  },
-  cardinalS: {
-    bottom: 2,
-  },
-  cardinalE: {
-    right: 4,
-  },
-  cardinalW: {
-    left: 4,
-  },
-  compassNeedleContainer: {
-    position: "absolute",
-    width: 6,
-    height: 64,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  needleNorth: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 3.5,
-    borderRightWidth: 3.5,
-    borderBottomWidth: 26,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderBottomColor: "#f43f5e",
-  },
-  needleCenterDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: "#ffffff",
-    zIndex: 5,
-    marginVertical: -2,
-    borderWidth: 1,
-    borderColor: "#f43f5e",
-  },
-  needleSouth: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 3.5,
-    borderRightWidth: 3.5,
-    borderTopWidth: 24,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderTopColor: "rgba(255, 255, 255, 0.6)",
-  },
-  radarInfoColumn: {
-    flex: 1,
-    justifyContent: "center",
-    gap: 3,
-  },
-  distanceHighlight: {
+  minimalDistanceText: {
     color: "#ffffff",
-    fontSize: 14,
+    fontSize: 10.5,
     fontWeight: "700",
     fontFamily: "Josefin Sans",
   },
-  bearingText: {
-    color: "rgba(255, 255, 255, 0.7)",
-    fontSize: 11,
-    fontFamily: "Josefin Sans",
+  minimalMoodRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginVertical: 4,
   },
-  cacheBadge: {
+  partnerMoodBadge: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    marginTop: 2,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 10,
+    backgroundColor: "rgba(244, 63, 94, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.25)",
   },
-  cacheGreenDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: "#10b981",
+  partnerMoodText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+    flexShrink: 1,
   },
-  cacheBadgeText: {
-    color: "rgba(255, 255, 255, 0.65)",
+  partnerMoodTime: {
+    color: "rgba(255, 255, 255, 0.45)",
     fontSize: 9.5,
     fontFamily: "Josefin Sans",
+  },
+  myMoodBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  myMoodBtnText: {
+    color: "rgba(255, 255, 255, 0.8)",
+    fontSize: 10.5,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+  },
+  avatarImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   coupleActionsRow: {
     flexDirection: "row",

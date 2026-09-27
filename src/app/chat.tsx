@@ -93,6 +93,19 @@ import {
   RADAR_EXPIRY_TTL_MS,
 } from "../utils/coupleRadar";
 import {
+  CoupleMood,
+  MOOD_PRESETS,
+  isMoodActive,
+  formatMoodRemaining,
+  getStoredPartnerMood,
+  savePartnerMood,
+  clearPartnerMood,
+  getStoredMyMood,
+  saveMyMood,
+  clearMyMood,
+} from "../utils/coupleMood";
+import { triggerHeartbeatHaptic } from "../utils/heartbeatHaptics";
+import {
   initiateCall,
   acceptIncomingCall,
   rejectIncomingCall,
@@ -336,31 +349,38 @@ export default function ChatScreen() {
     }).start();
   }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, callState.status, isIslandExpanded, audioState.isPlaying, isTyping, isHeartGlowing]);
 
+  // 6-Hour Ephemeral Mood States
+  const [partnerMood, setPartnerMood] = useState<CoupleMood | null>(null);
+  const [myMood, setMyMood] = useState<CoupleMood | null>(null);
+  const [isMoodPickerOpen, setIsMoodPickerOpen] = useState(false);
+  const [customMoodEmoji, setCustomMoodEmoji] = useState("✨");
+  const [customMoodText, setCustomMoodText] = useState("");
+
   // Left pill collapses width to 0 when island expands so center island is 100% symmetrical
   const leftPillAnimatedStyle = isDynamicIslandActive
     ? {
         width: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2],
-          outputRange: [effectivePillHeight, effectivePillHeight, 0, 0],
+          inputRange: [0, 1, 1.4, 2, 3],
+          outputRange: [effectivePillHeight, effectivePillHeight, 0, 0, 0],
         }),
         overflow: "hidden" as any,
         transform: [
           {
             translateX: islandAnim.interpolate({
-              inputRange: [0, 1, 2],
-              outputRange: [0, -10, -32],
+              inputRange: [0, 1, 2, 3],
+              outputRange: [0, -10, -32, -40],
             }),
           },
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 1, 2],
-              outputRange: [1, 0.94, 0.5],
+              inputRange: [0, 1, 2, 3],
+              outputRange: [1, 0.94, 0.5, 0],
             }),
           },
         ],
         opacity: islandAnim.interpolate({
-          inputRange: [0, 0.8, 1.3, 2],
-          outputRange: [1, 0.9, 0, 0],
+          inputRange: [0, 0.8, 1.3, 2, 3],
+          outputRange: [1, 0.9, 0, 0, 0],
         }),
       }
     : {};
@@ -370,53 +390,54 @@ export default function ChatScreen() {
   const rightPillAnimatedStyle = isDynamicIslandActive
     ? {
         width: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2],
-          outputRange: [rightPillBaseWidth, rightPillBaseWidth, 0, 0],
+          inputRange: [0, 1, 1.4, 2, 3],
+          outputRange: [rightPillBaseWidth, rightPillBaseWidth, 0, 0, 0],
         }),
         overflow: "hidden" as any,
         transform: [
           {
             translateX: islandAnim.interpolate({
-              inputRange: [0, 1, 2],
-              outputRange: [0, 10, 32],
+              inputRange: [0, 1, 2, 3],
+              outputRange: [0, 10, 32, 40],
             }),
           },
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 1, 2],
-              outputRange: [1, 0.94, 0.5],
+              inputRange: [0, 1, 2, 3],
+              outputRange: [1, 0.94, 0.5, 0],
             }),
           },
         ],
         opacity: islandAnim.interpolate({
-          inputRange: [0, 0.8, 1.3, 2],
-          outputRange: [1, 0.9, 0, 0],
+          inputRange: [0, 0.8, 1.3, 2, 3],
+          outputRange: [1, 0.9, 0, 0, 0],
         }),
       }
     : {};
 
   const baseH = effectivePillHeight;
   const isVideoConnected = callState.status === "connected" && callState.callType === "video";
-  const expandedH = isVideoConnected ? 245 : (callState.status !== "idle" ? 168 : 205);
+  const hasPartnerMood = partnerMood && isMoodActive(partnerMood);
+  const expandedH = isVideoConnected ? 245 : (callState.status !== "idle" ? 168 : (hasPartnerMood ? 142 : 124));
   const dynamicBorderRadius = notchConfig.islandBorderRadius || 42;
 
   const centerIslandAnimatedStyle = isDynamicIslandActive
     ? {
         height: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2],
-          outputRange: [baseH, baseH, baseH, expandedH],
+          inputRange: [0, 1, 1.4, 2, 3],
+          outputRange: [baseH, baseH, baseH, expandedH, 680],
         }),
         borderRadius: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2],
-          outputRange: [baseH / 2, baseH / 2, baseH / 2, dynamicBorderRadius],
+          inputRange: [0, 1, 1.4, 2, 3],
+          outputRange: [baseH / 2, baseH / 2, baseH / 2, dynamicBorderRadius, 32],
         }),
         marginLeft: 0,
         marginRight: 0,
         transform: [
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 0.5, 1, 1.5, 2],
-              outputRange: [1, 1.03, 1.01, 1.005, 1],
+              inputRange: [0, 0.5, 1, 1.5, 2, 3],
+              outputRange: [1, 1.03, 1.01, 1.005, 1, 1],
             }),
           },
         ],
@@ -500,8 +521,41 @@ export default function ChatScreen() {
     return () => clearInterval(syncInterval);
   }, [id, isGroup, refreshRadarLocation]);
 
-  // Dynamic Island Screen Bloom Animation into Chat Info
-  const screenBloomAnim = useRef(new RNAnimated.Value(0)).current;
+  // Load cached couple moods on mount and prune expired moods (>6 hours)
+  useEffect(() => {
+    if (!id || isGroup) return;
+    const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
+
+    getStoredPartnerMood(chatIdStr).then((stored) => {
+      if (stored && isMoodActive(stored)) setPartnerMood(stored);
+      else setPartnerMood(null);
+    });
+
+    getStoredMyMood(chatIdStr).then((stored) => {
+      if (stored && isMoodActive(stored)) setMyMood(stored);
+      else setMyMood(null);
+    });
+
+    // Check expiry every 60s
+    const expiryInterval = setInterval(() => {
+      setPartnerMood((prev) => {
+        if (prev && !isMoodActive(prev)) {
+          clearPartnerMood(chatIdStr);
+          return null;
+        }
+        return prev;
+      });
+      setMyMood((prev) => {
+        if (prev && !isMoodActive(prev)) {
+          clearMyMood(chatIdStr);
+          return null;
+        }
+        return prev;
+      });
+    }, 60 * 1000);
+
+    return () => clearInterval(expiryInterval);
+  }, [id, isGroup]);
 
   // More ⋮ Animated Dropdown Menu State
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
@@ -892,6 +946,7 @@ export default function ChatScreen() {
   }, [thinkingAnim]);
 
   const triggerHeartPing = useCallback(async () => {
+    triggerHeartbeatHaptic();
     activateHeartGlowAndBlink();
     const partnerName = targetUser?.nickname || targetUser?.username || name;
     showThinkingNotification(partnerName ? `Thinking of ${partnerName}...` : "Thinking of you...");
@@ -1738,13 +1793,37 @@ export default function ChatScreen() {
         }, 3500);
       })
       .on("broadcast", { event: "ping" }, (payload: any) => {
-        if (payload.payload?.senderId !== user.id) {
+        if (payload.payload?.senderId !== user.id && payload.payload?.sender_id !== user.id) {
           activateHeartGlowAndBlink();
+          triggerHeartbeatHaptic();
           showThinkingNotification(payload.payload?.text || "Thinking of you...");
           if (payload.payload?.loveGlow) {
             triggerLoveGlow();
             triggerMoodWallpaper("love");
           }
+        }
+      })
+      .on("broadcast", { event: "mood_update" }, async (payload: any) => {
+        const p = payload?.payload;
+        if (!p || p.sender_id === user.id) return;
+        const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
+        if (p.mood && isMoodActive(p.mood)) {
+          setPartnerMood(p.mood);
+          await savePartnerMood(chatIdStr, p.mood);
+        } else {
+          setPartnerMood(null);
+          await clearPartnerMood(chatIdStr);
+        }
+      })
+      .on("broadcast", { event: "mood_ping" }, (payload: any) => {
+        const p = payload?.payload;
+        if (!p || p.sender_id === user.id) return;
+        if (myMood && isMoodActive(myMood)) {
+          typingChannelRef.current?.send({
+            type: "broadcast",
+            event: "mood_update",
+            payload: { mood: myMood, sender_id: user.id },
+          });
         }
       })
       .on("broadcast", { event: "radar_ping" }, (payload: any) => {
@@ -1844,7 +1923,15 @@ export default function ChatScreen() {
             return nextSettings;
           });
         }
-      }).subscribe();
+      }).subscribe((status) => {
+        if (status === "SUBSCRIBED" && user) {
+          tChannel.send({
+            type: "broadcast",
+            event: "mood_ping",
+            payload: { sender_id: user.id },
+          });
+        }
+      });
     typingChannelRef.current = tChannel;
 
     const chatChannel = supabase.channel(`chats_${sessionToken}`)
@@ -2590,20 +2677,63 @@ export default function ChatScreen() {
     });
   }, [router, id, isGroup, targetUser, chatAvatars, name, groupChatData, chatSettings]);
 
-  const handleOpenProfileWithBloom = useCallback(() => {
-    RNAnimated.spring(screenBloomAnim, {
-      toValue: 1,
-      friction: 8,
-      tension: 65,
-      useNativeDriver: false,
-    }).start(() => {
+  const handleOpenProfileFromIsland = useCallback(() => {
+    if (isDynamicIslandActive) {
+      RNAnimated.spring(islandAnim, {
+        toValue: 3,
+        friction: 8,
+        tension: 65,
+        useNativeDriver: false,
+      }).start(() => {
+        openChatInfo();
+        setTimeout(() => {
+          setIsIslandExpanded(false);
+          islandAnim.setValue(0);
+        }, 400);
+      });
+    } else {
       openChatInfo();
-      setTimeout(() => {
-        screenBloomAnim.setValue(0);
-        setIsIslandExpanded(false);
-      }, 500);
-    });
-  }, [screenBloomAnim, openChatInfo]);
+    }
+  }, [isDynamicIslandActive, islandAnim, openChatInfo]);
+
+  const handleSelectMood = useCallback(async (emoji: string, text: string) => {
+    if (!user || !id) return;
+    const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
+    const newMood: CoupleMood = {
+      emoji,
+      text,
+      timestamp: Date.now(),
+      userId: user.id,
+      userName: (myProfile as any)?.nickname || myProfile?.display_name || user.email?.split("@")[0] || "User",
+    };
+    setMyMood(newMood);
+    await saveMyMood(chatIdStr, newMood);
+    setIsMoodPickerOpen(false);
+
+    if (typingChannelRef.current) {
+      typingChannelRef.current.send({
+        type: "broadcast",
+        event: "mood_update",
+        payload: { mood: newMood, sender_id: user.id },
+      });
+    }
+  }, [user, id, myProfile]);
+
+  const handleClearMyMood = useCallback(async () => {
+    if (!user || !id) return;
+    const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
+    setMyMood(null);
+    await clearMyMood(chatIdStr);
+    setIsMoodPickerOpen(false);
+
+    if (typingChannelRef.current) {
+      typingChannelRef.current.send({
+        type: "broadcast",
+        event: "mood_update",
+        payload: { mood: null, sender_id: user.id },
+      });
+    }
+  }, [user, id]);
 
   const infoSpringAnim = useRef(new RNAnimated.Value(0)).current;
 
@@ -2740,41 +2870,7 @@ export default function ChatScreen() {
     <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden", borderRadius: screenRadius }}>
       <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive} screenRadius={screenRadius} />
       <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
-      {/* Dynamic Island Shared-Element Screen Bloom Layer */}
-      <RNAnimated.View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 9999,
-          opacity: screenBloomAnim.interpolate({
-            inputRange: [0, 0.05, 0.9, 1],
-            outputRange: [0, 1, 1, 0],
-          }),
-          transform: [
-            {
-              scale: screenBloomAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.35, 1],
-              }),
-            },
-            {
-              translateY: screenBloomAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [-100, 0],
-              }),
-            },
-          ],
-          backgroundColor: isAmoled ? "#000000" : (theme.background || "#0f172a"),
-          borderRadius: screenBloomAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [42, 0],
-          }),
-        }}
-      />
+
       <SleepyByeBlocker
         chatId={currentChatId}
         visible={!!(chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now())}
@@ -2948,6 +3044,11 @@ export default function ChatScreen() {
                 ) : (callState.status !== "idle" || isIslandExpanded) ? (
                   <DynamicIslandExpandedView
                     targetUser={targetUser}
+                    isTargetOnline={isTargetOnline}
+                    lastSeenText={formatLastSeenText(targetUser, isTargetOnline)}
+                    partnerMood={partnerMood}
+                    myMood={myMood}
+                    onOpenMoodPicker={() => setIsMoodPickerOpen(true)}
                     theme={theme}
                     audioState={audioState}
                     isTyping={isTyping}
@@ -2994,7 +3095,7 @@ export default function ChatScreen() {
                       toggleVideoCamera();
                     }}
                     onHeartPing={triggerHeartPing}
-                    onOpenChatInfo={handleOpenProfileWithBloom}
+                    onOpenChatInfo={handleOpenProfileFromIsland}
                     onCollapse={() => setIsIslandExpanded(false)}
                   />
                 ) : (
@@ -4087,6 +4188,218 @@ export default function ChatScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* 6-Hour Ephemeral Mood Picker Modal */}
+      <Modal
+        visible={isMoodPickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsMoodPickerOpen(false)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0, 0, 0, 0.65)",
+            justifyContent: "flex-end",
+          }}
+          onPress={() => setIsMoodPickerOpen(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: isAmoled ? "#0a0a0c" : (theme.surface || "#181a20"),
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              borderTopWidth: 1,
+              borderColor: "rgba(255, 255, 255, 0.12)",
+              paddingHorizontal: 20,
+              paddingTop: 16,
+              paddingBottom: Platform.OS === "ios" ? 36 : 24,
+              maxHeight: "80%",
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Grab handle */}
+            <View
+              style={{
+                width: 36,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: "rgba(255, 255, 255, 0.25)",
+                alignSelf: "center",
+                marginBottom: 16,
+              }}
+            />
+
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Sparkles size={18} color="#f43f5e" />
+                <Text style={{ color: "#ffffff", fontSize: 16, fontWeight: "700", fontFamily: "Josefin Sans" }}>
+                  Set 6-Hour Ephemeral Mood
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsMoodPickerOpen(false)}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: "rgba(255, 255, 255, 0.1)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <X size={15} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: 12, fontFamily: "Josefin Sans", marginBottom: 16 }}>
+              Shows in the Dynamic Island and automatically expires after 6 hours.
+            </Text>
+
+            {/* Current Active Mood Display */}
+            {myMood && isMoodActive(myMood) && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: "rgba(244, 63, 94, 0.12)",
+                  borderWidth: 1,
+                  borderColor: "rgba(244, 63, 94, 0.25)",
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  marginBottom: 16,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ fontSize: 18 }}>{myMood.emoji}</Text>
+                  <View>
+                    <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "600", fontFamily: "Josefin Sans" }}>
+                      {myMood.text}
+                    </Text>
+                    <Text style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: 10.5, fontFamily: "Josefin Sans" }}>
+                      Active • {formatMoodRemaining(myMood.timestamp)}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={handleClearMyMood}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 8,
+                    backgroundColor: "rgba(239, 68, 68, 0.2)",
+                    borderWidth: 1,
+                    borderColor: "rgba(239, 68, 68, 0.4)",
+                  }}
+                >
+                  <Text style={{ color: "#ef4444", fontSize: 11, fontWeight: "600", fontFamily: "Josefin Sans" }}>
+                    Clear
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Presets Grid */}
+            <Text style={{ color: "rgba(255, 255, 255, 0.7)", fontSize: 12, fontWeight: "600", fontFamily: "Josefin Sans", marginBottom: 8 }}>
+              Quick Presets
+            </Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {MOOD_PRESETS.map((preset) => (
+                <TouchableOpacity
+                  key={preset.label}
+                  onPress={() => handleSelectMood(preset.emoji, preset.label)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 12,
+                    backgroundColor: myMood?.text === preset.label
+                      ? "rgba(244, 63, 94, 0.2)"
+                      : "rgba(255, 255, 255, 0.07)",
+                    borderWidth: 1,
+                    borderColor: myMood?.text === preset.label
+                      ? "#f43f5e"
+                      : "rgba(255, 255, 255, 0.1)",
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 14 }}>{preset.emoji}</Text>
+                  <Text style={{ color: "#ffffff", fontSize: 12, fontWeight: "600", fontFamily: "Josefin Sans" }}>
+                    {preset.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Custom Mood Input */}
+            <Text style={{ color: "rgba(255, 255, 255, 0.7)", fontSize: 12, fontWeight: "600", fontFamily: "Josefin Sans", marginBottom: 8 }}>
+              Or write your own
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TextInput
+                value={customMoodEmoji}
+                onChangeText={(t) => setCustomMoodEmoji(t.slice(-2))}
+                style={{
+                  width: 44,
+                  height: 42,
+                  borderRadius: 12,
+                  backgroundColor: "rgba(255, 255, 255, 0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255, 255, 255, 0.15)",
+                  textAlign: "center",
+                  fontSize: 18,
+                  color: "#ffffff",
+                }}
+                maxLength={4}
+              />
+              <TextInput
+                value={customMoodText}
+                onChangeText={setCustomMoodText}
+                placeholder="What are you doing?"
+                placeholderTextColor="rgba(255, 255, 255, 0.35)"
+                maxLength={30}
+                style={{
+                  flex: 1,
+                  height: 42,
+                  borderRadius: 12,
+                  backgroundColor: "rgba(255, 255, 255, 0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255, 255, 255, 0.15)",
+                  paddingHorizontal: 12,
+                  color: "#ffffff",
+                  fontSize: 13,
+                  fontFamily: "Josefin Sans",
+                }}
+              />
+              <TouchableOpacity
+                onPress={() => {
+                  if (customMoodText.trim()) {
+                    handleSelectMood(customMoodEmoji || "✨", customMoodText.trim());
+                    setCustomMoodText("");
+                  }
+                }}
+                disabled={!customMoodText.trim()}
+                style={{
+                  height: 42,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  backgroundColor: customMoodText.trim() ? "#f43f5e" : "rgba(244, 63, 94, 0.3)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" }}>
+                  Set
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
