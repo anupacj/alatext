@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   ScrollView,
   useWindowDimensions,
   Modal,
+  Animated as RNAnimated,
+  Easing,
 } from "react-native";
 import {
   ArrowLeft,
@@ -148,6 +150,52 @@ export default function ChatInfoScreen() {
       });
     }
   }, [chatId, wallpaperUrl]);
+
+  // Fluid screen entrance slide animation (works across Web/PWA/mobile browsers)
+  const screenSlideAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 44 : 0)).current;
+  const screenFadeAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 0 : 1)).current;
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      RNAnimated.parallel([
+        RNAnimated.spring(screenSlideAnim, {
+          toValue: 0,
+          friction: 8,
+          tension: 70,
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(screenFadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }
+  }, [screenSlideAnim, screenFadeAnim]);
+
+  const handleGoBack = useCallback(() => {
+    if (Platform.OS === "web") {
+      RNAnimated.parallel([
+        RNAnimated.timing(screenSlideAnim, {
+          toValue: 44,
+          duration: 180,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(screenFadeAnim, {
+          toValue: 0,
+          duration: 160,
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(tabs)");
+      });
+    } else {
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)");
+    }
+  }, [router, screenSlideAnim, screenFadeAnim]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(isGroupParam ? "members" : "media");
   const [loading, setLoading] = useState(true);
@@ -1005,7 +1053,15 @@ export default function ChatInfoScreen() {
   // RENDER SECTIONS
   // -------------------------------------------------------------
   return (
-    <View style={styles.screenContainer}>
+    <RNAnimated.View
+      style={[
+        styles.screenContainer,
+        {
+          opacity: screenFadeAnim,
+          transform: [{ translateX: screenSlideAnim }],
+        },
+      ]}
+    >
       {/* Absolute Blurred Wallpaper Background */}
       {wallpaperUrl ? (
         <Image
@@ -1034,7 +1090,7 @@ export default function ChatInfoScreen() {
       <View style={styles.topHeader}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
+          onPress={handleGoBack}
           activeOpacity={0.7}
         >
           <ArrowLeft size={18} color={isAmoled ? "#ffffff" : theme.text} />
@@ -2430,7 +2486,7 @@ export default function ChatInfoScreen() {
         imageUrl={selectedViewerImage}
         onClose={() => setSelectedViewerImage(null)}
       />
-    </View>
+    </RNAnimated.View>
   );
 }
 

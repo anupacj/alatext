@@ -360,27 +360,27 @@ export default function ChatScreen() {
   const leftPillAnimatedStyle = isDynamicIslandActive
     ? {
         width: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2, 3],
-          outputRange: [effectivePillHeight, effectivePillHeight, 0, 0, 0],
+          inputRange: [0, 1, 1.4, 2],
+          outputRange: [effectivePillHeight, effectivePillHeight, 0, 0],
         }),
         overflow: "hidden" as any,
         transform: [
           {
             translateX: islandAnim.interpolate({
-              inputRange: [0, 1, 2, 3],
-              outputRange: [0, -10, -32, -40],
+              inputRange: [0, 1, 2],
+              outputRange: [0, -10, -32],
             }),
           },
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 1, 2, 3],
-              outputRange: [1, 0.94, 0.5, 0],
+              inputRange: [0, 1, 2],
+              outputRange: [1, 0.94, 0.5],
             }),
           },
         ],
         opacity: islandAnim.interpolate({
-          inputRange: [0, 0.8, 1.3, 2, 3],
-          outputRange: [1, 0.9, 0, 0, 0],
+          inputRange: [0, 0.8, 1.3, 2],
+          outputRange: [1, 0.9, 0, 0],
         }),
       }
     : {};
@@ -390,27 +390,27 @@ export default function ChatScreen() {
   const rightPillAnimatedStyle = isDynamicIslandActive
     ? {
         width: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2, 3],
-          outputRange: [rightPillBaseWidth, rightPillBaseWidth, 0, 0, 0],
+          inputRange: [0, 1, 1.4, 2],
+          outputRange: [rightPillBaseWidth, rightPillBaseWidth, 0, 0],
         }),
         overflow: "hidden" as any,
         transform: [
           {
             translateX: islandAnim.interpolate({
-              inputRange: [0, 1, 2, 3],
-              outputRange: [0, 10, 32, 40],
+              inputRange: [0, 1, 2],
+              outputRange: [0, 10, 32],
             }),
           },
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 1, 2, 3],
-              outputRange: [1, 0.94, 0.5, 0],
+              inputRange: [0, 1, 2],
+              outputRange: [1, 0.94, 0.5],
             }),
           },
         ],
         opacity: islandAnim.interpolate({
-          inputRange: [0, 0.8, 1.3, 2, 3],
-          outputRange: [1, 0.9, 0, 0, 0],
+          inputRange: [0, 0.8, 1.3, 2],
+          outputRange: [1, 0.9, 0, 0],
         }),
       }
     : {};
@@ -424,20 +424,20 @@ export default function ChatScreen() {
   const centerIslandAnimatedStyle = isDynamicIslandActive
     ? {
         height: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2, 3],
-          outputRange: [baseH, baseH, baseH, expandedH, 680],
+          inputRange: [0, 1, 1.4, 2],
+          outputRange: [baseH, baseH, baseH, expandedH],
         }),
         borderRadius: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2, 3],
-          outputRange: [baseH / 2, baseH / 2, baseH / 2, dynamicBorderRadius, 32],
+          inputRange: [0, 1, 1.4, 2],
+          outputRange: [baseH / 2, baseH / 2, baseH / 2, dynamicBorderRadius],
         }),
         marginLeft: 0,
         marginRight: 0,
         transform: [
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 0.5, 1, 1.5, 2, 3],
-              outputRange: [1, 1.03, 1.01, 1.005, 1, 1],
+              inputRange: [0, 0.5, 1, 1.5, 2],
+              outputRange: [1, 1.03, 1.01, 1.005, 1],
             }),
           },
         ],
@@ -2678,23 +2678,9 @@ export default function ChatScreen() {
   }, [router, id, isGroup, targetUser, chatAvatars, name, groupChatData, chatSettings]);
 
   const handleOpenProfileFromIsland = useCallback(() => {
-    if (isDynamicIslandActive) {
-      RNAnimated.spring(islandAnim, {
-        toValue: 3,
-        friction: 8,
-        tension: 65,
-        useNativeDriver: false,
-      }).start(() => {
-        openChatInfo();
-        setTimeout(() => {
-          setIsIslandExpanded(false);
-          islandAnim.setValue(0);
-        }, 400);
-      });
-    } else {
-      openChatInfo();
-    }
-  }, [isDynamicIslandActive, islandAnim, openChatInfo]);
+    setIsIslandExpanded(false);
+    openChatInfo();
+  }, [openChatInfo]);
 
   const handleSelectMood = useCallback(async (emoji: string, text: string) => {
     if (!user || !id) return;
@@ -2827,6 +2813,52 @@ export default function ChatScreen() {
     }
   }, [handlePinMessage, deleteMessage, openChatInfo, handleSaveMessageToMemories, handleSaveMessageToNotes]);
 
+  // Fluid screen entrance slide animation (works across Web/PWA/mobile browsers)
+  const screenSlideAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 44 : 0)).current;
+  const screenFadeAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 0 : 1)).current;
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      RNAnimated.parallel([
+        RNAnimated.spring(screenSlideAnim, {
+          toValue: 0,
+          friction: 8,
+          tension: 70,
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(screenFadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }
+  }, [screenSlideAnim, screenFadeAnim]);
+
+  const handleGoBack = useCallback(() => {
+    if (Platform.OS === "web") {
+      RNAnimated.parallel([
+        RNAnimated.timing(screenSlideAnim, {
+          toValue: 44,
+          duration: 180,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(screenFadeAnim, {
+          toValue: 0,
+          duration: 160,
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/");
+      });
+    } else {
+      if (router.canGoBack()) router.back();
+      else router.replace("/");
+    }
+  }, [router, screenSlideAnim, screenFadeAnim]);
+
   // Escape key handler to exit chat to home or close active modals
   useEffect(() => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -2839,14 +2871,13 @@ export default function ChatScreen() {
           if (fontPickerOpen) { setFontPickerOpen(false); return; }
           if (imageViewerUrl) { setImageViewerUrl(null); return; }
           
-          if (router.canGoBack()) router.back();
-          else router.replace("/");
+          handleGoBack();
         }
       };
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
     }
-  }, [infoVisible, settingsVisible, emojiOpen, stickerPickerOpen, fontPickerOpen, imageViewerUrl, router]);
+  }, [infoVisible, settingsVisible, emojiOpen, stickerPickerOpen, fontPickerOpen, imageViewerUrl, handleGoBack]);
 
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     return (
@@ -2867,7 +2898,17 @@ export default function ChatScreen() {
   const screenRadius = (styles.container as any)?.borderRadius ?? theme.screenRadius ?? 0;
 
   const chatViewContent = (
-    <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden", borderRadius: screenRadius }}>
+    <RNAnimated.View
+      style={{
+        flex: 1,
+        height: "100%",
+        backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background),
+        overflow: "hidden",
+        borderRadius: screenRadius,
+        opacity: screenFadeAnim,
+        transform: [{ translateX: screenSlideAnim }],
+      }}
+    >
       <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive} screenRadius={screenRadius} />
       <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
 
@@ -2970,7 +3011,7 @@ export default function ChatScreen() {
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
-                    onPress={() => router.canGoBack() ? router.back() : router.replace("/")}
+                    onPress={handleGoBack}
                     style={[
                       styles.headerPill,
                       styles.headerBackPill,
@@ -4401,7 +4442,7 @@ export default function ChatScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </RNAnimated.View>
   );
 
   if (isDesktop) {
