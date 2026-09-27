@@ -106,7 +106,7 @@ export const AppleIntelligenceGlow: React.FC<AppleIntelligenceGlowProps> = ({
         StyleSheet.absoluteFill,
         {
           opacity: fadeAnim,
-          zIndex: 9999,
+          zIndex: 15,
           borderRadius: screenRadius as any,
           overflow: "hidden",
         },

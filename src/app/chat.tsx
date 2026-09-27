@@ -959,6 +959,7 @@ export default function ChatScreen() {
         payload: {
           sender_id: user?.id,
           sender_name: senderName,
+          text: senderName ? `${senderName} is thinking of you...` : "Thinking of you...",
         },
       });
     }
@@ -3036,15 +3037,19 @@ export default function ChatScreen() {
                   styles.headerPill,
                   styles.headerProfilePill,
                   headerGlassStyle,
-                  isDynamicIslandActive && {
+                  (isDynamicIslandActive || isHeartGlowing) && {
                     backgroundColor: "#000000",
                     borderColor: isHeartGlowing
-                      ? "rgba(255, 255, 255, 0.14)"
-                      : "rgba(255, 255, 255, 0.14)",
-                    overflow: "hidden",
-                    ...(Platform.OS === "web" && isHeartGlowing
-                      ? { boxShadow: "0 0 24px rgba(244, 63, 94, 0.25), 0 4px 30px rgba(244, 63, 94, 0.15)" }
-                      : {}),
+                      ? "rgba(255, 255, 255, 0.16)"
+                      : "rgba(255, 255, 255, 0.12)",
+                    overflow: "visible",
+                    ...(Platform.OS === "web" ? {
+                      backdropFilter: "none",
+                      WebkitBackdropFilter: "none",
+                      boxShadow: isHeartGlowing
+                        ? "0 0 28px rgba(244, 63, 94, 0.35), 0 4px 30px rgba(244, 63, 94, 0.22)"
+                        : "0 4px 20px rgba(0, 0, 0, 0.4)",
+                    } : {}),
                   },
                   centerIslandAnimatedStyle,
                   {
@@ -3061,27 +3066,74 @@ export default function ChatScreen() {
                 ]}
               >
                 {isHeartGlowing ? (
-                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 12 }}>
-                    <RNAnimated.View style={{ transform: [{ scale: heartAnim }], marginRight: 8 }}>
-                      <Heart size={18} color="#f43f5e" fill="#f43f5e" />
-                    </RNAnimated.View>
-                    <ShinyText
-                      text={thinkingOfYou?.text || "Thinking of you..."}
-                      speed={1.6}
-                      color="#f43f5e"
-                      shineColor="#ffffff"
-                      spread={120}
-                      style={[
-                        {
-                          fontSize: 14,
-                          fontWeight: "700",
-                          letterSpacing: 0.3,
-                          color: "#f43f5e",
-                        },
-                        chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-                      ]}
-                    />
-                  </View>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      width: "100%",
+                      height: "100%",
+                      paddingHorizontal: 8,
+                    }}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (isDynamicIslandActive) {
+                        setIsIslandExpanded((prev) => !prev);
+                      } else {
+                        handleOpenChatInfoWithSpring();
+                      }
+                    }}
+                  >
+                    {/* Left Flank: Pulsing Heart Complication (Strictly left of camera cutout) */}
+                    <View
+                      style={{
+                        flex: 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <RNAnimated.View style={{ transform: [{ scale: heartAnim }] }}>
+                        <Heart size={18} color="#f43f5e" fill="#f43f5e" />
+                      </RNAnimated.View>
+                    </View>
+
+                    {/* Center Camera Punch-Hole Safe Spacer */}
+                    {/* Guaranteed 48px clearance under physical camera hole: pure black dead-zone */}
+                    <View style={{ width: 48, height: "100%" }} pointerEvents="none" />
+
+                    {/* Right Flank: Shiny Text Complication (Strictly right of camera cutout) */}
+                    <View
+                      style={{
+                        flex: 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingRight: 6,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <ShinyText
+                        text={thinkingOfYou?.text || "Thinking of you..."}
+                        speed={1.6}
+                        color="#f43f5e"
+                        shineColor="#ffffff"
+                        spread={120}
+                        style={[
+                          {
+                            fontSize: 12.5,
+                            fontWeight: "700",
+                            letterSpacing: 0.2,
+                            color: "#f43f5e",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          },
+                          chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                        ]}
+                      />
+                    </View>
+                  </TouchableOpacity>
                 ) : (callState.status !== "idle" || isIslandExpanded) ? (
                   <DynamicIslandExpandedView
                     targetUser={targetUser}
@@ -4493,7 +4545,7 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     paddingHorizontal: isDesktop ? 20 : 10,
     paddingTop: Platform.OS === "ios" ? 52 : (isDesktop ? 16 : 44),
     paddingBottom: 6,
-    zIndex: 50,
+    zIndex: 100,
     gap: 8,
   },
   headerPill: {
@@ -4538,7 +4590,7 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     borderRadius: 18,
     borderWidth: 1,
     paddingVertical: 6,
-    zIndex: 100,
+    zIndex: 120,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
