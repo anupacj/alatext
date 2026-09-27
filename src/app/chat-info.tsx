@@ -185,7 +185,9 @@ export default function ChatInfoScreen() {
   }, [chatId, wallpaperUrl]);
 
   // Fluid screen entrance slide animation (works across Web/PWA/mobile browsers)
-  const screenSlideAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 44 : 0)).current;
+  // When coming from dynamic island downward expand, animate down from top (-40) instead of bottom (44)
+  const isOpenVaultFromIsland = params.openVault === "true";
+  const screenSlideAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? (isOpenVaultFromIsland ? -40 : 44) : 0)).current;
   const screenFadeAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 0 : 1)).current;
 
   useEffect(() => {
@@ -210,7 +212,7 @@ export default function ChatInfoScreen() {
     if (Platform.OS === "web") {
       RNAnimated.parallel([
         RNAnimated.timing(screenSlideAnim, {
-          toValue: 44,
+          toValue: isOpenVaultFromIsland ? -40 : 44,
           duration: 180,
           easing: Easing.in(Easing.ease),
           useNativeDriver: false,
@@ -228,9 +230,10 @@ export default function ChatInfoScreen() {
       if (router.canGoBack()) router.back();
       else router.replace("/(tabs)");
     }
-  }, [router, screenSlideAnim, screenFadeAnim]);
+  }, [router, screenSlideAnim, screenFadeAnim, isOpenVaultFromIsland]);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>(isGroupParam ? "members" : "media");
+  const initialTabParam = (params.initialTab as ActiveTab) || (isOpenVaultFromIsland ? "notes" : (isGroupParam ? "members" : "media"));
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTabParam);
   const [loading, setLoading] = useState(true);
   const [chatData, setChatData] = useState<any>(null);
   const [isGroup, setIsGroup] = useState(isGroupParam);
@@ -837,6 +840,16 @@ export default function ChatInfoScreen() {
     setActiveTab("media");
     setPeekingMemoryId(null);
   };
+
+  // If navigated from Dynamic Island "Vault" button or downward swipe
+  useEffect(() => {
+    if (params.openVault === "true" && !vaultUnlocked && !isDecoyMode && isPinEnabled) {
+      const timer = setTimeout(() => {
+        handleTriggerUnlockVault();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [params.openVault, isPinEnabled, vaultUnlocked, isDecoyMode]);
 
   // Group ownership check
   const isOwner = useMemo(() => {

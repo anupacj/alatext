@@ -360,27 +360,27 @@ export default function ChatScreen() {
   const leftPillAnimatedStyle = isDynamicIslandActive
     ? {
         width: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2],
-          outputRange: [effectivePillHeight, effectivePillHeight, 0, 0],
+          inputRange: [0, 1, 1.4, 2, 2.35],
+          outputRange: [effectivePillHeight, effectivePillHeight, 0, 0, 0],
         }),
         overflow: "hidden" as any,
         transform: [
           {
             translateX: islandAnim.interpolate({
-              inputRange: [0, 1, 2],
-              outputRange: [0, -10, -32],
+              inputRange: [0, 1, 2, 2.35],
+              outputRange: [0, -10, -32, -40],
             }),
           },
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 1, 2],
-              outputRange: [1, 0.94, 0.5],
+              inputRange: [0, 1, 2, 2.35],
+              outputRange: [1, 0.94, 0.5, 0.4],
             }),
           },
         ],
         opacity: islandAnim.interpolate({
-          inputRange: [0, 0.8, 1.3, 2],
-          outputRange: [1, 0.9, 0, 0],
+          inputRange: [0, 0.8, 1.3, 2, 2.35],
+          outputRange: [1, 0.9, 0, 0, 0],
         }),
       }
     : {};
@@ -390,54 +390,53 @@ export default function ChatScreen() {
   const rightPillAnimatedStyle = isDynamicIslandActive
     ? {
         width: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2],
-          outputRange: [rightPillBaseWidth, rightPillBaseWidth, 0, 0],
+          inputRange: [0, 1, 1.4, 2, 2.35],
+          outputRange: [rightPillBaseWidth, rightPillBaseWidth, 0, 0, 0],
         }),
         overflow: "hidden" as any,
         transform: [
           {
             translateX: islandAnim.interpolate({
-              inputRange: [0, 1, 2],
-              outputRange: [0, 10, 32],
+              inputRange: [0, 1, 2, 2.35],
+              outputRange: [0, 10, 32, 40],
             }),
           },
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 1, 2],
-              outputRange: [1, 0.94, 0.5],
+              inputRange: [0, 1, 2, 2.35],
+              outputRange: [1, 0.94, 0.5, 0.4],
             }),
           },
         ],
         opacity: islandAnim.interpolate({
-          inputRange: [0, 0.8, 1.3, 2],
-          outputRange: [1, 0.9, 0, 0],
+          inputRange: [0, 0.8, 1.3, 2, 2.35],
+          outputRange: [1, 0.9, 0, 0, 0],
         }),
       }
     : {};
 
   const baseH = effectivePillHeight;
   const isVideoConnected = callState.status === "connected" && callState.callType === "video";
-  const hasPartnerMood = partnerMood && isMoodActive(partnerMood);
-  const expandedH = isVideoConnected ? 245 : (callState.status !== "idle" ? 168 : (hasPartnerMood ? 142 : 124));
+  const expandedH = isVideoConnected ? 245 : (callState.status !== "idle" ? 168 : 138);
   const dynamicBorderRadius = notchConfig.islandBorderRadius || 42;
 
   const centerIslandAnimatedStyle = isDynamicIslandActive
     ? {
         height: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2],
-          outputRange: [baseH, baseH, baseH, expandedH],
+          inputRange: [0, 1, 1.4, 2, 2.35],
+          outputRange: [baseH, baseH, baseH, expandedH, expandedH + 40],
         }),
         borderRadius: islandAnim.interpolate({
-          inputRange: [0, 1, 1.4, 2],
-          outputRange: [baseH / 2, baseH / 2, baseH / 2, dynamicBorderRadius],
+          inputRange: [0, 1, 1.4, 2, 2.35],
+          outputRange: [baseH / 2, baseH / 2, baseH / 2, dynamicBorderRadius, dynamicBorderRadius + 4],
         }),
         marginLeft: 0,
         marginRight: 0,
         transform: [
           {
             scale: islandAnim.interpolate({
-              inputRange: [0, 0.5, 1, 1.5, 2],
-              outputRange: [1, 1.03, 1.01, 1.005, 1],
+              inputRange: [0, 0.5, 1, 1.5, 2, 2.35],
+              outputRange: [1, 1.03, 1.01, 1.005, 1, 1.015],
             }),
           },
         ],
@@ -2677,7 +2676,7 @@ export default function ChatScreen() {
     });
   }, [customAlert, user, id]);
 
-  const openChatInfo = useCallback(() => {
+  const openChatInfo = useCallback((initialTab = "media", openVault = false) => {
     router.push({
       pathname: "/chat-info",
       params: {
@@ -2693,14 +2692,31 @@ export default function ChatScreen() {
         groupAvatar: groupChatData?.avatar_url || "",
         wallpaperUrl: chatSettings?.wallpaper_url || "",
         wallpaperBlur: String(chatSettings?.wallpaper_blur || 0),
+        initialTab,
+        openVault: openVault ? "true" : "false",
       },
     });
   }, [router, id, isGroup, targetUser, chatAvatars, name, groupChatData, chatSettings]);
 
   const handleOpenProfileFromIsland = useCallback(() => {
     setIsIslandExpanded(false);
-    openChatInfo();
+    openChatInfo("media", false);
   }, [openChatInfo]);
+
+  const handleOpenVaultFromIsland = useCallback(() => {
+    // Tactile downward spring animation matching card expand physics
+    RNAnimated.spring(islandAnim, {
+      toValue: 2.35,
+      friction: 7,
+      tension: 90,
+      useNativeDriver: false,
+    }).start();
+
+    setTimeout(() => {
+      setIsIslandExpanded(false);
+      openChatInfo("notes", true);
+    }, 110);
+  }, [openChatInfo, islandAnim]);
 
   const handleSelectMood = useCallback(async (emoji: string, text: string) => {
     if (!user || !id) return;
@@ -3180,6 +3196,7 @@ export default function ChatScreen() {
                     radarDistanceKm={radarDistanceKm}
                     radarBearing={radarBearing}
                     radarLastUpdated={radarLastUpdated}
+                    radarPartnerLoc={radarPartnerLoc}
                     onRefreshRadar={() => refreshRadarLocation(true)}
                     onStartCall={(type) => {
                       if (!targetUser?.id) return;
@@ -3210,6 +3227,7 @@ export default function ChatScreen() {
                       toggleVideoCamera();
                     }}
                     onHeartPing={triggerHeartPing}
+                    onOpenVault={handleOpenVaultFromIsland}
                     onOpenChatInfo={handleOpenProfileFromIsland}
                     onCollapse={() => setIsIslandExpanded(false)}
                   />

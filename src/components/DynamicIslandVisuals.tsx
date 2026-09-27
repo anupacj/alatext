@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity, Image } from "react-native";
-import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, VideoOff, ChevronUp, Sparkles, Info, Compass, MapPin, RotateCcw, Navigation } from "lucide-react-native";
+import React, { useEffect, useRef, useMemo } from "react";
+import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity, Image, PanResponder } from "react-native";
+import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, VideoOff, ChevronUp, Sparkles, Info, Compass, MapPin, RotateCcw, Navigation, Lock, ArrowUpRight } from "lucide-react-native";
 import { NotchConfig, DynamicIslandAudioEvent } from "../utils/notchConfig";
 import { formatCoupleDistance, formatDataAge } from "../utils/coupleRadar";
 import { CoupleMood, isMoodActive, formatMoodRemaining } from "../utils/coupleMood";
@@ -232,11 +232,59 @@ function getCompassDirection(deg: number): string {
   return directions[index];
 }
 
+// Helper to get partner status text (Active now, timezone offset, or napping soon)
+function getPartnerStatusText({
+  isOnline,
+  radarPartnerLoc,
+  lastSeenText,
+}: {
+  isOnline?: boolean;
+  radarPartnerLoc?: { lat: number; lng: number } | null;
+  lastSeenText?: string;
+}): string {
+  if (isOnline) return "Active now";
+
+  // Check solar time from GPS longitude if available
+  if (radarPartnerLoc && typeof radarPartnerLoc.lng === "number") {
+    const myTzOffsetHours = -new Date().getTimezoneOffset() / 60;
+    const partnerTzOffsetHours = Math.round(radarPartnerLoc.lng / 15);
+    const diffHours = Math.round(partnerTzOffsetHours - myTzOffsetHours);
+
+    const nowUtc = new Date();
+    const partnerHour = (nowUtc.getUTCHours() + partnerTzOffsetHours + 24) % 24;
+
+    if (partnerHour >= 22 || partnerHour < 6) {
+      return "napping soon";
+    }
+
+    if (diffHours === 0) {
+      return "Same timezone";
+    } else if (diffHours > 0) {
+      return `+${diffHours}h ahead`;
+    } else {
+      return `${diffHours}h behind`;
+    }
+  }
+
+  // Fallback to checking local time if late night
+  const curHour = new Date().getHours();
+  if (curHour >= 22 || curHour < 6) {
+    return "napping soon";
+  }
+
+  if (lastSeenText && !lastSeenText.includes("Offline")) {
+    return lastSeenText.replace(/^[○●]\s*/, "");
+  }
+
+  return "Offline";
+}
+
 // --- EXPANDED DYNAMIC ISLAND CARD VIEW (MINIMAL APPLE CAPSULE) ---
 export function DynamicIslandExpandedView({
   targetUser,
   isTargetOnline = false,
   lastSeenText = "",
+  radarPartnerLoc = null,
   partnerMood = null,
   myMood = null,
   onOpenMoodPicker,
@@ -264,12 +312,14 @@ export function DynamicIslandExpandedView({
   onToggleMute,
   onToggleVideo,
   onHeartPing,
+  onOpenVault,
   onOpenChatInfo,
   onCollapse,
 }: {
   targetUser?: any;
   isTargetOnline?: boolean;
   lastSeenText?: string;
+  radarPartnerLoc?: { lat: number; lng: number } | null;
   partnerMood?: CoupleMood | null;
   myMood?: CoupleMood | null;
   onOpenMoodPicker?: () => void;
@@ -297,11 +347,33 @@ export function DynamicIslandExpandedView({
   onToggleMute?: () => void;
   onToggleVideo?: () => void;
   onHeartPing: () => void;
+  onOpenVault?: () => void;
   onOpenChatInfo: () => void;
   onCollapse: () => void;
 }) {
   const contactName =
     targetUser?.nickname || targetUser?.display_name || targetUser?.username || "Partner";
+
+  const statusText = useMemo(() => {
+    return getPartnerStatusText({
+      isOnline: isTargetOnline,
+      radarPartnerLoc,
+      lastSeenText,
+    });
+  }, [isTargetOnline, radarPartnerLoc, lastSeenText]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return gestureState.dy > 12 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.5;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 20) {
+          onOpenVault?.();
+        }
+      },
+    })
+  ).current;
 
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -341,7 +413,7 @@ export function DynamicIslandExpandedView({
   const isCallActive = isCalling || callStatus !== "idle";
 
   return (
-    <View style={visualStyles.expandedContainer}>
+    <View {...panResponder.panHandlers} style={visualStyles.expandedContainer}>
       {/* Top Header Row */}
       <View style={visualStyles.expandedTopRow}>
         <View
@@ -434,30 +506,20 @@ export function DynamicIslandExpandedView({
           )}
         </View>
 
-        {/* Minimal Distance Complication Chip */}
-        {!isCallActive && radarDistanceKm !== null && radarDistanceKm !== undefined && (
+        {/* Top-Right Status Text & Collapse Button */}
+        <View style={visualStyles.headerStatusCluster}>
+          <Text style={visualStyles.headerStatusText} numberOfLines={1}>
+            {statusText}
+          </Text>
           <TouchableOpacity
-            style={visualStyles.minimalDistanceChip}
-            onPress={onRefreshRadar}
-            activeOpacity={0.75}
+            style={visualStyles.expandedCollapseBtn}
+            onPress={onCollapse}
+            activeOpacity={0.7}
+            accessibilityLabel="Collapse Island"
           >
-            <Animated.View style={{ transform: [{ rotate: spinInterpolation }] }}>
-              <Navigation size={10} color="#f43f5e" fill="#f43f5e" />
-            </Animated.View>
-            <Text style={visualStyles.minimalDistanceText}>
-              {formatCoupleDistance(radarDistanceKm)}
-            </Text>
+            <ChevronUp size={15} color="#ffffff" />
           </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={visualStyles.expandedCollapseBtn}
-          onPress={onCollapse}
-          activeOpacity={0.7}
-          accessibilityLabel="Collapse Island"
-        >
-          <ChevronUp size={16} color="#ffffff" />
-        </TouchableOpacity>
+        </View>
       </View>
 
       {/* Video Stream Stage (When in active Video call) */}
@@ -595,55 +657,84 @@ export function DynamicIslandExpandedView({
       ) : (
         /* Minimal Apple Capsule Deck */
         <>
-          {/* Middle Row: 6-Hour Ephemeral Mood */}
-          <View style={visualStyles.minimalMoodRow}>
-            {partnerMood && isMoodActive(partnerMood) && (
-              <View style={visualStyles.partnerMoodBadge}>
-                <Text style={{ fontSize: 12 }}>{partnerMood.emoji}</Text>
-                <Text style={visualStyles.partnerMoodText} numberOfLines={1}>
-                  {partnerMood.text}
-                </Text>
-                <Text style={visualStyles.partnerMoodTime}>
-                  • {formatMoodRemaining(partnerMood.timestamp)}
-                </Text>
-              </View>
-            )}
+          {/* Middle Row: Partner Mood (left) + Distance to Partner (right) */}
+          <View style={visualStyles.middleInfoRow}>
+            {/* Mood on Left */}
+            <View style={visualStyles.middleMoodCol}>
+              {partnerMood && isMoodActive(partnerMood) ? (
+                <View style={visualStyles.partnerMoodBadge}>
+                  <Text style={visualStyles.partnerMoodEmoji}>{partnerMood.emoji}</Text>
+                  <Text style={visualStyles.partnerMoodText} numberOfLines={1}>
+                    {partnerMood.text} · {formatMoodRemaining(partnerMood.timestamp)}
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={visualStyles.myMoodSmallBtn}
+                  onPress={onOpenMoodPicker}
+                  activeOpacity={0.75}
+                >
+                  <Sparkles size={10} color="#f43f5e" />
+                  <Text style={visualStyles.myMoodSmallBtnText} numberOfLines={1}>
+                    {myMood && isMoodActive(myMood)
+                      ? `${myMood.emoji} ${myMood.text}`
+                      : "+ Set 6h Mood"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
+            {/* Distance on Right */}
             <TouchableOpacity
-              style={visualStyles.myMoodBtn}
-              onPress={onOpenMoodPicker}
+              style={visualStyles.middleDistanceCol}
+              onPress={onRefreshRadar}
               activeOpacity={0.75}
             >
-              <Sparkles size={11} color="#f43f5e" />
-              <Text style={visualStyles.myMoodBtnText} numberOfLines={1}>
-                {myMood && isMoodActive(myMood)
-                  ? `${myMood.emoji} ${myMood.text}`
-                  : "+ Set 6h Mood"}
+              <Animated.View style={{ transform: [{ rotate: spinInterpolation }] }}>
+                <ArrowUpRight size={11} color="#f43f5e" />
+              </Animated.View>
+              <Text style={visualStyles.middleDistanceText} numberOfLines={1}>
+                {formatCoupleDistance(radarDistanceKm)}
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Bottom Actions: Thinking of you (with Lub-Dub Haptic) & Profile */}
+          {/* Bottom Actions: 3 equal-width buttons (Thinking of you, Vault, Profile) */}
           <View style={visualStyles.coupleActionsRow}>
             <TouchableOpacity
-              style={visualStyles.heartPingBtn}
+              style={visualStyles.actionTrioBtn}
               onPress={() => {
                 triggerHeartbeatHaptic();
                 onHeartPing();
               }}
               activeOpacity={0.8}
             >
-              <Heart size={14} color="#f43f5e" fill="#f43f5e" />
-              <Text style={visualStyles.heartPingBtnText}>Thinking of you</Text>
+              <Heart size={12} color="#f43f5e" fill="#f43f5e" />
+              <Text style={visualStyles.actionTrioBtnText} numberOfLines={1}>
+                Thinking of You
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={visualStyles.openProfileBtn}
+              style={visualStyles.actionTrioBtn}
+              onPress={onOpenVault}
+              activeOpacity={0.8}
+            >
+              <Lock size={12} color="#a855f7" />
+              <Text style={visualStyles.actionTrioBtnText} numberOfLines={1}>
+                Vault
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={visualStyles.actionTrioBtn}
               onPress={onOpenChatInfo}
               activeOpacity={0.8}
             >
-              <User size={14} color="#ffffff" />
-              <Text style={visualStyles.openProfileBtnText}>Profile</Text>
+              <User size={12} color="#ffffff" />
+              <Text style={visualStyles.actionTrioBtnText} numberOfLines={1}>
+                Profile
+              </Text>
             </TouchableOpacity>
           </View>
         </>
@@ -781,11 +872,14 @@ export function DynamicIslandPreviewMockup({
                     Partner
                   </Text>
                   <Text style={[visualStyles.mockupSubtext, testCalling && { color: "#10b981", fontWeight: "bold" }]}>
-                    {testCalling ? "00:18 • Calling HD..." : "● Online • Spring Expanded"}
+                    {testCalling ? "00:18 • Calling HD..." : "● Online"}
                   </Text>
                 </View>
-                <View style={visualStyles.expandedCollapseBtn}>
-                  <ChevronUp size={14} color="#fff" />
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                  {!testCalling && <Text style={visualStyles.headerStatusText}>Active now</Text>}
+                  <View style={visualStyles.expandedCollapseBtn}>
+                    <ChevronUp size={14} color="#fff" />
+                  </View>
                 </View>
               </View>
 
@@ -798,12 +892,33 @@ export function DynamicIslandPreviewMockup({
                   </View>
                 </View>
               ) : (
-                <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 8 }}>
-                  <View style={visualStyles.mockActionChip}><Text style={{ fontSize: 10, color: "#10b981" }}>📞 Audio</Text></View>
-                  <View style={visualStyles.mockActionChip}><Text style={{ fontSize: 10, color: "#a855f7" }}>📹 Video</Text></View>
-                  <View style={visualStyles.mockActionChip}><Text style={{ fontSize: 10, color: "#f43f5e" }}>💖 Heart</Text></View>
-                  <View style={visualStyles.mockActionChip}><Text style={{ fontSize: 10, color: "#38bdf8" }}>ℹ️ Info</Text></View>
-                </View>
+                <>
+                  <View style={visualStyles.middleInfoRow}>
+                    <View style={visualStyles.partnerMoodBadge}>
+                      <Text style={{ fontSize: 11 }}>😴</Text>
+                      <Text style={visualStyles.partnerMoodText}>Sleepy · 2h left</Text>
+                    </View>
+                    <View style={visualStyles.middleDistanceCol}>
+                      <ArrowUpRight size={11} color="#f43f5e" />
+                      <Text style={visualStyles.middleDistanceText}>14 km away</Text>
+                    </View>
+                  </View>
+
+                  <View style={visualStyles.coupleActionsRow}>
+                    <View style={visualStyles.actionTrioBtn}>
+                      <Heart size={12} color="#f43f5e" fill="#f43f5e" />
+                      <Text style={visualStyles.actionTrioBtnText}>Thinking of You</Text>
+                    </View>
+                    <View style={visualStyles.actionTrioBtn}>
+                      <Lock size={12} color="#a855f7" />
+                      <Text style={visualStyles.actionTrioBtnText}>Vault</Text>
+                    </View>
+                    <View style={visualStyles.actionTrioBtn}>
+                      <User size={12} color="#ffffff" />
+                      <Text style={visualStyles.actionTrioBtnText}>Profile</Text>
+                    </View>
+                  </View>
+                </>
               )}
             </View>
           ) : (
@@ -1022,69 +1137,83 @@ const visualStyles = StyleSheet.create({
     fontWeight: "600",
     fontFamily: "Josefin Sans",
   },
-  minimalDistanceChip: {
+  headerStatusCluster: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3.5,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    marginRight: 6,
+    gap: 6,
   },
-  minimalDistanceText: {
-    color: "#ffffff",
-    fontSize: 10.5,
-    fontWeight: "700",
+  headerStatusText: {
+    color: "rgba(255, 255, 255, 0.55)",
+    fontSize: 10,
     fontFamily: "Josefin Sans",
+    fontWeight: "500",
+    textAlign: "right",
   },
-  minimalMoodRow: {
+  middleInfoRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
     marginVertical: 4,
   },
-  partnerMoodBadge: {
-    flex: 1,
+  middleMoodCol: {
+    flex: 1.1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 3.5,
+  },
+  partnerMoodBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 10,
     backgroundColor: "rgba(244, 63, 94, 0.12)",
     borderWidth: 1,
-    borderColor: "rgba(244, 63, 94, 0.25)",
+    borderColor: "rgba(244, 63, 94, 0.22)",
+  },
+  partnerMoodEmoji: {
+    fontSize: 11,
   },
   partnerMoodText: {
     color: "#ffffff",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     fontFamily: "Josefin Sans",
     flexShrink: 1,
   },
-  partnerMoodTime: {
-    color: "rgba(255, 255, 255, 0.45)",
-    fontSize: 9.5,
-    fontFamily: "Josefin Sans",
-  },
-  myMoodBtn: {
+  myMoodSmallBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3.5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 10,
     backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.1)",
   },
-  myMoodBtnText: {
-    color: "rgba(255, 255, 255, 0.8)",
-    fontSize: 10.5,
+  myMoodSmallBtnText: {
+    color: "rgba(255, 255, 255, 0.75)",
+    fontSize: 9.5,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+  },
+  middleDistanceCol: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3.5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    alignSelf: "center",
+  },
+  middleDistanceText: {
+    color: "rgba(255, 255, 255, 0.85)",
+    fontSize: 10,
     fontWeight: "600",
     fontFamily: "Josefin Sans",
   },
@@ -1097,44 +1226,27 @@ const visualStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-    paddingTop: 8,
+    gap: 6,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.08)",
   },
-  heartPingBtn: {
-    flex: 1.2,
+  actionTrioBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 7,
-    borderRadius: 16,
-    backgroundColor: "rgba(244, 63, 94, 0.16)",
+    gap: 4.5,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
     borderWidth: 1,
-    borderColor: "rgba(244, 63, 94, 0.35)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
-  heartPingBtnText: {
-    color: "#f43f5e",
-    fontSize: 12,
-    fontWeight: "700",
-    fontFamily: "Josefin Sans",
-  },
-  openProfileBtn: {
-    flex: 0.9,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    paddingVertical: 7,
-    borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.18)",
-  },
-  openProfileBtnText: {
-    color: "#ffffff",
-    fontSize: 12,
+  actionTrioBtnText: {
+    color: "rgba(255, 255, 255, 0.9)",
+    fontSize: 10.5,
     fontWeight: "600",
     fontFamily: "Josefin Sans",
   },
