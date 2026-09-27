@@ -1086,28 +1086,7 @@ export default function ChatScreen() {
     };
   }, [fontPickerOpen]);
 
-  // Automatically enter fullscreen when entering a chat
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
 
-    // 1. Immediate attempt (in case navigation preserved gesture)
-    tryEnterFullscreen();
-
-    // 2. Interaction fallback (in case direct link or refreshed page requires fresh tap)
-    const handleFirstTap = () => {
-      tryEnterFullscreen();
-      window.removeEventListener("pointerdown", handleFirstTap, true);
-      window.removeEventListener("keydown", handleFirstTap, true);
-    };
-
-    window.addEventListener("pointerdown", handleFirstTap, true);
-    window.addEventListener("keydown", handleFirstTap, true);
-
-    return () => {
-      window.removeEventListener("pointerdown", handleFirstTap, true);
-      window.removeEventListener("keydown", handleFirstTap, true);
-    };
-  }, []);
 
   const formatMsg = useCallback((msg: any): Message => {
     const rawTs = msg.created_at ? new Date(msg.created_at).getTime() : Date.now();
@@ -3039,6 +3018,8 @@ export default function ChatScreen() {
                   headerGlassStyle,
                   (isDynamicIslandActive || isHeartGlowing) && {
                     backgroundColor: "#000000",
+                    position: "relative",
+                    zIndex: 10000,
                     borderColor: isHeartGlowing
                       ? "rgba(255, 255, 255, 0.16)"
                       : "rgba(255, 255, 255, 0.12)",
@@ -3047,7 +3028,7 @@ export default function ChatScreen() {
                       backdropFilter: "none",
                       WebkitBackdropFilter: "none",
                       boxShadow: isHeartGlowing
-                        ? "0 0 28px rgba(244, 63, 94, 0.35), 0 4px 30px rgba(244, 63, 94, 0.22)"
+                        ? "0 4px 25px rgba(244, 63, 94, 0.35), 0 0 12px rgba(244, 63, 94, 0.2)"
                         : "0 4px 20px rgba(0, 0, 0, 0.4)",
                     } : {}),
                   },
@@ -3073,7 +3054,7 @@ export default function ChatScreen() {
                       alignItems: "center",
                       width: "100%",
                       height: "100%",
-                      paddingHorizontal: 8,
+                      paddingHorizontal: 12,
                     }}
                     activeOpacity={0.85}
                     onPress={() => {
@@ -3084,13 +3065,14 @@ export default function ChatScreen() {
                       }
                     }}
                   >
-                    {/* Left Flank: Pulsing Heart Complication (Strictly left of camera cutout) */}
+                    {/* Left Flank: Pulsing Heart nestled comfortably near the camera */}
                     <View
                       style={{
                         flex: 1,
                         flexDirection: "row",
                         alignItems: "center",
-                        justifyContent: "center",
+                        justifyContent: "flex-end",
+                        paddingRight: 8,
                       }}
                     >
                       <RNAnimated.View style={{ transform: [{ scale: heartAnim }] }}>
@@ -3098,17 +3080,17 @@ export default function ChatScreen() {
                       </RNAnimated.View>
                     </View>
 
-                    {/* Center Camera Punch-Hole Safe Spacer */}
-                    {/* Guaranteed 48px clearance under physical camera hole: pure black dead-zone */}
-                    <View style={{ width: 48, height: "100%" }} pointerEvents="none" />
+                    {/* Snug 16px camera clearance dead-zone (clean frame without giant void) */}
+                    <View style={{ width: 16, height: "100%" }} pointerEvents="none" />
 
-                    {/* Right Flank: Shiny Text Complication (Strictly right of camera cutout) */}
+                    {/* Right Flank: Shiny Text starting cleanly right past the camera */}
                     <View
                       style={{
                         flex: 1,
                         flexDirection: "row",
                         alignItems: "center",
-                        justifyContent: "center",
+                        justifyContent: "flex-start",
+                        paddingLeft: 8,
                         paddingRight: 6,
                         overflow: "hidden",
                       }}
@@ -3121,7 +3103,7 @@ export default function ChatScreen() {
                         spread={120}
                         style={[
                           {
-                            fontSize: 12.5,
+                            fontSize: 13,
                             fontWeight: "700",
                             letterSpacing: 0.2,
                             color: "#f43f5e",
@@ -4534,7 +4516,19 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
-  container: { flex: 1, height: "100%", backgroundColor: bg, maxWidth: "100%" as any, width: "100%", borderLeftWidth: 0, borderRightWidth: 0, overflow: "hidden", borderRadius: screenRadius },
+  container: {
+    flex: 1,
+    height: "100%",
+    position: "relative",
+    zIndex: 10,
+    backgroundColor: bg,
+    maxWidth: "100%" as any,
+    width: "100%",
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    overflow: "hidden",
+    borderRadius: screenRadius,
+  },
   floatingHeaderWrapper: {
     position: "absolute",
     top: 0,
@@ -4545,7 +4539,8 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     paddingHorizontal: isDesktop ? 20 : 10,
     paddingTop: Platform.OS === "ios" ? 52 : (isDesktop ? 16 : 44),
     paddingBottom: 6,
-    zIndex: 100,
+    zIndex: 9999,
+    elevation: 20,
     gap: 8,
   },
   headerPill: {
@@ -4590,12 +4585,12 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     borderRadius: 18,
     borderWidth: 1,
     paddingVertical: 6,
-    zIndex: 120,
+    zIndex: 10000,
+    elevation: 25,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
-    elevation: 12,
     backdropFilter: "blur(20px)",
   } as any,
   moreDropdownItem: {

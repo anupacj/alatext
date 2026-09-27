@@ -38,6 +38,7 @@ export const AppleIntelligenceGlow: React.FC<AppleIntelligenceGlowProps> = ({
           .halo {
             position: absolute;
             inset: 0;
+            z-index: 0 !important;
             border-radius: var(--screen-radius, 0px);
             pointer-events: none;
             box-shadow:
@@ -106,7 +107,7 @@ export const AppleIntelligenceGlow: React.FC<AppleIntelligenceGlowProps> = ({
         StyleSheet.absoluteFill,
         {
           opacity: fadeAnim,
-          zIndex: 15,
+          zIndex: 0,
           borderRadius: screenRadius as any,
           overflow: "hidden",
         },

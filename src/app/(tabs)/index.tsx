@@ -221,7 +221,6 @@ export default function Home() {
           if (existingPart && existingPart.length > 0) {
             const existingChatId = existingPart[0].chat_id;
             resetModal();
-            tryEnterFullscreen();
             router.push({ pathname: "/chat", params: { id: existingChatId, name: tp.username } });
             return;
           }
@@ -238,7 +237,6 @@ export default function Home() {
       ]);
       if (pe2) throw pe2;
       resetModal();
-      tryEnterFullscreen();
       router.push({ pathname: "/chat", params: { id: newChatId, name: tp.username } });
     } catch (e: any) { setSearchError(e.message || "An error occurred."); }
     finally { setSearchLoading(false); }
@@ -266,7 +264,6 @@ export default function Home() {
       const { error: pe } = await supabase.from("chat_participants").insert(participants);
       if (pe) throw pe;
       resetModal();
-      tryEnterFullscreen();
       router.push({ pathname: "/chat", params: { id: newChatId, name: groupName.trim(), isGroup: "true" } });
     } catch (e: any) { setSearchError(e.message || "An error occurred."); }
     finally { setSearchLoading(false); }
@@ -275,7 +272,6 @@ export default function Home() {
   const renderItem = useCallback(({ item }: { item: any }) => (
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
       onPress={() => {
-        tryEnterFullscreen();
         router.push({ pathname: "/chat", params: { id: item.id, name: item.name, isGroup: item.isGroup ? "true" : "false" } });
       }}>
       {item.avatar ? (
@@ -331,7 +327,6 @@ export default function Home() {
         <View style={{ width: 380, height: "100%" }}>
           <ChatSidebar
             onSelectChat={(chatId, name) => {
-              tryEnterFullscreen();
               router.push({ pathname: "/chat", params: { id: chatId, name } });
             }}
           />
