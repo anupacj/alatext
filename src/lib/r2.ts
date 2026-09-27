@@ -34,7 +34,8 @@ export const getThumbnailUrl = (url: string, width = 250, height = 250, quality 
     url.includes("your-public-r2-domain.com") ||
     url.includes("your-bucket-name") ||
     url.includes("localhost") ||
-    url.includes("127.0.0.1")
+    url.includes("127.0.0.1") ||
+    url.includes("wsrv.nl")
   ) {
     return url;
   }

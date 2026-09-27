@@ -483,27 +483,7 @@ export function DynamicIslandExpandedView({
               </Text>
               <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
             </View>
-          ) : (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: isTargetOnline ? "#10b981" : "rgba(255, 255, 255, 0.3)",
-                }}
-              />
-              <Text
-                style={[
-                  visualStyles.expandedSubtitle,
-                  isTargetOnline && { color: "#10b981", fontWeight: "600" },
-                ]}
-                numberOfLines={1}
-              >
-                {isTargetOnline ? "Online" : (lastSeenText || "Offline")}
-              </Text>
-            </View>
-          )}
+          ) : null}
         </View>
 
         {/* Top-Right Status Text & Collapse Button */}

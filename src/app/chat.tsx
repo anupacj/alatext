@@ -252,25 +252,29 @@ export default function ChatScreen() {
     : false;
 
   const formatLastSeenText = (targetUserObj: any, isOnline: boolean) => {
-    if (isOnline) return "● Online";
+    if (isOnline) return "Online";
     const lastActive = targetUserObj?.updated_at || targetUserObj?.last_read_at;
-    if (!lastActive) return "○ Offline";
+    if (!lastActive) return "Offline";
 
     const activeDate = new Date(lastActive);
     const now = new Date();
     const diffMs = Math.max(0, now.getTime() - activeDate.getTime());
     const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
 
-    if (diffMins < 1) return "○ Last seen just now";
-    if (diffMins < 60) return `○ Last seen ${diffMins}m ago`;
-    if (diffHours < 24) return `○ Last seen ${diffHours}h ago`;
+    if (diffMins < 1) return "Just now";
 
-    const timeStr = activeDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const isYesterday = now.getDate() - activeDate.getDate() === 1 && now.getMonth() === activeDate.getMonth();
-    if (isYesterday) return `○ Last seen yesterday at ${timeStr}`;
+    // Compact time-only format to prevent camera punch-hole / cutout collision
+    const timeStr = activeDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-    return `○ Last seen ${activeDate.toLocaleDateString([], { month: "short", day: "numeric" })} at ${timeStr}`;
+    const isToday = now.toDateString() === activeDate.toDateString();
+    if (isToday) return timeStr;
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = yesterday.toDateString() === activeDate.toDateString();
+    if (isYesterday) return `Yesterday ${timeStr}`;
+
+    return `${activeDate.toLocaleDateString([], { month: "short", day: "numeric" })} ${timeStr}`;
   };
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
@@ -3284,11 +3288,14 @@ export default function ChatScreen() {
                           {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
                         </Text>
                       ) : targetUser ? (
-                        <Text style={[
-                          styles.lastSeenText, 
-                          !isTargetOnline && styles.offlineText,
-                          chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-                        ]}>
+                        <Text 
+                          style={[
+                            styles.lastSeenText, 
+                            !isTargetOnline && styles.offlineText,
+                            chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                          ]}
+                          numberOfLines={1}
+                        >
                           {formatLastSeenText(targetUser, isTargetOnline)}
                         </Text>
                       ) : null}

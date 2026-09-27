@@ -98,7 +98,7 @@ const NOTE_COLORS = [
 ];
 
 const MediaImageThumb = React.memo(({ uri, style }: { uri: string; style: any }) => {
-  const initialThumb = useMemo(() => getThumbnailUrl(uri, 350, 350, 80), [uri]);
+  const initialThumb = useMemo(() => getThumbnailUrl(uri, 260, 260, 75), [uri]);
   const [imgSrc, setImgSrc] = useState<string>(initialThumb || uri);
   const [hasError, setHasError] = useState(false);
 
@@ -119,6 +119,7 @@ const MediaImageThumb = React.memo(({ uri, style }: { uri: string; style: any })
     <Image
       source={{ uri: imgSrc }}
       style={style}
+      {...(Platform.OS === "web" ? { loading: "lazy", decoding: "async" } : {})}
       onError={() => {
         if (imgSrc !== uri) {
           setImgSrc(uri);
@@ -522,25 +523,36 @@ export default function ChatInfoScreen() {
       return "image";
     };
 
-    // 1. Instant local cache load
+    // 1. Instant local cache load (check dedicated shared media archive first)
     let cachedMedia: any[] = [];
     try {
-      const cachedRaw = await AsyncStorage.getItem(`chat_${chatId}_messages`);
-      if (cachedRaw) {
-        const cachedMsgs = JSON.parse(cachedRaw);
-        if (Array.isArray(cachedMsgs)) {
-          cachedMedia = cachedMsgs
-            .filter(isMediaMsg)
-            .map((m: any) => ({
-              id: m.id,
-              content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
-              type: resolveType(m),
-              created_at: m.created_at || (m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString()),
-              sender_id: m.sender_id || (m.isMe ? currentUserId : ""),
-            }))
-            .filter((m: any) => !!m.content);
-          if (cachedMedia.length > 0) {
-            setSharedMedia(cachedMedia);
+      const allCached = await AsyncStorage.getItem(`@chat_${chatId}_all_shared_media`);
+      if (allCached) {
+        const parsed = JSON.parse(allCached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cachedMedia = parsed;
+          setSharedMedia(parsed);
+        }
+      }
+
+      if (cachedMedia.length === 0) {
+        const cachedRaw = await AsyncStorage.getItem(`chat_${chatId}_messages`);
+        if (cachedRaw) {
+          const cachedMsgs = JSON.parse(cachedRaw);
+          if (Array.isArray(cachedMsgs)) {
+            cachedMedia = cachedMsgs
+              .filter(isMediaMsg)
+              .map((m: any) => ({
+                id: m.id,
+                content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
+                type: resolveType(m),
+                created_at: m.created_at || (m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString()),
+                sender_id: m.sender_id || (m.isMe ? currentUserId : ""),
+              }))
+              .filter((m: any) => !!m.content);
+            if (cachedMedia.length > 0) {
+              setSharedMedia(cachedMedia);
+            }
           }
         }
       }
@@ -548,27 +560,86 @@ export default function ChatInfoScreen() {
       console.error("Local media load error:", e);
     }
 
-    // 2. Fetch clean messages from Supabase
+    // 2. Fetch ALL media from Supabase across complete chat history (with pagination & fallback queries)
     try {
-      let remoteMedia: any[] = [];
-      const { data, error } = await supabase
-        .from("messages")
-        .select("id, content, type, created_at, sender_id")
-        .eq("chat_id", chatId)
-        .order("created_at", { ascending: false });
+      let remoteMediaRaw: any[] = [];
+      const CHUNK_SIZE = 1000;
+      let from = 0;
+      let hasMore = true;
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        remoteMedia = data
-          .filter(isMediaMsg)
-          .map((m: any) => ({
-            id: m.id,
-            content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
-            type: resolveType(m),
-            created_at: m.created_at || new Date().toISOString(),
-            sender_id: m.sender_id || "",
-          }))
-          .filter((m: any) => !!m.content);
+      // 2a. Paginated query over all messages where type is in ('image', 'video', 'audio')
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("id, content, type, created_at, sender_id")
+          .eq("chat_id", chatId)
+          .in("type", ["image", "video", "audio"])
+          .order("created_at", { ascending: false })
+          .range(from, from + CHUNK_SIZE - 1);
+
+        if (error || !data || data.length === 0) {
+          hasMore = false;
+        } else {
+          remoteMediaRaw = remoteMediaRaw.concat(data);
+          if (data.length < CHUNK_SIZE) {
+            hasMore = false;
+          } else {
+            from += CHUNK_SIZE;
+          }
+        }
       }
+
+      // 2b. Query any legacy messages that have media URLs in content (e.g. if type was null or 'text')
+      try {
+        const { data: legacyData } = await supabase
+          .from("messages")
+          .select("id, content, type, created_at, sender_id")
+          .eq("chat_id", chatId)
+          .or("content.ilike.%/chat-images/%,content.ilike.%/chat-videos/%,content.ilike.%/audio-messages/%,content.ilike.%/voice-messages/%,content.ilike.%.jpg%,content.ilike.%.jpeg%,content.ilike.%.png%,content.ilike.%.webp%,content.ilike.%.gif%,content.ilike.%.mp4%,content.ilike.%.mov%,content.ilike.%.m4a%,content.ilike.%.mp3%")
+          .order("created_at", { ascending: false })
+          .limit(1000);
+
+        if (legacyData && legacyData.length > 0) {
+          remoteMediaRaw = remoteMediaRaw.concat(legacyData);
+        }
+      } catch (legacyErr) {
+        console.warn("Legacy media query warning:", legacyErr);
+      }
+
+      // 2c. Also fetch media memories from chat_memories
+      try {
+        const { data: memoryData } = await supabase
+          .from("chat_memories")
+          .select("id, media_url, media_type, created_at, created_by")
+          .eq("chat_id", chatId)
+          .not("media_url", "is", null);
+
+        if (memoryData && memoryData.length > 0) {
+          const mappedMem = memoryData
+            .filter((m: any) => m.media_url && typeof m.media_url === "string" && !m.media_url.startsWith("sticker:"))
+            .map((m: any) => ({
+              id: `memory_${m.id}`,
+              content: m.media_url,
+              type: m.media_type || "image",
+              created_at: m.created_at || new Date().toISOString(),
+              sender_id: m.created_by || "",
+            }));
+          remoteMediaRaw = remoteMediaRaw.concat(mappedMem);
+        }
+      } catch (memErr) {
+        console.warn("Memory media query warning:", memErr);
+      }
+
+      const formattedRemote = remoteMediaRaw
+        .filter(isMediaMsg)
+        .map((m: any) => ({
+          id: m.id,
+          content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
+          type: resolveType(m),
+          created_at: m.created_at || new Date().toISOString(),
+          sender_id: m.sender_id || "",
+        }))
+        .filter((m: any) => !!m.content);
 
       // Merge local cache and remote messages by ID without duplicates
       setSharedMedia((prev) => {
@@ -576,7 +647,7 @@ export default function ChatInfoScreen() {
         // Retain cached media
         cachedMedia.forEach((m) => mergedMap.set(m.id, m));
         // Add fresh remote media
-        remoteMedia.forEach((m) => mergedMap.set(m.id, m));
+        formattedRemote.forEach((m) => mergedMap.set(m.id, m));
         // Preserve any existing media already in state
         prev.forEach((m) => {
           if (!mergedMap.has(m.id) && isMediaMsg(m)) {
@@ -585,6 +656,10 @@ export default function ChatInfoScreen() {
         });
         const combined = Array.from(mergedMap.values());
         combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        // Cache the entire shared media archive locally for instant subsequent loads
+        AsyncStorage.setItem(`@chat_${chatId}_all_shared_media`, JSON.stringify(combined)).catch(() => {});
+
         return combined;
       });
     } catch (e) {
