@@ -304,9 +304,11 @@ export default function ChatScreen() {
     }
 
     let target = 0;
-    if (isIslandExpanded || callState.status !== "idle") {
-      target = 2; // Full expansion
-    } else if (audioState.isPlaying || isTyping || isHeartGlowing) {
+    if (callState.status !== "idle") {
+      target = 2; // Full expansion for active calling/ringing
+    } else if (isHeartGlowing) {
+      target = 1.4; // Elongate horizontally for Thinking of You
+    } else if (audioState.isPlaying || isTyping) {
       target = 1; // Active morph
     } else {
       target = 0; // Resting pill
@@ -318,7 +320,7 @@ export default function ChatScreen() {
       tension: 85,
       useNativeDriver: false,
     }).start();
-  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, isIslandExpanded, callState.status, audioState.isPlaying, isTyping, isHeartGlowing]);
+  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, callState.status, audioState.isPlaying, isTyping, isHeartGlowing]);
 
   // Left pill collapses width to 0 when island expands so center island is 100% symmetrical
   const leftPillAnimatedStyle = isDynamicIslandActive
@@ -2467,6 +2469,28 @@ export default function ChatScreen() {
     });
   }, [router, id, isGroup, targetUser, chatAvatars, name, groupChatData, chatSettings]);
 
+  const infoSpringAnim = useRef(new RNAnimated.Value(0)).current;
+
+  const handleOpenChatInfoWithSpring = useCallback(() => {
+    RNAnimated.sequence([
+      RNAnimated.timing(infoSpringAnim, {
+        toValue: 1,
+        duration: 120,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: false,
+      }),
+      RNAnimated.timing(infoSpringAnim, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: false,
+      }),
+    ]).start();
+
+    setTimeout(() => {
+      openChatInfo();
+    }, 60);
+  }, [openChatInfo, infoSpringAnim]);
+
   const handleSaveMessageToMemories = useCallback(async (msg: any) => {
     if (!id || !user || !msg) return;
     try {
@@ -2705,28 +2729,59 @@ export default function ChatScreen() {
                   styles.headerProfilePill,
                   headerGlassStyle,
                   isDynamicIslandActive && {
-                    backgroundColor: isAmoled
-                      ? "#000000"
-                      : "rgba(10, 12, 18, 0.96)",
+                    backgroundColor: "#000000",
                     borderColor: isHeartGlowing
-                      ? "#f43f5e"
-                      : "rgba(255, 255, 255, 0.16)",
+                      ? "rgba(244, 63, 94, 0.45)"
+                      : "rgba(255, 255, 255, 0.14)",
                     overflow: "hidden",
                     ...(Platform.OS === "web" && isHeartGlowing
-                      ? { boxShadow: "0 0 24px rgba(244, 63, 94, 0.85)" }
+                      ? { boxShadow: "0 0 20px rgba(244, 63, 94, 0.35), 0 0 45px rgba(244, 63, 94, 0.18)" }
                       : {}),
                   },
                   centerIslandAnimatedStyle,
+                  {
+                    transform: [
+                      ...(centerIslandAnimatedStyle.transform || []),
+                      {
+                        scale: infoSpringAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [1, 1.05],
+                        }),
+                      },
+                    ],
+                  },
                 ]}
               >
-                {isIslandExpanded || callState.status !== "idle" ? (
+                {isHeartGlowing ? (
+                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 12 }}>
+                    <RNAnimated.View style={{ transform: [{ scale: heartAnim }], marginRight: 8 }}>
+                      <Heart size={18} color="#f43f5e" fill="#f43f5e" />
+                    </RNAnimated.View>
+                    <ShinyText
+                      text={thinkingOfYou?.text || "Thinking of you..."}
+                      speed={1.6}
+                      color="#f43f5e"
+                      shineColor="#ffffff"
+                      spread={120}
+                      style={[
+                        {
+                          fontSize: 14,
+                          fontWeight: "700",
+                          letterSpacing: 0.3,
+                          color: "#f43f5e",
+                        },
+                        chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                      ]}
+                    />
+                  </View>
+                ) : callState.status !== "idle" ? (
                   <DynamicIslandExpandedView
                     targetUser={targetUser}
                     theme={theme}
                     audioState={audioState}
                     isTyping={isTyping}
                     typingUsername={typingUsername}
-                    isCalling={callState.status !== "idle"}
+                    isCalling={true}
                     callDuration={callState.duration}
                     callType={callState.callType}
                     callStatus={callState.status}
@@ -2765,23 +2820,12 @@ export default function ChatScreen() {
                     }}
                     onHeartPing={triggerHeartPing}
                     onOpenChatInfo={openChatInfo}
-                    onCollapse={() => setIsIslandExpanded(false)}
+                    onCollapse={() => {}}
                   />
                 ) : (
                   <TouchableOpacity 
                     style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
-                    onPress={() => {
-                      if (isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled) {
-                        setIsIslandExpanded(true);
-                      } else {
-                        openChatInfo();
-                      }
-                    }}
-                    onLongPress={() => {
-                      if (isDynamicIslandActive) {
-                        setIsIslandExpanded(true);
-                      }
-                    }}
+                    onPress={handleOpenChatInfoWithSpring}
                     activeOpacity={0.85}
                   >
                     {isGroup ? (
@@ -3226,52 +3270,6 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {thinkingOfYou && (
-          <RNAnimated.View
-            pointerEvents="none"
-            style={[
-              styles.thinkingOfYouBanner,
-              isAmoled ? { backgroundColor: 'rgba(0,0,0,0.88)', borderColor: 'rgba(244,63,94,0.45)' } :
-              showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.7)', borderColor: 'rgba(244,63,94,0.4)' } :
-              theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.94)', borderColor: 'rgba(244,63,94,0.35)' } :
-              theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.94)', borderColor: 'rgba(244,63,94,0.45)' } :
-              { backgroundColor: 'rgba(35,37,42,0.92)', borderColor: 'rgba(244,63,94,0.4)' },
-              {
-                top: pinnedMessage
-                  ? (Platform.OS === "web" ? (isDesktop ? 124 : 134) : (Platform.OS === "ios" ? 158 : 150))
-                  : (Platform.OS === "web" ? (isDesktop ? 70 : 92) : (Platform.OS === "ios" ? 116 : 108)),
-                opacity: thinkingAnim,
-                transform: [
-                  {
-                    translateY: thinkingAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-10, 0]
-                    })
-                  },
-                  {
-                    scale: thinkingAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.92, 1]
-                    })
-                  }
-                ]
-              }
-            ]}
-          >
-            <Heart size={16} color="#f43f5e" fill="#f43f5e" style={{ marginRight: 8 }} />
-            <ShinyText
-              text={thinkingOfYou.text}
-              speed={1.6}
-              color="#f43f5e"
-              shineColor="#ffffff"
-              spread={120}
-              style={[
-                styles.thinkingOfYouText,
-                chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-              ]}
-            />
-          </RNAnimated.View>
-        )}
         <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
 
         {messages.length === 0 ? (

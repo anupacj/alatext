@@ -112,19 +112,16 @@ export default function GlobalCallManager() {
 
   if (callState.status === "idle") return null;
 
-  // If the user is currently on the chat screen with this partner and the call is connected,
-  // we let the Dynamic Island in chat handle it unless dynamic island is disabled or user is elsewhere.
-  const isDirectChatOpen = pathname === "/chat";
+  // If user is inside the chat screen, the Dynamic Island in chat handles all call states
+  // (ringing, calling, connected) directly with custom notch curvature and spring physics!
+  const isDirectChatOpen = pathname === "/chat" || pathname?.includes("chat");
+  if (isDirectChatOpen) {
+    return null;
+  }
 
-  // When ringing, ALWAYS display the incoming call banner prominently everywhere!
   const isRinging = callState.status === "ringing";
   const isCalling = callState.status === "calling";
   const isConnected = callState.status === "connected";
-
-  // Hide connected overlay ONLY if user is already inside the chat screen
-  if (isConnected && isDirectChatOpen) {
-    return null;
-  }
 
   const partnerName = callState.partnerName || (isRinging ? "Incoming Caller" : "Partner");
   const isVideo = callState.callType === "video";
@@ -319,7 +316,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 440,
     backgroundColor: "rgba(18, 20, 26, 0.94)",
-    borderRadius: 24,
+    borderRadius: 36,
     padding: 14,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.14)",

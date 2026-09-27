@@ -242,10 +242,19 @@ function createPeerConnection(chatId: string, callId: string, partnerId: string,
   };
 
   pc.ontrack = (event) => {
-    const remoteStream = event.streams[0] || new MediaStream([event.track]);
-    updateState({ remoteStream });
-    ensureRemoteAudioElement(remoteStream);
-    setupAudioVolumeMeter(remoteStream);
+    let stream = currentState.remoteStream;
+    let updatedStream: MediaStream;
+    if (!stream) {
+      updatedStream = event.streams[0] || new MediaStream([event.track]);
+    } else {
+      updatedStream = new MediaStream(stream.getTracks());
+      if (!updatedStream.getTracks().some((t) => t.id === event.track.id)) {
+        updatedStream.addTrack(event.track);
+      }
+    }
+    updateState({ remoteStream: updatedStream });
+    ensureRemoteAudioElement(updatedStream);
+    setupAudioVolumeMeter(updatedStream);
   };
 
   pc.onconnectionstatechange = () => {
@@ -253,6 +262,9 @@ function createPeerConnection(chatId: string, callId: string, partnerId: string,
       stopOutgoingRingtone();
       stopIncomingRingtone();
       updateState({ status: "connected" });
+      if (!callDurationTimer) {
+        startDurationTimer();
+      }
     } else if (
       pc.connectionState === "disconnected" ||
       pc.connectionState === "failed" ||
@@ -443,6 +455,9 @@ export async function initiateCall({
       stopOutgoingRingtone();
       if (pc.signalingState !== "closed" && payload?.answer) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+        updateState({ status: "connected" });
+        playCallConnectedTone();
+        startDurationTimer();
         // Flush pending ICE candidates received before answer
         while (pendingIceCandidates.length > 0) {
           const cand = pendingIceCandidates.shift();

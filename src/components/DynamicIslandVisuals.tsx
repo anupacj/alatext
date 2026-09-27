@@ -365,7 +365,7 @@ export function DynamicIslandExpandedView({
             </View>
           ) : (
             <Text style={visualStyles.expandedSubtitle}>
-              ● Online • Dynamic Island Connected
+              ● Online
             </Text>
           )}
         </View>
