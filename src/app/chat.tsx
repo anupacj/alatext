@@ -2929,6 +2929,9 @@ export default function ChatScreen() {
         transform: [{ translateX: screenSlideAnim }],
       }}
     >
+      <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive} screenRadius={screenRadius} />
+      <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
+
       <SleepyByeBlocker
         chatId={currentChatId}
         visible={!!(chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now())}
@@ -2977,9 +2980,6 @@ export default function ChatScreen() {
         />
       )}
       <View style={[styles.container, { backgroundColor: "transparent" }]}>
-        {/* Apple Intelligence perimeter glow (zIndex: 50, strictly behind floatingHeaderWrapper zIndex: 9999) */}
-        <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive || isHeartGlowing} screenRadius={screenRadius} />
-        <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
         {(isIslandExpanded || callState.status !== "idle") && (
           <Pressable
             style={[StyleSheet.absoluteFill, { zIndex: 45 }]}
@@ -4556,19 +4556,7 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
 
   return StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: bg },
-  container: {
-    flex: 1,
-    height: "100%",
-    position: "relative",
-    zIndex: 10,
-    backgroundColor: bg,
-    maxWidth: "100%" as any,
-    width: "100%",
-    borderLeftWidth: 0,
-    borderRightWidth: 0,
-    overflow: "hidden",
-    borderRadius: screenRadius,
-  },
+  container: { flex: 1, height: "100%", backgroundColor: bg, maxWidth: "100%" as any, width: "100%", borderLeftWidth: 0, borderRightWidth: 0, overflow: "hidden", borderRadius: screenRadius },
   floatingHeaderWrapper: {
     position: "absolute",
     top: 0,
@@ -4579,8 +4567,7 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     paddingHorizontal: isDesktop ? 20 : 10,
     paddingTop: Platform.OS === "ios" ? 52 : (isDesktop ? 16 : 44),
     paddingBottom: 6,
-    zIndex: 9999,
-    elevation: 20,
+    zIndex: 100,
     gap: 8,
   },
   headerPill: {
