@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, Image,
   FlatList, TextInput, ActivityIndicator, Platform, ScrollView,
   useWindowDimensions,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   X, UserPlus, LogOut, Search, Camera, Trash2, Edit3,
   Check, Users, Image as ImageIcon, UserMinus, Crown, ShieldAlert,
@@ -13,6 +14,39 @@ import { supabase } from "../lib/supabase";
 import { uploadImageToR2, deleteFileFromR2ByUrl, getThumbnailUrl } from "../lib/r2";
 import { useTheme } from "../context/ThemeContext";
 import { useRouter } from "expo-router";
+
+const MediaImageThumb = React.memo(({ uri, style }: { uri: string; style: any }) => {
+  const initialThumb = useMemo(() => getThumbnailUrl(uri, 300, 300, 75), [uri]);
+  const [imgSrc, setImgSrc] = useState<string>(initialThumb || uri);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(initialThumb || uri);
+    setHasError(false);
+  }, [initialThumb, uri]);
+
+  if (hasError) {
+    return (
+      <View style={[style, { alignItems: "center", justifyContent: "center", backgroundColor: "#1e1e24" }]}>
+        <ImageIcon size={22} color="#666" />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: imgSrc }}
+      style={style}
+      onError={() => {
+        if (imgSrc !== uri) {
+          setImgSrc(uri);
+        } else {
+          setHasError(true);
+        }
+      }}
+    />
+  );
+});
 
 interface ChatInfoModalProps {
   visible: boolean;
@@ -131,14 +165,102 @@ export default function ChatInfoModal({
   const fetchSharedMedia = useCallback(async () => {
     if (!chatId) return;
     setLoadingMedia(true);
+
+    const isMediaPhoto = (m: any) => {
+      if (!m) return false;
+      if (m.type === "sticker") return false;
+      const str = (typeof m.content === "string" ? m.content : typeof m.text === "string" ? m.text : "") || "";
+      if (
+        str.includes("/stickers/") ||
+        str.includes("/sticker-packs/") ||
+        str.includes("sticker") ||
+        str.includes("t.me/addstickers")
+      ) {
+        return false;
+      }
+      if (m.type === "image") return !!(m.content || m.text);
+      if (
+        str.includes("/chat-images/") ||
+        str.startsWith("data:image/") ||
+        str.startsWith("blob:") ||
+        str.match(/\.(jpeg|jpg|png|webp|gif)(\?.*)?$/i)
+      ) {
+        return true;
+      }
+      return false;
+    };
+
     try {
-      const { data } = await supabase
+      // 1. Instant local cache load
+      try {
+        const cachedRaw = await AsyncStorage.getItem(`chat_${chatId}_messages`);
+        if (cachedRaw) {
+          const cachedMsgs = JSON.parse(cachedRaw);
+          if (Array.isArray(cachedMsgs)) {
+            const local = cachedMsgs
+              .filter(isMediaPhoto)
+              .map((m: any) => ({
+                id: m.id,
+                content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
+                created_at: m.created_at || (m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString()),
+                sender_id: m.sender_id || "",
+              }))
+              .filter((m: any) => !!m.content);
+            if (local.length > 0) setSharedMedia(local);
+          }
+        }
+      } catch (e) {}
+
+      // 2. Remote Supabase fetch
+      let remotePhotos: any[] = [];
+      const { data, error } = await supabase
         .from("messages")
         .select("id, content, created_at, sender_id")
         .eq("chat_id", chatId)
         .eq("type", "image")
         .order("created_at", { ascending: false });
-      if (data) setSharedMedia(data);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        remotePhotos = data
+          .filter(isMediaPhoto)
+          .map((m: any) => ({
+            ...m,
+            content: m.content || m.text || "",
+          }))
+          .filter((m: any) => !!m.content);
+      }
+
+      if (remotePhotos.length === 0) {
+        const fallback = await supabase
+          .from("messages")
+          .select("id, content, type, created_at, sender_id")
+          .eq("chat_id", chatId)
+          .order("created_at", { ascending: false })
+          .limit(100);
+
+        if (fallback.data && fallback.data.length > 0) {
+          remotePhotos = fallback.data
+            .filter(isMediaPhoto)
+            .map((m: any) => ({
+              id: m.id,
+              content: m.content || m.text || "",
+              created_at: m.created_at,
+              sender_id: m.sender_id,
+            }))
+            .filter((m: any) => !!m.content);
+        }
+      }
+
+      setSharedMedia((prev) => {
+        const map = new Map<string, any>();
+        remotePhotos.forEach((m) => map.set(m.id, m));
+        prev.forEach((m) => {
+          if (!map.has(m.id) && isMediaPhoto(m)) map.set(m.id, m);
+        });
+        const list = Array.from(map.values());
+        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        return list;
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -342,8 +464,8 @@ export default function ChatInfoModal({
               else setSelectedImage(m.content);
             }}
           >
-            <Image
-              source={{ uri: getThumbnailUrl(m.content, 300, 300, 75) }}
+            <MediaImageThumb
+              uri={m.content}
               style={styles.mediaThumb}
             />
           </TouchableOpacity>

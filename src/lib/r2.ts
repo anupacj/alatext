@@ -26,7 +26,18 @@ export const uploadChatImageToR2 = async (chatId: string, base64Data: string, mi
 };
 
 export const getThumbnailUrl = (url: string, width = 250, height = 250, quality = 75): string => {
-  if (!url) return "";
+  if (!url || typeof url !== "string") return "";
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    url.startsWith("file://") ||
+    url.includes("your-public-r2-domain.com") ||
+    url.includes("your-bucket-name") ||
+    url.includes("localhost") ||
+    url.includes("127.0.0.1")
+  ) {
+    return url;
+  }
   if (url.startsWith("http://") || url.startsWith("https://")) {
     // wsrv.nl globally compresses and converts high-res images to tiny lightweight WebP thumbnails
     return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=${width}&h=${height}&fit=cover&q=${quality}&output=webp`;

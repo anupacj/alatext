@@ -97,6 +97,39 @@ const NOTE_COLORS = [
   "#ef4444", // Crimson
 ];
 
+const MediaImageThumb = React.memo(({ uri, style }: { uri: string; style: any }) => {
+  const initialThumb = useMemo(() => getThumbnailUrl(uri, 350, 350, 80), [uri]);
+  const [imgSrc, setImgSrc] = useState<string>(initialThumb || uri);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(initialThumb || uri);
+    setHasError(false);
+  }, [initialThumb, uri]);
+
+  if (hasError) {
+    return (
+      <View style={[style, { alignItems: "center", justifyContent: "center", backgroundColor: "#1e1e24" }]}>
+        <ImageIcon size={22} color="#666" />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: imgSrc }}
+      style={style}
+      onError={() => {
+        if (imgSrc !== uri) {
+          setImgSrc(uri);
+        } else {
+          setHasError(true);
+        }
+      }}
+    />
+  );
+});
+
 export default function ChatInfoScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -443,14 +476,29 @@ export default function ChatInfoScreen() {
 
     const isMediaMsg = (m: any) => {
       if (!m) return false;
-      if (m.type === "image" || m.type === "video" || m.type === "audio") return true;
-      const str = m.text || m.content || "";
+      if (m.type === "sticker") return false;
+      const str = (typeof m.content === "string" ? m.content : typeof m.text === "string" ? m.text : "") || "";
       if (
-        typeof str === "string" &&
-        (str.includes("/chat-images/") ||
-          str.includes("/chat-videos/") ||
-          str.includes("/audio-messages/") ||
-          str.match(/\.(jpeg|jpg|gif|png|webp|mp4|webm|m4a|mp3|ogg)(\?.*)?$/i))
+        str.includes("/stickers/") ||
+        str.includes("/sticker-packs/") ||
+        str.includes("sticker") ||
+        str.includes("t.me/addstickers")
+      ) {
+        return false;
+      }
+
+      if (m.type === "image" || m.type === "video" || m.type === "audio") {
+        return !!(m.content || m.text);
+      }
+
+      if (
+        str.includes("/chat-images/") ||
+        str.includes("/chat-videos/") ||
+        str.includes("/audio-messages/") ||
+        str.includes("/voice-messages/") ||
+        str.startsWith("data:image/") ||
+        str.startsWith("blob:") ||
+        str.match(/\.(jpeg|jpg|png|webp|gif|mp4|webm|mov|m4a|mp3|ogg|wav)(\?.*)?$/i)
       ) {
         return true;
       }
@@ -458,32 +506,34 @@ export default function ChatInfoScreen() {
     };
 
     const resolveType = (m: any) => {
-      if (m.type === "image" || m.type === "video" || m.type === "audio") return m.type;
-      const str = m.text || m.content || "";
-      if (typeof str === "string") {
-        if (str.includes("/chat-videos/") || str.match(/\.(mp4|webm)(\?.*)?$/i)) return "video";
-        if (str.includes("/audio-messages/") || str.match(/\.(m4a|mp3|ogg|wav)(\?.*)?$/i)) return "audio";
-      }
+      if (m.type === "video") return "video";
+      if (m.type === "audio") return "audio";
+      if (m.type === "image") return "image";
+      const str = (typeof m.content === "string" ? m.content : typeof m.text === "string" ? m.text : "") || "";
+      if (str.includes("/chat-videos/") || str.match(/\.(mp4|webm|mov)(\?.*)?$/i)) return "video";
+      if (str.includes("/audio-messages/") || str.includes("/voice-messages/") || str.match(/\.(m4a|mp3|ogg|wav)(\?.*)?$/i)) return "audio";
       return "image";
     };
 
     // 1. Instant local cache load
+    let cachedMedia: any[] = [];
     try {
       const cachedRaw = await AsyncStorage.getItem(`chat_${chatId}_messages`);
       if (cachedRaw) {
         const cachedMsgs = JSON.parse(cachedRaw);
         if (Array.isArray(cachedMsgs)) {
-          const localMedia = cachedMsgs
+          cachedMedia = cachedMsgs
             .filter(isMediaMsg)
             .map((m: any) => ({
               id: m.id,
-              content: m.text || m.content,
+              content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
               type: resolveType(m),
               created_at: m.created_at || (m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString()),
               sender_id: m.sender_id || (m.isMe ? currentUserId : ""),
-            }));
-          if (localMedia.length > 0) {
-            setSharedMedia(localMedia);
+            }))
+            .filter((m: any) => !!m.content);
+          if (cachedMedia.length > 0) {
+            setSharedMedia(cachedMedia);
           }
         }
       }
@@ -493,14 +543,27 @@ export default function ChatInfoScreen() {
 
     // 2. Fetch clean messages from Supabase
     try {
-      let { data, error } = await supabase
+      let remoteMedia: any[] = [];
+      const { data, error } = await supabase
         .from("messages")
         .select("id, content, type, created_at, sender_id")
         .eq("chat_id", chatId)
         .in("type", ["image", "video", "audio"])
         .order("created_at", { ascending: false });
 
-      if (error || !data || data.length === 0) {
+      if (!error && Array.isArray(data) && data.length > 0) {
+        remoteMedia = data
+          .filter(isMediaMsg)
+          .map((m: any) => ({
+            ...m,
+            content: m.content || m.text || "",
+            type: resolveType(m),
+          }))
+          .filter((m: any) => !!m.content);
+      }
+
+      // Fallback in case types were stored as text or other fallback
+      if (remoteMedia.length === 0) {
         const fallback = await supabase
           .from("messages")
           .select("id, content, type, created_at, sender_id")
@@ -509,21 +572,30 @@ export default function ChatInfoScreen() {
           .limit(100);
 
         if (fallback.data && fallback.data.length > 0) {
-          const mediaRows = fallback.data
+          remoteMedia = fallback.data
             .filter(isMediaMsg)
             .map((m: any) => ({
               ...m,
+              content: m.content || m.text || "",
               type: resolveType(m),
-            }));
-          if (mediaRows.length > 0) {
-            data = mediaRows;
-          }
+            }))
+            .filter((m: any) => !!m.content);
         }
       }
 
-      if (data && data.length > 0) {
-        setSharedMedia(data);
-      }
+      // Merge local cache and remote messages by ID without duplicates
+      setSharedMedia((prev) => {
+        const mergedMap = new Map<string, any>();
+        remoteMedia.forEach((m) => mergedMap.set(m.id, m));
+        prev.forEach((m) => {
+          if (!mergedMap.has(m.id) && isMediaMsg(m)) {
+            mergedMap.set(m.id, m);
+          }
+        });
+        const combined = Array.from(mergedMap.values());
+        combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        return combined;
+      });
     } catch (e) {
       console.error("Failed to load shared media:", e);
     } finally {
@@ -1501,8 +1573,8 @@ export default function ChatInfoScreen() {
                         onPress={() => setSelectedViewerImage(item.content)}
                         activeOpacity={0.85}
                       >
-                        <Image
-                          source={{ uri: getThumbnailUrl(item.content, 350, 350, 80) }}
+                        <MediaImageThumb
+                          uri={item.content}
                           style={styles.mediaThumbImage}
                         />
                       </TouchableOpacity>
