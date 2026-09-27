@@ -54,12 +54,10 @@ import {
   Compass,
   Clock,
   Navigation,
-  Phone,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { initiateCall } from "../utils/webrtcCall";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import { supabase } from "../lib/supabase";
 import { uploadImageToR2, deleteFileFromR2ByUrl, getThumbnailUrl } from "../lib/r2";
@@ -1207,77 +1205,6 @@ export default function ChatInfoScreen() {
             </>
           )}
         </View>
-
-        {/* Quick Audio & Video Call Actions */}
-        {!isGroup && partnerUser && (
-          <View style={{ flexDirection: "row", justifyContent: "center", gap: 14, marginBottom: 16, marginTop: -4 }}>
-            <TouchableOpacity
-              style={{
-                flex: 1,
-                maxWidth: 140,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                paddingVertical: 10,
-                paddingHorizontal: 16,
-                borderRadius: 20,
-                backgroundColor: "rgba(16, 185, 129, 0.14)",
-                borderWidth: 1,
-                borderColor: "rgba(16, 185, 129, 0.35)",
-                gap: 8,
-              }}
-              onPress={() => {
-                initiateCall({
-                  chatId: chatId,
-                  callerId: user?.id || "",
-                  callerName: user?.user_metadata?.display_name || user?.user_metadata?.username || user?.email?.split("@")[0] || "User",
-                  callerAvatar: user?.user_metadata?.avatar_url,
-                  partnerId: partnerUser.id,
-                  partnerName: partnerNickname || partnerUser.display_name || partnerUser.username || "Partner",
-                  partnerAvatar: customAvatar || partnerUser.avatar_url,
-                  callType: "audio",
-                });
-              }}
-              activeOpacity={0.8}
-            >
-              <Phone size={16} color="#10b981" />
-              <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 13.5 }}>Audio</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{
-                flex: 1,
-                maxWidth: 140,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                paddingVertical: 10,
-                paddingHorizontal: 16,
-                borderRadius: 20,
-                backgroundColor: "rgba(168, 85, 247, 0.14)",
-                borderWidth: 1,
-                borderColor: "rgba(168, 85, 247, 0.35)",
-                gap: 8,
-              }}
-              onPress={() => {
-                initiateCall({
-                  chatId: chatId,
-                  callerId: user?.id || "",
-                  callerName: user?.user_metadata?.display_name || user?.user_metadata?.username || user?.email?.split("@")[0] || "User",
-                  callerAvatar: user?.user_metadata?.avatar_url,
-                  partnerId: partnerUser.id,
-                  partnerName: partnerNickname || partnerUser.display_name || partnerUser.username || "Partner",
-                  partnerAvatar: customAvatar || partnerUser.avatar_url,
-                  callType: "video",
-                });
-              }}
-              activeOpacity={0.8}
-            >
-              <Video size={16} color="#a855f7" />
-              <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 13.5 }}>Video</Text>
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* Main Floating Glass Segmented Tabs */}
         {isGroup ? (

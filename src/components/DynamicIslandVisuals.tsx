@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity } from "react-native";
-import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, VideoOff, ChevronUp, Sparkles, Info } from "lucide-react-native";
+import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, VideoOff, ChevronUp, Sparkles, Info, Compass, MapPin, RotateCcw } from "lucide-react-native";
 import { NotchConfig, DynamicIslandAudioEvent } from "../utils/notchConfig";
+import { formatCoupleDistance, formatDataAge } from "../utils/coupleRadar";
 
 // --- FORMAT DURATION HELPER ---
 export function formatCallDuration(sec: number): string {
@@ -222,6 +223,154 @@ export function DynamicCameraGuide({
   );
 }
 
+// Helper to get cardinal direction abbreviation from degrees
+function getCompassDirection(deg: number): string {
+  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const index = Math.round(((deg %= 360) < 0 ? deg + 360 : deg) / 45) % 8;
+  return directions[index];
+}
+
+// --- COUPLE COMPASS & DISTANCE RADAR WIDGET ---
+export function CoupleCompassRadarWidget({
+  distanceKm,
+  bearing,
+  lastUpdated,
+  partnerName,
+  onHeartPing,
+  onOpenChatInfo,
+  onRefreshRadar,
+}: {
+  distanceKm?: number | null;
+  bearing?: number | null;
+  lastUpdated?: number | null;
+  partnerName: string;
+  onHeartPing: () => void;
+  onOpenChatInfo: () => void;
+  onRefreshRadar?: () => void;
+}) {
+  const needleAnim = useRef(new Animated.Value(bearing ?? 0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (bearing !== null && bearing !== undefined) {
+      Animated.spring(needleAnim, {
+        toValue: bearing,
+        friction: 7,
+        tension: 40,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      const swayLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(needleAnim, { toValue: 22, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
+          Animated.timing(needleAnim, { toValue: -22, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
+        ])
+      );
+      swayLoop.start();
+      return () => swayLoop.stop();
+    }
+  }, [bearing]);
+
+  useEffect(() => {
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.14, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+      ])
+    );
+    pulseLoop.start();
+    return () => pulseLoop.stop();
+  }, []);
+
+  const spinInterpolation = needleAnim.interpolate({
+    inputRange: [-360, 360],
+    outputRange: ["-360deg", "360deg"],
+  });
+
+  const distText = formatCoupleDistance(distanceKm ?? null);
+  const ageText = lastUpdated ? formatDataAge(lastUpdated) : "Live";
+
+  return (
+    <View style={visualStyles.coupleWidgetContainer}>
+      <View style={visualStyles.radarStage}>
+        {/* Animated Compass Rose */}
+        <View style={visualStyles.compassCircle}>
+          {/* Concentric radar rings */}
+          <Animated.View
+            style={[
+              visualStyles.compassInnerRing,
+              { transform: [{ scale: pulseAnim }] },
+            ]}
+          />
+          <View style={visualStyles.compassInnerRingSmall} />
+
+          {/* Cardinal Directions */}
+          <Text style={[visualStyles.cardinalText, visualStyles.cardinalN]}>N</Text>
+          <Text style={[visualStyles.cardinalText, visualStyles.cardinalS]}>S</Text>
+          <Text style={[visualStyles.cardinalText, visualStyles.cardinalE]}>E</Text>
+          <Text style={[visualStyles.cardinalText, visualStyles.cardinalW]}>W</Text>
+
+          {/* Rotating Compass Needle */}
+          <Animated.View
+            style={[
+              visualStyles.compassNeedleContainer,
+              { transform: [{ rotate: spinInterpolation }] },
+            ]}
+          >
+            <View style={visualStyles.needleNorth} />
+            <View style={visualStyles.needleCenterDot} />
+            <View style={visualStyles.needleSouth} />
+          </Animated.View>
+        </View>
+
+        {/* Distance and Ephemeral Cache Stats */}
+        <View style={visualStyles.radarInfoColumn}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Compass size={14} color="#f43f5e" />
+            <Text style={visualStyles.distanceHighlight} numberOfLines={1}>
+              {distText}
+            </Text>
+          </View>
+
+          <Text style={visualStyles.bearingText} numberOfLines={1}>
+            {bearing !== null && bearing !== undefined
+              ? `Heading ${Math.round(bearing)}° • ${getCompassDirection(bearing)}`
+              : "Locating partner bearing..."}
+          </Text>
+
+          <View style={visualStyles.cacheBadge}>
+            <View style={visualStyles.cacheGreenDot} />
+            <Text style={visualStyles.cacheBadgeText}>
+              {`Updated ${ageText} • 40m ephemeral`}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Action Buttons: Quick Heart Ping & Morphing Profile Button */}
+      <View style={visualStyles.coupleActionsRow}>
+        <TouchableOpacity
+          style={visualStyles.heartPingBtn}
+          onPress={onHeartPing}
+          activeOpacity={0.8}
+        >
+          <Heart size={14} color="#f43f5e" fill="#f43f5e" />
+          <Text style={visualStyles.heartPingBtnText}>Thinking of you</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={visualStyles.openProfileBtn}
+          onPress={onOpenChatInfo}
+          activeOpacity={0.8}
+        >
+          <User size={14} color="#ffffff" />
+          <Text style={visualStyles.openProfileBtnText}>Profile</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // --- EXPANDED DYNAMIC ISLAND CARD VIEW ---
 export function DynamicIslandExpandedView({
   targetUser,
@@ -238,6 +387,10 @@ export function DynamicIslandExpandedView({
   localStream = null,
   remoteStream = null,
   audioVolume = 0,
+  radarDistanceKm = null,
+  radarBearing = null,
+  radarLastUpdated = null,
+  onRefreshRadar,
   onStartCall,
   onAcceptCall,
   onRejectCall,
@@ -262,6 +415,10 @@ export function DynamicIslandExpandedView({
   localStream?: MediaStream | null;
   remoteStream?: MediaStream | null;
   audioVolume?: number;
+  radarDistanceKm?: number | null;
+  radarBearing?: number | null;
+  radarLastUpdated?: number | null;
+  onRefreshRadar?: () => void;
   onStartCall: (type: "audio" | "video") => void;
   onAcceptCall?: () => void;
   onRejectCall?: () => void;
@@ -516,52 +673,16 @@ export function DynamicIslandExpandedView({
           </TouchableOpacity>
         </View>
       ) : (
-        /* Normal Quick Shortcuts Deck */
-        <View style={visualStyles.quickActionsRow}>
-          <TouchableOpacity
-            style={visualStyles.quickActionBtn}
-            onPress={() => onStartCall("audio")}
-            activeOpacity={0.75}
-          >
-            <View style={[visualStyles.quickActionIconBox, { backgroundColor: "rgba(16, 185, 129, 0.2)" }]}>
-              <Phone size={15} color="#10b981" />
-            </View>
-            <Text style={visualStyles.quickActionText}>Audio</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={visualStyles.quickActionBtn}
-            onPress={() => onStartCall("video")}
-            activeOpacity={0.75}
-          >
-            <View style={[visualStyles.quickActionIconBox, { backgroundColor: "rgba(168, 85, 247, 0.2)" }]}>
-              <Video size={15} color="#a855f7" />
-            </View>
-            <Text style={visualStyles.quickActionText}>Video</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={visualStyles.quickActionBtn}
-            onPress={onHeartPing}
-            activeOpacity={0.75}
-          >
-            <View style={[visualStyles.quickActionIconBox, { backgroundColor: "rgba(244, 63, 94, 0.2)" }]}>
-              <Heart size={15} color="#f43f5e" fill="#f43f5e" />
-            </View>
-            <Text style={visualStyles.quickActionText}>Heart</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={visualStyles.quickActionBtn}
-            onPress={onOpenChatInfo}
-            activeOpacity={0.75}
-          >
-            <View style={[visualStyles.quickActionIconBox, { backgroundColor: "rgba(255, 255, 255, 0.12)" }]}>
-              <Info size={15} color="#ffffff" />
-            </View>
-            <Text style={visualStyles.quickActionText}>Info</Text>
-          </TouchableOpacity>
-        </View>
+        /* Couple Compass & Distance Radar Card */
+        <CoupleCompassRadarWidget
+          distanceKm={radarDistanceKm}
+          bearing={radarBearing}
+          lastUpdated={radarLastUpdated}
+          partnerName={contactName}
+          onHeartPing={onHeartPing}
+          onOpenChatInfo={onOpenChatInfo}
+          onRefreshRadar={onRefreshRadar}
+        />
       )}
     </View>
   );
@@ -934,6 +1055,184 @@ const visualStyles = StyleSheet.create({
   quickActionText: {
     color: "rgba(255, 255, 255, 0.8)",
     fontSize: 10,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+  },
+  coupleWidgetContainer: {
+    paddingTop: 4,
+    gap: 8,
+  },
+  radarStage: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    gap: 12,
+  },
+  compassCircle: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 1.5,
+    borderColor: "rgba(244, 63, 94, 0.35)",
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  compassInnerRing: {
+    position: "absolute",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.2)",
+  },
+  compassInnerRingSmall: {
+    position: "absolute",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  cardinalText: {
+    position: "absolute",
+    fontSize: 9,
+    fontWeight: "800",
+    color: "rgba(255, 255, 255, 0.45)",
+    fontFamily: "Josefin Sans",
+  },
+  cardinalN: {
+    top: 2,
+    color: "#f43f5e",
+  },
+  cardinalS: {
+    bottom: 2,
+  },
+  cardinalE: {
+    right: 4,
+  },
+  cardinalW: {
+    left: 4,
+  },
+  compassNeedleContainer: {
+    position: "absolute",
+    width: 6,
+    height: 64,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  needleNorth: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 3.5,
+    borderRightWidth: 3.5,
+    borderBottomWidth: 26,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: "#f43f5e",
+  },
+  needleCenterDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#ffffff",
+    zIndex: 5,
+    marginVertical: -2,
+    borderWidth: 1,
+    borderColor: "#f43f5e",
+  },
+  needleSouth: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 3.5,
+    borderRightWidth: 3.5,
+    borderTopWidth: 24,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderTopColor: "rgba(255, 255, 255, 0.6)",
+  },
+  radarInfoColumn: {
+    flex: 1,
+    justifyContent: "center",
+    gap: 3,
+  },
+  distanceHighlight: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+    fontFamily: "Josefin Sans",
+  },
+  bearingText: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 11,
+    fontFamily: "Josefin Sans",
+  },
+  cacheBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 2,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    alignSelf: "flex-start",
+  },
+  cacheGreenDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#10b981",
+  },
+  cacheBadgeText: {
+    color: "rgba(255, 255, 255, 0.65)",
+    fontSize: 9.5,
+    fontFamily: "Josefin Sans",
+  },
+  coupleActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
+  },
+  heartPingBtn: {
+    flex: 1.2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: "rgba(244, 63, 94, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.35)",
+  },
+  heartPingBtnText: {
+    color: "#f43f5e",
+    fontSize: 12,
+    fontWeight: "700",
+    fontFamily: "Josefin Sans",
+  },
+  openProfileBtn: {
+    flex: 0.9,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+  },
+  openProfileBtnText: {
+    color: "#ffffff",
+    fontSize: 12,
     fontWeight: "600",
     fontFamily: "Josefin Sans",
   },

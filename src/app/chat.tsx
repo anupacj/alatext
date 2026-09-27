@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
   Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
@@ -80,6 +80,18 @@ import {
   DynamicCameraGuide,
   DynamicIslandExpandedView,
 } from "../components/DynamicIslandVisuals";
+import {
+  RadarLocation,
+  calculateDistanceKm,
+  calculateBearing,
+  getStoredPartnerLocation,
+  savePartnerLocation,
+  getStoredMyLocation,
+  saveMyLocation,
+  getCurrentDeviceLocation,
+  RADAR_UPDATE_INTERVAL_MS,
+  RADAR_EXPIRY_TTL_MS,
+} from "../utils/coupleRadar";
 import {
   initiateCall,
   acceptIncomingCall,
@@ -306,10 +318,12 @@ export default function ChatScreen() {
     let target = 0;
     if (callState.status !== "idle") {
       target = 2; // Full expansion for active calling/ringing
+    } else if (isIslandExpanded) {
+      target = 2; // Full expansion for interactive Couple Compass & Distance Radar card
     } else if (isHeartGlowing) {
       target = 1.4; // Elongate horizontally for Thinking of You
     } else if (audioState.isPlaying || isTyping) {
-      target = 1; // Active morph
+      target = 1; // Active morph (stays rock solid baseH)
     } else {
       target = 0; // Resting pill
     }
@@ -320,7 +334,7 @@ export default function ChatScreen() {
       tension: 85,
       useNativeDriver: false,
     }).start();
-  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, callState.status, audioState.isPlaying, isTyping, isHeartGlowing]);
+  }, [isDynamicIslandActive, notchConfig.dynamicAnimationsEnabled, callState.status, isIslandExpanded, audioState.isPlaying, isTyping, isHeartGlowing]);
 
   // Left pill collapses width to 0 when island expands so center island is 100% symmetrical
   const leftPillAnimatedStyle = isDynamicIslandActive
@@ -382,20 +396,19 @@ export default function ChatScreen() {
     : {};
 
   const baseH = effectivePillHeight;
-  const activeH = baseH + 6;
   const isVideoConnected = callState.status === "connected" && callState.callType === "video";
-  const expandedH = isVideoConnected ? 245 : (callState.status !== "idle" ? 168 : 148);
+  const expandedH = isVideoConnected ? 245 : (callState.status !== "idle" ? 168 : 205);
   const dynamicBorderRadius = notchConfig.islandBorderRadius || 42;
 
   const centerIslandAnimatedStyle = isDynamicIslandActive
     ? {
         height: islandAnim.interpolate({
-          inputRange: [0, 1, 2],
-          outputRange: [baseH, activeH, expandedH],
+          inputRange: [0, 1, 1.4, 2],
+          outputRange: [baseH, baseH, baseH, expandedH],
         }),
         borderRadius: islandAnim.interpolate({
-          inputRange: [0, 1, 2],
-          outputRange: [baseH / 2, activeH / 2, dynamicBorderRadius],
+          inputRange: [0, 1, 1.4, 2],
+          outputRange: [baseH / 2, baseH / 2, baseH / 2, dynamicBorderRadius],
         }),
         marginLeft: 0,
         marginRight: 0,
@@ -409,6 +422,86 @@ export default function ChatScreen() {
         ],
       }
     : {};
+
+  // Couple Compass & Distance Radar State
+  const [radarPartnerLoc, setRadarPartnerLoc] = useState<RadarLocation | null>(null);
+  const [radarMyLoc, setRadarMyLoc] = useState<RadarLocation | null>(null);
+  const lastRadarBroadcastRef = useRef<number>(0);
+
+  const radarDistanceKm = useMemo(() => {
+    if (!radarPartnerLoc || !radarMyLoc) return null;
+    return calculateDistanceKm(radarMyLoc.lat, radarMyLoc.lng, radarPartnerLoc.lat, radarPartnerLoc.lng);
+  }, [radarPartnerLoc, radarMyLoc]);
+
+  const radarBearing = useMemo(() => {
+    if (!radarPartnerLoc || !radarMyLoc) return null;
+    return calculateBearing(radarMyLoc.lat, radarMyLoc.lng, radarPartnerLoc.lat, radarPartnerLoc.lng);
+  }, [radarPartnerLoc, radarMyLoc]);
+
+  const radarLastUpdated = radarPartnerLoc?.timestamp ?? null;
+
+  // Refresh radar location (enforcing 20min interval unless force=true)
+  const refreshRadarLocation = useCallback(async (force = false) => {
+    if (isGroup || !id || !user) return;
+    const now = Date.now();
+    const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
+
+    if (!force && now - lastRadarBroadcastRef.current < RADAR_UPDATE_INTERVAL_MS) {
+      if (radarPartnerLoc && now - radarPartnerLoc.timestamp > RADAR_EXPIRY_TTL_MS) {
+        setRadarPartnerLoc(null);
+        getStoredPartnerLocation(chatIdStr);
+      }
+      return;
+    }
+
+    const myNewLoc = await getCurrentDeviceLocation();
+    if (!myNewLoc) return;
+
+    setRadarMyLoc(myNewLoc);
+    saveMyLocation(myNewLoc);
+    lastRadarBroadcastRef.current = now;
+
+    if (typingChannelRef.current) {
+      try {
+        typingChannelRef.current.send({
+          type: "broadcast",
+          event: "radar_ping",
+          payload: {
+            user_id: user.id,
+            lat: myNewLoc.lat,
+            lng: myNewLoc.lng,
+            timestamp: myNewLoc.timestamp,
+          },
+        });
+      } catch (e) {}
+    }
+  }, [id, user, isGroup, radarPartnerLoc]);
+
+  // Load cached radar locations on mount and set up periodic 20-min sync check
+  useEffect(() => {
+    if (!id || isGroup) return;
+    const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
+
+    getStoredPartnerLocation(chatIdStr).then((loc) => {
+      if (loc) setRadarPartnerLoc(loc);
+    });
+
+    getStoredMyLocation().then((loc) => {
+      if (loc) setRadarMyLoc(loc);
+    });
+
+    // Check device location & broadcast once on entering chat if permissions allow
+    refreshRadarLocation(false);
+
+    const syncInterval = setInterval(() => {
+      refreshRadarLocation(false);
+    }, 60 * 1000);
+
+    return () => clearInterval(syncInterval);
+  }, [id, isGroup, refreshRadarLocation]);
+
+  // Dynamic Island Screen Bloom Animation into Chat Info
+  const screenBloomAnim = useRef(new RNAnimated.Value(0)).current;
 
   // More ⋮ Animated Dropdown Menu State
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
@@ -1622,7 +1715,12 @@ export default function ChatScreen() {
           return;
         }
 
-        const tUser = p.username || targetUser?.nickname || targetUser?.username || "Someone";
+        let tUser = "";
+        if (!isGroup && targetUser) {
+          tUser = targetUser?.nickname || targetUser?.display_name || targetUser?.username || name || "Partner";
+        } else {
+          tUser = (p.username && p.username !== "Someone") ? p.username : (targetUser?.nickname || targetUser?.display_name || targetUser?.username || "Someone");
+        }
         setTypingUsername(tUser);
         setIsTyping(true);
 
@@ -1648,6 +1746,20 @@ export default function ChatScreen() {
             triggerMoodWallpaper("love");
           }
         }
+      })
+      .on("broadcast", { event: "radar_ping" }, (payload: any) => {
+        const p = payload?.payload;
+        if (!p || p.user_id === user.id) return;
+        if (Date.now() - p.timestamp > RADAR_EXPIRY_TTL_MS) return;
+
+        const newPartnerLoc: RadarLocation = {
+          lat: p.lat,
+          lng: p.lng,
+          timestamp: p.timestamp,
+        };
+        setRadarPartnerLoc(newPartnerLoc);
+        const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
+        savePartnerLocation(chatIdStr, newPartnerLoc);
       })
       .on("broadcast", { event: "incoming_call_invite" }, (payload: any) => {
         const p = payload?.payload;
@@ -1944,6 +2056,15 @@ export default function ChatScreen() {
 
     if (!typingChannelRef.current || !user) return;
     const trimmed = text.trim();
+    const mySenderName =
+      (myProfile as any)?.nickname ||
+      myProfile?.display_name ||
+      myProfile?.username ||
+      user.user_metadata?.display_name ||
+      user.user_metadata?.username ||
+      myNicknameFromPartner ||
+      user.email?.split("@")[0] ||
+      "";
 
     // 1. If text is cleared or empty, instantly broadcast stop_typing
     if (!trimmed) {
@@ -1961,7 +2082,7 @@ export default function ChatScreen() {
           event: "typing",
           payload: {
             user_id: user.id,
-            username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+            username: mySenderName,
             is_typing: false,
             ghost_text: null,
           },
@@ -1980,7 +2101,7 @@ export default function ChatScreen() {
             event: "typing",
             payload: {
               user_id: user.id,
-              username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+              username: mySenderName,
               is_typing: false,
               ghost_text: null,
             },
@@ -2006,7 +2127,7 @@ export default function ChatScreen() {
             event: "typing",
             payload: {
               user_id: user.id,
-              username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+              username: mySenderName,
               is_typing: true,
               ghost_text: text,
             },
@@ -2031,7 +2152,7 @@ export default function ChatScreen() {
             event: "typing",
             payload: {
               user_id: user.id,
-              username: user.user_metadata?.username || myNicknameFromPartner || "Someone",
+              username: mySenderName,
               is_typing: true,
               ghost_text: null,
             },
@@ -2039,7 +2160,7 @@ export default function ChatScreen() {
         } catch (e) {}
       }
     }
-  }, [user, myNicknameFromPartner]);
+  }, [user, myNicknameFromPartner, myProfile]);
 
   const sendMessage = useCallback(async () => {
     tabTitleManager.clearUnread();
@@ -2469,6 +2590,21 @@ export default function ChatScreen() {
     });
   }, [router, id, isGroup, targetUser, chatAvatars, name, groupChatData, chatSettings]);
 
+  const handleOpenProfileWithBloom = useCallback(() => {
+    RNAnimated.spring(screenBloomAnim, {
+      toValue: 1,
+      friction: 8,
+      tension: 65,
+      useNativeDriver: false,
+    }).start(() => {
+      openChatInfo();
+      setTimeout(() => {
+        screenBloomAnim.setValue(0);
+        setIsIslandExpanded(false);
+      }, 500);
+    });
+  }, [screenBloomAnim, openChatInfo]);
+
   const infoSpringAnim = useRef(new RNAnimated.Value(0)).current;
 
   const handleOpenChatInfoWithSpring = useCallback(() => {
@@ -2604,6 +2740,41 @@ export default function ChatScreen() {
     <View style={{ flex: 1, height: "100%", backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background), overflow: "hidden", borderRadius: screenRadius }}>
       <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive} screenRadius={screenRadius} />
       <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
+      {/* Dynamic Island Shared-Element Screen Bloom Layer */}
+      <RNAnimated.View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 9999,
+          opacity: screenBloomAnim.interpolate({
+            inputRange: [0, 0.05, 0.9, 1],
+            outputRange: [0, 1, 1, 0],
+          }),
+          transform: [
+            {
+              scale: screenBloomAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.35, 1],
+              }),
+            },
+            {
+              translateY: screenBloomAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-100, 0],
+              }),
+            },
+          ],
+          backgroundColor: isAmoled ? "#000000" : (theme.background || "#0f172a"),
+          borderRadius: screenBloomAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [42, 0],
+          }),
+        }}
+      />
       <SleepyByeBlocker
         chatId={currentChatId}
         visible={!!(chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now())}
@@ -2731,11 +2902,11 @@ export default function ChatScreen() {
                   isDynamicIslandActive && {
                     backgroundColor: "#000000",
                     borderColor: isHeartGlowing
-                      ? "rgba(244, 63, 94, 0.45)"
+                      ? "rgba(255, 255, 255, 0.14)"
                       : "rgba(255, 255, 255, 0.14)",
                     overflow: "hidden",
                     ...(Platform.OS === "web" && isHeartGlowing
-                      ? { boxShadow: "0 0 20px rgba(244, 63, 94, 0.35), 0 0 45px rgba(244, 63, 94, 0.18)" }
+                      ? { boxShadow: "0 0 24px rgba(244, 63, 94, 0.25), 0 4px 30px rgba(244, 63, 94, 0.15)" }
                       : {}),
                   },
                   centerIslandAnimatedStyle,
@@ -2774,14 +2945,14 @@ export default function ChatScreen() {
                       ]}
                     />
                   </View>
-                ) : callState.status !== "idle" ? (
+                ) : (callState.status !== "idle" || isIslandExpanded) ? (
                   <DynamicIslandExpandedView
                     targetUser={targetUser}
                     theme={theme}
                     audioState={audioState}
                     isTyping={isTyping}
                     typingUsername={typingUsername}
-                    isCalling={true}
+                    isCalling={callState.status !== "idle"}
                     callDuration={callState.duration}
                     callType={callState.callType}
                     callStatus={callState.status}
@@ -2790,6 +2961,10 @@ export default function ChatScreen() {
                     localStream={callState.localStream}
                     remoteStream={callState.remoteStream}
                     audioVolume={callState.audioVolume}
+                    radarDistanceKm={radarDistanceKm}
+                    radarBearing={radarBearing}
+                    radarLastUpdated={radarLastUpdated}
+                    onRefreshRadar={() => refreshRadarLocation(true)}
                     onStartCall={(type) => {
                       if (!targetUser?.id) return;
                       initiateCall({
@@ -2819,13 +2994,19 @@ export default function ChatScreen() {
                       toggleVideoCamera();
                     }}
                     onHeartPing={triggerHeartPing}
-                    onOpenChatInfo={openChatInfo}
-                    onCollapse={() => {}}
+                    onOpenChatInfo={handleOpenProfileWithBloom}
+                    onCollapse={() => setIsIslandExpanded(false)}
                   />
                 ) : (
                   <TouchableOpacity 
                     style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
-                    onPress={handleOpenChatInfoWithSpring}
+                    onPress={() => {
+                      if (isDynamicIslandActive) {
+                        setIsIslandExpanded((prev) => !prev);
+                      } else {
+                        handleOpenChatInfoWithSpring();
+                      }
+                    }}
                     activeOpacity={0.85}
                   >
                     {isGroup ? (
@@ -2880,11 +3061,6 @@ export default function ChatScreen() {
                     {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying && (
                       <View style={{ marginRight: 8 }}>
                         <DynamicEqualizerBars color="#10b981" active={true} />
-                      </View>
-                    )}
-                    {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && !audioState.isPlaying && isTyping && (
-                      <View style={{ marginRight: 8 }}>
-                        <DynamicTypingDots color={theme.accent || "#5865F2"} active={true} />
                       </View>
                     )}
                   </TouchableOpacity>
@@ -3757,19 +3933,29 @@ export default function ChatScreen() {
                       }
                     }}
                   >
-                    {inputText.trim() ? (
-                      chatSettings?.send_button_emoji ? (
-                        <Text style={{ fontSize: 22 }}>{chatSettings.send_button_emoji}</Text>
+                    <RNAnimated.View
+                      style={{
+                        transform: [
+                          {
+                            scale: inputText.trim() ? 1.08 : 1,
+                          },
+                        ],
+                      }}
+                    >
+                      {inputText.trim() ? (
+                        chatSettings?.send_button_emoji ? (
+                          <Text style={{ fontSize: 22 }}>{chatSettings.send_button_emoji}</Text>
+                        ) : (
+                          <Send
+                            size={22}
+                            color={theme.accent || "#5865F2"}
+                            style={{ marginLeft: 2 }}
+                          />
+                        )
                       ) : (
-                        <Send
-                          size={22}
-                          color={theme.accent || "#5865F2"}
-                          style={{ marginLeft: 2 }}
-                        />
-                      )
-                    ) : (
-                      <Mic size={22} color={theme.accent || "#5865F2"} />
-                    )}
+                        <Mic size={22} color={theme.accent || "#5865F2"} />
+                      )}
+                    </RNAnimated.View>
                   </TouchableOpacity>
                 </>
               )}
@@ -4608,6 +4794,30 @@ const MessageHoverActions = ({
   );
 };
 
+// --- Snappy Animated Double Checkmark ---
+const SnappyCheckmark = React.memo(({ isRead, isAmoled, theme, styles }: any) => {
+  const checkScale = useRef(new RNAnimated.Value(isRead ? 1.15 : 0.9)).current;
+
+  useEffect(() => {
+    RNAnimated.spring(checkScale, {
+      toValue: 1,
+      friction: 5,
+      tension: 100,
+      useNativeDriver: false,
+    }).start();
+  }, [isRead]);
+
+  return (
+    <RNAnimated.View style={{ transform: [{ scale: checkScale }] }}>
+      {isRead ? (
+        <CheckCheck size={14} color={isAmoled ? "#ffffff" : "#5865F2"} style={styles.checkIcon} />
+      ) : (
+        <Check size={14} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} style={styles.checkIcon} />
+      )}
+    </RNAnimated.View>
+  );
+});
+
 // --- MessageRow Component for Animations & Gradients ---
 const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, isGroup, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
   if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
@@ -5121,7 +5331,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
                 {item.status === "failed" && <Text style={{ color: '#f43f5e' }}> (failed)</Text>}
               </Text>
               {item.status !== "sending" && item.status !== "failed" && (
-                isRead ? <CheckCheck size={14} color={isAmoled ? "#ffffff" : "#5865F2"} style={styles.checkIcon} /> : <Check size={14} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} style={styles.checkIcon} />
+                <SnappyCheckmark isRead={isRead} isAmoled={isAmoled} theme={theme} styles={styles} />
               )}
             </View>
           )}
