@@ -1086,7 +1086,47 @@ export default function ChatScreen() {
     };
   }, [fontPickerOpen]);
 
+  // Automatically enter fullscreen when entering a chat
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
 
+    tryEnterFullscreen();
+
+    const handleFirstTap = () => {
+      tryEnterFullscreen();
+      window.removeEventListener("pointerdown", handleFirstTap, true);
+      window.removeEventListener("touchstart", handleFirstTap, true);
+    };
+
+    window.addEventListener("pointerdown", handleFirstTap, true);
+    window.addEventListener("touchstart", handleFirstTap, true);
+
+    return () => {
+      window.removeEventListener("pointerdown", handleFirstTap, true);
+      window.removeEventListener("touchstart", handleFirstTap, true);
+    };
+  }, []);
+
+  // Listen for context menu resolution requests from AlaContextMenu
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const handleResolveMsg = (e: any) => {
+      const { x, y, msgId } = e.detail || {};
+      if (!msgId) return;
+      const targetMsg = messages.find((m) => m.id === msgId);
+      if (targetMsg) {
+        window.dispatchEvent(
+          new CustomEvent("open_ala_context_menu", {
+            detail: { x, y, type: "message", item: targetMsg, isGroup },
+          })
+        );
+      }
+    };
+
+    window.addEventListener("resolve_and_open_msg_context_menu" as any, handleResolveMsg);
+    return () => window.removeEventListener("resolve_and_open_msg_context_menu" as any, handleResolveMsg);
+  }, [messages, isGroup]);
 
   const formatMsg = useCallback((msg: any): Message => {
     const rawTs = msg.created_at ? new Date(msg.created_at).getTime() : Date.now();
@@ -5570,8 +5610,15 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
 
   const handleLongPress = (e?: any) => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      const x = e?.clientX || e?.nativeEvent?.pageX || (window.innerWidth / 2 - 110);
-      const y = e?.clientY || e?.nativeEvent?.pageY || (window.innerHeight / 2 - 120);
+      const pageX = e?.nativeEvent?.pageX ?? e?.clientX;
+      const pageY = e?.nativeEvent?.pageY ?? e?.clientY;
+      const x = pageX !== undefined ? Math.min(Math.max(16, pageX - 60), window.innerWidth - 240) : (window.innerWidth / 2 - 110);
+      const y = pageY !== undefined ? Math.min(Math.max(40, pageY - 60), window.innerHeight - 260) : (window.innerHeight / 2 - 120);
+
+      try {
+        if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(25);
+      } catch {}
+
       window.dispatchEvent(
         new CustomEvent("open_ala_context_menu", {
           detail: { x, y, type: "message", item, isGroup },
@@ -5630,11 +5677,14 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
         {...panResponder.panHandlers}
       >
       <Pressable
+        dataSet={{ msgId: item.id }}
         style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
+        delayLongPress={280}
         onHoverIn={handleHoverIn}
         onHoverOut={handleHoverOut}
         onPress={handlePress}
         onLongPress={handleLongPress}
+        {...({ "data-msg-id": item.id } as any)}
       >
         {!item.isMe && (
           <View style={styles.avatarSlot}>
@@ -5645,6 +5695,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           </View>
         )}
         <View
+          dataSet={{ msgId: item.id }}
           style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}
           {...({
             onContextMenu: handleBubbleContextMenu,
@@ -5711,15 +5762,26 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={bubbleStyles}
+              {...({ "data-msg-id": item.id } as any)}
             >
               {renderBubbleContent()}
             </LinearGradient>
           ) : item.isMe && gradientEnabled && item.type !== "sticker" ? (
-            <LinearGradient colors={[sentColor, gradientColor2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={bubbleStyles}>
+            <LinearGradient
+              colors={[sentColor, gradientColor2]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={bubbleStyles}
+              {...({ "data-msg-id": item.id } as any)}
+            >
               {renderBubbleContent()}
             </LinearGradient>
           ) : (
-            <View style={bubbleStyles}>
+            <View
+              style={bubbleStyles}
+              dataSet={{ msgId: item.id }}
+              {...({ "data-msg-id": item.id } as any)}
+            >
               {renderBubbleContent()}
             </View>
           )}

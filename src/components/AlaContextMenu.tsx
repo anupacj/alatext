@@ -31,6 +31,7 @@ import {
 import { useRouter } from "expo-router";
 import { useTheme } from "../context/ThemeContext";
 import { useAlaPin } from "../context/AlaPinContext";
+import { isFullscreenActive, tryEnterFullscreen, exitFullscreen } from "../lib/fullscreen";
 
 const THEME_LIST = [
   { id: "dark", label: "Dark" },
@@ -98,11 +99,22 @@ export default function AlaContextMenu() {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
 
     const handleContextMenu = (e: MouseEvent) => {
-      // If target is inside a message row, custom event will handle it
-      const isMsgTarget = (e.target as HTMLElement)?.closest?.('[data-msg-id]');
-      if (isMsgTarget) return;
-
       e.preventDefault();
+      e.stopPropagation();
+
+      const msgTarget = (e.target as HTMLElement)?.closest?.('[data-msg-id]');
+      if (msgTarget) {
+        const msgId = msgTarget.getAttribute('data-msg-id') || (msgTarget as any)?.dataset?.msgId;
+        if (msgId) {
+          window.dispatchEvent(
+            new CustomEvent("resolve_and_open_msg_context_menu", {
+              detail: { x: e.clientX, y: e.clientY, msgId },
+            })
+          );
+          return;
+        }
+      }
+
       setMenuType("app");
       setMsgData(null);
       setIsGroupMsg(false);
@@ -123,10 +135,10 @@ export default function AlaContextMenu() {
     };
 
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+      setIsFullscreen(isFullscreenActive());
     };
 
-    window.addEventListener("contextmenu", handleContextMenu);
+    window.addEventListener("contextmenu", handleContextMenu, { capture: true });
     window.addEventListener("open_ala_context_menu" as any, handleCustomMenu);
     window.addEventListener("click", handleClickOutside);
     window.addEventListener("scroll", handleClickOutside);
@@ -135,7 +147,7 @@ export default function AlaContextMenu() {
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
 
     return () => {
-      window.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("contextmenu", handleContextMenu, { capture: true } as any);
       window.removeEventListener("open_ala_context_menu" as any, handleCustomMenu);
       window.removeEventListener("click", handleClickOutside);
       window.removeEventListener("scroll", handleClickOutside);
@@ -169,14 +181,10 @@ export default function AlaContextMenu() {
   const toggleFullscreen = () => {
     setVisible(false);
     try {
-      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-        const el = document.documentElement as any;
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      if (!isFullscreenActive()) {
+        tryEnterFullscreen();
       } else {
-        const doc = document as any;
-        if (doc.exitFullscreen) doc.exitFullscreen();
-        else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+        exitFullscreen();
       }
     } catch (e) {
       console.error("Fullscreen toggle error:", e);
@@ -371,7 +379,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 9999,
+    zIndex: 99999,
+    elevation: 100,
   },
   menuCard: {
     position: "absolute",
@@ -380,12 +389,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 6,
     borderWidth: 1,
+    zIndex: 100000,
+    elevation: 101,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
     backdropFilter: "blur(24px)",
-    elevation: 12,
   } as any,
   menuItem: {
     flexDirection: "row",

@@ -76,23 +76,72 @@ export default function Layout() {
       // Global Web Viewport Fix for Fullscreen & Mobile
       const globalStyle = document.createElement("style");
       globalStyle.innerHTML = `
-        html, body, #root {
-          height: 100%;
-          height: 100dvh;
-          width: 100%;
-          margin: 0;
-          padding: 0;
-          overflow: hidden;
-          position: fixed;
-          background-color: #000000;
+        html, body {
+          height: 100% !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+          background-color: #000000 !important;
           font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          -webkit-tap-highlight-color: transparent;
+        }
+        #root {
+          height: 100% !important;
+          width: 100% !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          background-color: #000000 !important;
+        }
+        #root > div {
+          height: 100% !important;
+          width: 100% !important;
+          display: flex !important;
+          flex: 1 1 0% !important;
+          flex-direction: column !important;
         }
         input, button, textarea, select {
           font-family: inherit;
         }
-        :fullscreen, ::backdrop {
-          height: 100%;
-          width: 100%;
+        :fullscreen, :-webkit-full-screen, :-moz-full-screen, :-ms-fullscreen {
+          height: 100% !important;
+          width: 100% !important;
+          background-color: #000000 !important;
+        }
+        :fullscreen body, :-webkit-full-screen body {
+          height: 100% !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+          background-color: #000000 !important;
+        }
+        :fullscreen #root, :-webkit-full-screen #root {
+          height: 100% !important;
+          width: 100% !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          background-color: #000000 !important;
+        }
+        :fullscreen #root > div, :-webkit-full-screen #root > div {
+          height: 100% !important;
+          width: 100% !important;
+          display: flex !important;
+          flex: 1 1 0% !important;
+          flex-direction: column !important;
+        }
+        ::backdrop {
           background-color: #000000;
         }
       `;

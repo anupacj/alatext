@@ -16,7 +16,7 @@ import ChatSidebar from "../../components/ChatSidebar";
 import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholder";
 import ShinyText from "../../components/ShinyText";
 import { useTabsLoading } from "../../context/TabsLoadingContext";
-import { tryEnterFullscreen } from "../../lib/fullscreen";
+import { isFullscreenActive, tryEnterFullscreen, exitFullscreen } from "../../lib/fullscreen";
 
 export default function Home() {
   const { width } = useWindowDimensions();
@@ -50,7 +50,7 @@ export default function Home() {
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const handleFullscreenChange = () => {
-        setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+        setIsFullscreen(isFullscreenActive());
       };
       document.addEventListener("fullscreenchange", handleFullscreenChange);
       document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
@@ -64,14 +64,10 @@ export default function Home() {
   const toggleFullscreen = () => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     try {
-      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-        const el = document.documentElement as any;
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      if (!isFullscreenActive()) {
+        tryEnterFullscreen();
       } else {
-        const doc = document as any;
-        if (doc.exitFullscreen) doc.exitFullscreen();
-        else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+        exitFullscreen();
       }
     } catch (e) {
       console.error("Fullscreen toggle error:", e);
@@ -221,6 +217,7 @@ export default function Home() {
           if (existingPart && existingPart.length > 0) {
             const existingChatId = existingPart[0].chat_id;
             resetModal();
+            tryEnterFullscreen();
             router.push({ pathname: "/chat", params: { id: existingChatId, name: tp.username } });
             return;
           }
@@ -237,6 +234,7 @@ export default function Home() {
       ]);
       if (pe2) throw pe2;
       resetModal();
+      tryEnterFullscreen();
       router.push({ pathname: "/chat", params: { id: newChatId, name: tp.username } });
     } catch (e: any) { setSearchError(e.message || "An error occurred."); }
     finally { setSearchLoading(false); }
@@ -264,6 +262,7 @@ export default function Home() {
       const { error: pe } = await supabase.from("chat_participants").insert(participants);
       if (pe) throw pe;
       resetModal();
+      tryEnterFullscreen();
       router.push({ pathname: "/chat", params: { id: newChatId, name: groupName.trim(), isGroup: "true" } });
     } catch (e: any) { setSearchError(e.message || "An error occurred."); }
     finally { setSearchLoading(false); }
@@ -272,6 +271,7 @@ export default function Home() {
   const renderItem = useCallback(({ item }: { item: any }) => (
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
       onPress={() => {
+        tryEnterFullscreen();
         router.push({ pathname: "/chat", params: { id: item.id, name: item.name, isGroup: item.isGroup ? "true" : "false" } });
       }}>
       {item.avatar ? (
@@ -327,6 +327,7 @@ export default function Home() {
         <View style={{ width: 380, height: "100%" }}>
           <ChatSidebar
             onSelectChat={(chatId, name) => {
+              tryEnterFullscreen();
               router.push({ pathname: "/chat", params: { id: chatId, name } });
             }}
           />
