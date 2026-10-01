@@ -176,9 +176,21 @@ export default function Layout() {
       setMeta("theme-color", "#1e1f22");
       setMeta("viewport", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content");
 
-      // 4. Register PWA Service Worker
+      // 4. Register PWA Service Worker with auto-update check
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+          reg.update().catch(() => {});
+          reg.onupdatefound = () => {
+            const installing = reg.installing;
+            if (installing) {
+              installing.onstatechange = () => {
+                if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                  window.location.reload();
+                }
+              };
+            }
+          };
+        }).catch(() => {});
       }
     }
     SplashScreen.hideAsync();
