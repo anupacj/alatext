@@ -87,6 +87,11 @@ export function renderFormattedContent(
   const safeFont = getSafeFontFamily(options.fontFamily);
   const fontStyle = safeFont ? { fontFamily: safeFont } : {};
   const colorStyle = options.textColor ? { color: options.textColor } : {};
+  const wrapStyle = Platform.OS === "web" ? ({
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    whiteSpace: "pre-wrap",
+  } as any) : {};
 
   // If entire message is marked as shimmer
   if (options.isShimmer) {
@@ -96,14 +101,14 @@ export function renderFormattedContent(
     const shineColor = "#ffffff";
 
     return (
-      <Text style={[options.baseStyle, fontStyle]}>
+      <Text style={[options.baseStyle, fontStyle, wrapStyle]}>
         <ShinyText
           text={text}
           speed={2.2}
           color={baseColor}
           shineColor={shineColor}
           spread={115}
-          style={[options.baseStyle, fontStyle]}
+          style={[options.baseStyle, fontStyle, wrapStyle]}
         />
       </Text>
     );
@@ -115,14 +120,14 @@ export function renderFormattedContent(
 
   if (parts.length === 1) {
     return (
-      <Text style={[options.baseStyle, fontStyle, colorStyle]}>
+      <Text style={[options.baseStyle, fontStyle, colorStyle, wrapStyle]}>
         {options.isLove ? renderTextOrHearts(text, "plain") : text}
       </Text>
     );
   }
 
   return (
-    <Text style={[options.baseStyle, fontStyle, colorStyle]}>
+    <Text style={[options.baseStyle, fontStyle, colorStyle, wrapStyle]}>
       {parts.map((part, i) => {
         if (!part) return null;
         if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
