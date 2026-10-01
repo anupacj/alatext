@@ -60,13 +60,15 @@ export default function AlaContextMenu() {
   const scaleAnim = useRef(new Animated.Value(0.96)).current;
 
   const triggerAnimation = (posX: number, posY: number) => {
-    const screenW = window.innerWidth;
-    const screenH = window.innerHeight;
+    const screenW = typeof window !== "undefined" ? window.innerWidth : 360;
+    const screenH = typeof window !== "undefined" ? window.innerHeight : 640;
+    const cardW = 220;
+    const cardH = 320;
 
-    if (posX + 230 > screenW) posX = screenW - 240;
-    if (posY + 320 > screenH) posY = screenH - 330;
+    if (posX + cardW > screenW - 12) posX = screenW - cardW - 12;
+    if (posY + cardH > screenH - 12) posY = screenH - cardH - 12;
 
-    setPos({ x: Math.max(10, posX), y: Math.max(10, posY) });
+    setPos({ x: Math.max(12, posX), y: Math.max(12, posY) });
     setVisible(true);
 
     opacityAnim.setValue(0);
@@ -98,14 +100,31 @@ export default function AlaContextMenu() {
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
 
+    let lastMenuOpenTime = 0;
+
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
 
-      const msgTarget = (e.target as HTMLElement)?.closest?.('[data-msg-id]');
+      // Guard: If custom message menu was triggered in the last 650ms, do not override
+      if (Date.now() - lastMenuOpenTime < 650) {
+        return;
+      }
+
+      // Detect touch screen or mobile device
+      const isTouch =
+        (e as any).pointerType === "touch" ||
+        ("ontouchstart" in window && !window.matchMedia("(pointer: fine)").matches);
+
+      const msgTarget = (e.target as HTMLElement)?.closest?.("[data-msg-id], [data-msgid]");
       if (msgTarget) {
-        const msgId = msgTarget.getAttribute('data-msg-id') || (msgTarget as any)?.dataset?.msgId;
+        const msgId =
+          msgTarget.getAttribute("data-msg-id") ||
+          msgTarget.getAttribute("data-msgid") ||
+          (msgTarget as any)?.dataset?.msgId ||
+          (msgTarget as any)?.dataset?.msgid;
         if (msgId) {
+          lastMenuOpenTime = Date.now();
           window.dispatchEvent(
             new CustomEvent("resolve_and_open_msg_context_menu", {
               detail: { x: e.clientX, y: e.clientY, msgId },
@@ -115,6 +134,12 @@ export default function AlaContextMenu() {
         }
       }
 
+      // On mobile / touch screen, touching free space should NEVER open the desktop app menu
+      if (isTouch) {
+        return;
+      }
+
+      // Desktop right-click on free space opens app context menu
       setMenuType("app");
       setMsgData(null);
       setIsGroupMsg(false);
@@ -122,6 +147,7 @@ export default function AlaContextMenu() {
     };
 
     const handleCustomMenu = (e: any) => {
+      lastMenuOpenTime = Date.now();
       const { x, y, type, item, isGroup } = e.detail || {};
       setMenuType(type || "app");
       setMsgData(item || null);
@@ -374,7 +400,7 @@ export default function AlaContextMenu() {
 
 const styles = StyleSheet.create({
   overlay: {
-    position: "absolute",
+    position: (Platform.OS === "web" ? "fixed" : "absolute") as any,
     top: 0,
     left: 0,
     right: 0,
@@ -383,7 +409,7 @@ const styles = StyleSheet.create({
     elevation: 100,
   },
   menuCard: {
-    position: "absolute",
+    position: (Platform.OS === "web" ? "fixed" : "absolute") as any,
     width: 220,
     borderRadius: 16,
     paddingVertical: 6,

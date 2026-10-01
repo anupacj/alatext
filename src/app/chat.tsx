@@ -1119,7 +1119,7 @@ export default function ChatScreen() {
     const handleResolveMsg = (e: any) => {
       const { x, y, msgId } = e.detail || {};
       if (!msgId) return;
-      const targetMsg = messages.find((m) => m.id === msgId);
+      const targetMsg = messages.find((m) => m.id === msgId || m.client_id === msgId);
       if (targetMsg) {
         window.dispatchEvent(
           new CustomEvent("open_ala_context_menu", {
@@ -4705,7 +4705,16 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
   welcomeTitle: { color: text, fontSize: 24, fontWeight: "bold", marginBottom: 8, fontFamily: "Josefin Sans" },
   welcomeSubtitle: { color: textMuted, fontSize: 16, fontFamily: "Josefin Sans" },
   listContainer: { paddingHorizontal: isDesktop ? 20 : 16, paddingTop: Platform.OS === "web" ? (isDesktop ? 74 : 82) : 98, paddingBottom: 110 },
-  messageContainer: { flexDirection: "row", marginBottom: 18, alignItems: "flex-end" },
+  messageContainer: {
+    flexDirection: "row",
+    marginBottom: 18,
+    alignItems: "flex-end",
+    ...(Platform.OS === "web" ? ({
+      userSelect: "none",
+      WebkitUserSelect: "none",
+      WebkitTouchCallout: "none",
+    } as any) : {}),
+  },
   messageContainerLeft: { justifyContent: "flex-start", alignItems: "flex-start" },
   messageContainerRight: { justifyContent: "flex-end", alignItems: "flex-end" },
   avatarSlot: { width: 40, marginRight: 16 },
@@ -4718,14 +4727,32 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
   messageContentLeft: { alignItems: "flex-start" },
   messageContentRight: { alignItems: "flex-end" },
   messageSender: { color: text, fontSize: 14, fontWeight: "600", marginBottom: 4, fontFamily: "Josefin Sans" },
-  messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+  messageBubble: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    ...(Platform.OS === "web" ? ({
+      userSelect: "none",
+      WebkitUserSelect: "none",
+      WebkitTouchCallout: "none",
+    } as any) : {}),
+  },
   messageBubbleLeft: { backgroundColor: surface, borderBottomLeftRadius: 4 },
   messageBubbleRight: { backgroundColor: accent, borderBottomRightRadius: 4 },
   bubbleFlatTop: { borderTopRightRadius: 4 },
   bubbleFlatTopLeft: { borderTopLeftRadius: 4 },
   bubbleFlatBottom: { borderBottomLeftRadius: 4 },
   bubbleFlatBottomRight: { borderBottomRightRadius: 4 },
-  messageText: { fontSize: 16, lineHeight: 22, fontFamily: Platform.OS === "web" ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif' : undefined },
+  messageText: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontFamily: Platform.OS === "web" ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif' : undefined,
+    ...(Platform.OS === "web" ? ({
+      userSelect: "none",
+      WebkitUserSelect: "none",
+      WebkitTouchCallout: "none",
+    } as any) : {}),
+  },
   messageTextLeft: { color: text },
   messageTextRight: { color: text },
   msgMeta: { flexDirection: "row", alignItems: "center", marginTop: 4 },
@@ -5627,9 +5654,11 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
     if (Platform.OS === "web" && typeof window !== "undefined") {
       e?.preventDefault?.();
       e?.stopPropagation?.();
+      const clientX = e?.clientX ?? (window.innerWidth / 2 - 110);
+      const clientY = e?.clientY ?? (window.innerHeight / 2 - 120);
       window.dispatchEvent(
         new CustomEvent("open_ala_context_menu", {
-          detail: { x: e?.clientX || 120, y: e?.clientY || 220, type: "message", item, isGroup },
+          detail: { x: clientX, y: clientY, type: "message", item, isGroup },
         })
       );
     }
@@ -5637,10 +5666,11 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
 
   const handleLongPress = (e?: any) => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      const pageX = e?.nativeEvent?.pageX ?? e?.clientX;
-      const pageY = e?.nativeEvent?.pageY ?? e?.clientY;
-      const x = pageX !== undefined ? Math.min(Math.max(16, pageX - 60), window.innerWidth - 240) : (window.innerWidth / 2 - 110);
-      const y = pageY !== undefined ? Math.min(Math.max(40, pageY - 60), window.innerHeight - 260) : (window.innerHeight / 2 - 120);
+      const touch = e?.nativeEvent?.touches?.[0] || e?.nativeEvent?.changedTouches?.[0];
+      const rawX = e?.nativeEvent?.clientX ?? touch?.clientX ?? e?.clientX ?? e?.nativeEvent?.pageX;
+      const rawY = e?.nativeEvent?.clientY ?? touch?.clientY ?? e?.clientY ?? e?.nativeEvent?.pageY;
+      const x = rawX !== undefined ? Math.min(Math.max(16, rawX - 60), window.innerWidth - 240) : (window.innerWidth / 2 - 110);
+      const y = rawY !== undefined ? Math.min(Math.max(40, rawY - 60), window.innerHeight - 300) : (window.innerHeight / 2 - 120);
 
       try {
         if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(25);
@@ -5704,14 +5734,14 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         {...(Platform.OS !== "web" || (typeof window !== "undefined" && ("ontouchstart" in window || (navigator as any)?.maxTouchPoints > 0)) ? panResponder.panHandlers : {})}
       >
       <Pressable
-        dataSet={{ msgId: item.id }}
+        dataSet={{ msgId: item.id, "msg-id": item.id }}
         style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
         delayLongPress={280}
         onHoverIn={handleHoverIn}
         onHoverOut={handleHoverOut}
         onPress={handlePress}
         onLongPress={handleLongPress}
-        {...({ "data-msg-id": item.id } as any)}
+        {...({ "data-msg-id": item.id, "data-msgid": item.id } as any)}
       >
         {!item.isMe && (
           <View style={styles.avatarSlot}>
@@ -5722,11 +5752,12 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
           </View>
         )}
         <View
-          dataSet={{ msgId: item.id }}
+          dataSet={{ msgId: item.id, "msg-id": item.id }}
           style={[styles.messageContent, item.isMe ? styles.messageContentRight : styles.messageContentLeft]}
           {...({
             onContextMenu: handleBubbleContextMenu,
             "data-msg-id": item.id,
+            "data-msgid": item.id,
           } as any)}
         >
           <Animated.View
