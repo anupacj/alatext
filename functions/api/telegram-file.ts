@@ -26,9 +26,17 @@ export async function onRequest(context: any): Promise<Response> {
 
   try {
     const parsedTarget = new URL(targetUrl);
-    // Security restriction: allow only api.telegram.org requests
-    if (parsedTarget.hostname !== "api.telegram.org") {
-      return new Response("Forbidden target host: only api.telegram.org allowed", {
+    // Security restriction: allow telegram.org or sticker assets
+    const isAllowed =
+      parsedTarget.hostname.endsWith("telegram.org") ||
+      parsedTarget.hostname.endsWith("r2.dev") ||
+      parsedTarget.hostname.endsWith("cloudflarestorage.com") ||
+      parsedTarget.pathname.endsWith(".json") ||
+      parsedTarget.pathname.endsWith(".tgs") ||
+      parsedTarget.pathname.endsWith(".webm");
+
+    if (!isAllowed) {
+      return new Response("Forbidden target host: only telegram.org and sticker assets allowed", {
         status: 403,
         headers: { "Access-Control-Allow-Origin": "*" },
       });
