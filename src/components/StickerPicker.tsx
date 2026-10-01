@@ -106,8 +106,11 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
       if (!data.ok) throw new Error(data.description || "Failed to find pack");
       
       const stickerSet = data.result;
-      const validStickers = stickerSet.stickers.filter((s: any) => !s.is_animated && !s.is_video);
-      if (validStickers.length === 0) throw new Error("Pack contains no static stickers.");
+      // Allow static (WebP) and video (.webm) stickers; only exclude .tgs vector animations
+      const validStickers = stickerSet.stickers.filter((s: any) => !s.is_animated);
+      if (validStickers.length === 0) {
+        throw new Error("Pack contains only .tgs vector animations (no static or video stickers).");
+      }
 
       setImportProgress("Creating pack...");
       const { data: pack, error: packErr } = await supabase.from("sticker_packs").insert({
@@ -118,55 +121,96 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
 
       if (packErr) throw packErr;
 
-      let coverUrl = null;
-
       setImportProgress(`Importing 0 / ${validStickers.length} stickers...`);
-      for (let i = 0; i < validStickers.length; i++) {
-        const s = validStickers[i];
+      
+      // Parallel concurrent processing
+      const CONCURRENCY = 6;
+      let currentIndex = 0;
+      let completedCount = 0;
+      const uploadedRecords: { pack_id: string; file_url: string; emoji: string }[] = [];
+
+      const processSticker = async (s: any, idx: number) => {
         try {
           const fRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${s.file_id}`);
           const fData = await fRes.json();
-          if (!fData.ok) continue;
+          if (!fData.ok || !fData.result?.file_path) return;
 
-          const fileUrl = `api.telegram.org/file/bot${botToken}/${fData.result.file_path}`;
-          let imgRes, blob;
+          const filePath = fData.result.file_path;
+          const isVideoFile = filePath.endsWith(".webm") || s.is_video;
+          const directFileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+
+          let blob: Blob | null = null;
           try {
-            imgRes = await fetch(`https://images.weserv.nl/?url=${encodeURIComponent(fileUrl)}`);
+            const resp = await fetch(directFileUrl);
+            if (resp.ok) {
+              blob = await resp.blob();
+            }
+          } catch (e) {
+            console.warn("Direct fetch error", e);
+          }
+
+          if (!blob || blob.size === 0) {
+            if (isVideoFile) {
+              return;
+            }
+            const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(`api.telegram.org/file/bot${botToken}/${filePath}`)}`;
+            const imgRes = await fetch(proxyUrl);
             blob = await imgRes.blob();
-          } catch (e: any) {
-            throw new Error("Telegram Fetch: " + (e.message || String(e)));
           }
 
-          if (!blob.type) {
-            blob = new Blob([await blob.arrayBuffer()], { type: "image/webp" });
+          if (isVideoFile) {
+            if (!blob.type || !blob.type.includes("webm")) {
+              blob = new Blob([await blob.arrayBuffer()], { type: "video/webm" });
+            }
+          } else {
+            if (!blob.type || blob.type === "application/octet-stream") {
+              blob = new Blob([await blob.arrayBuffer()], { type: "image/webp" });
+            }
           }
 
-          let uploadedUrl;
-          try {
-            uploadedUrl = await uploadBlobToR2(`stickers/${pack.id}/${s.file_id}`, blob);
-          } catch (e: any) {
-            throw new Error("R2 Upload: " + (e.message || String(e)));
-          }
-
-          if (i === 0) coverUrl = uploadedUrl;
-          
-          const { error: insertErr } = await supabase.from("stickers").insert({
+          const uploadedUrl = await uploadBlobToR2(`stickers/${pack.id}/${s.file_id}`, blob);
+          uploadedRecords.push({
             pack_id: pack.id,
             file_url: uploadedUrl,
-            emoji: s.emoji || ""
+            emoji: s.emoji || "",
           });
-          if (insertErr) throw new Error("Database Insert: " + insertErr.message);
+        } catch (err) {
+          console.error("Error importing sticker index", idx, err);
+        } finally {
+          completedCount++;
+          setImportProgress(`Importing ${completedCount} / ${validStickers.length} stickers...`);
+        }
+      };
 
-          setImportProgress(`Importing ${i + 1} / ${validStickers.length} stickers...`);
-        } catch (e: any) { 
-          console.error("Error on sticker", i, e);
-          if (i === 0) alert("Error: " + (e.message || String(e)));
+      const worker = async () => {
+        while (currentIndex < validStickers.length) {
+          const idx = currentIndex++;
+          await processSticker(validStickers[idx], idx);
+        }
+      };
+
+      const workers = Array.from({ length: Math.min(CONCURRENCY, validStickers.length) }, () => worker());
+      await Promise.all(workers);
+
+      if (uploadedRecords.length === 0) {
+        throw new Error("Failed to download or upload any stickers from this pack.");
+      }
+
+      setImportProgress("Saving stickers to database...");
+      for (let i = 0; i < uploadedRecords.length; i += 25) {
+        const chunk = uploadedRecords.slice(i, i + 25);
+        const { error: insertErr } = await supabase.from("stickers").insert(chunk);
+        if (insertErr) {
+          console.error("Batch insert error:", insertErr);
         }
       }
 
-      if (coverUrl) await supabase.from("sticker_packs").update({ cover_url: coverUrl }).eq("id", pack.id);
+      const coverUrl = uploadedRecords[0]?.file_url || null;
+      if (coverUrl) {
+        await supabase.from("sticker_packs").update({ cover_url: coverUrl }).eq("id", pack.id);
+      }
 
-      alert("Import complete!");
+      alert(`Import complete! Added ${uploadedRecords.length} stickers.`);
       setPackNameInput("");
       setIsImporting(false);
       fetchPacks();
@@ -262,19 +306,40 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
                 numColumns={isWeb ? 5 : 4}
                 contentContainerStyle={{ padding: 12, gap: 10 }}
                 columnWrapperStyle={{ gap: 10 }}
-                renderItem={({ item }) => (
-                  <TouchableOpacity 
-                    style={[
-                      styles.stickerWrapper,
-                      isWeb && { maxWidth: "18.2%", minHeight: 64, maxHeight: 80 },
-                      isWeb && ({ cursor: "pointer" } as any)
-                    ]} 
-                    onPress={() => { onSelectSticker(item.file_url); onClose(); }}
-                    activeOpacity={0.7}
-                  >
-                    <Image source={{ uri: getThumbnailUrl(item.file_url, 160, 160, 80) }} style={styles.stickerImg} resizeMode="contain" />
-                  </TouchableOpacity>
-                )}
+                renderItem={({ item }) => {
+                  const isVideo = typeof item.file_url === "string" && item.file_url.includes(".webm");
+                  return (
+                    <TouchableOpacity 
+                      style={[
+                        styles.stickerWrapper,
+                        isWeb && { maxWidth: "18.2%", minHeight: 64, maxHeight: 80 },
+                        isWeb && ({ cursor: "pointer" } as any)
+                      ]} 
+                      onPress={() => { onSelectSticker(item.file_url); onClose(); }}
+                      activeOpacity={0.7}
+                    >
+                      {isVideo && isWeb ? (
+                        <video
+                          src={item.file_url}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            pointerEvents: "none",
+                            borderRadius: 6,
+                            background: "transparent",
+                          }}
+                        />
+                      ) : (
+                        <Image source={{ uri: getThumbnailUrl(item.file_url, 160, 160, 80) }} style={styles.stickerImg} resizeMode="contain" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
               />
               
               {/* Pack Tabs */}
@@ -291,11 +356,29 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
                         styles.tabBtn, 
                         selectedPackId === item.id && styles.tabBtnActive,
                         isWeb && ({ cursor: "pointer" } as any)
-                      ]}
+                      ]} 
                       onPress={() => setSelectedPackId(item.id)}
                     >
                       {item.cover_url ? (
-                        <Image source={{ uri: getThumbnailUrl(item.cover_url, 80, 80, 80) }} style={styles.tabIcon} />
+                        item.cover_url.includes(".webm") && isWeb ? (
+                          <video
+                            src={item.cover_url}
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            style={{
+                              width: 28,
+                              height: 28,
+                              objectFit: "contain",
+                              borderRadius: 6,
+                              pointerEvents: "none",
+                              background: "transparent",
+                            }}
+                          />
+                        ) : (
+                          <Image source={{ uri: getThumbnailUrl(item.cover_url, 80, 80, 80) }} style={styles.tabIcon} />
+                        )
                       ) : (
                         <Text style={{ color: "#fff", fontSize: 16 }}>📦</Text>
                       )}

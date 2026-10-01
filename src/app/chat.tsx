@@ -5624,6 +5624,28 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
     if (item.type === "sticker") {
       const stickerDim = Platform.OS === "web" ? 104 : 128;
       const stickerOpacity = (chatSettings?.screen_dim > 0) ? Math.max(0.55, 1 - (chatSettings.screen_dim * 0.45)) : 1;
+      const isVideoSticker = typeof item.text === "string" && item.text.includes(".webm");
+
+      if (isVideoSticker && Platform.OS === "web") {
+        return (
+          <video
+            src={item.text}
+            autoPlay
+            loop
+            muted
+            playsInline
+            style={{
+              width: stickerDim,
+              height: stickerDim,
+              objectFit: "contain",
+              pointerEvents: "none",
+              opacity: stickerOpacity,
+              background: "transparent",
+            }}
+          />
+        );
+      }
+
       return <Image source={{ uri: item.text }} style={{ width: stickerDim, height: stickerDim, opacity: stickerOpacity }} resizeMode="contain" />;
     }
     if (item.type === "image") {
@@ -5807,7 +5829,18 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
                 {item.reply_to_sender}
               </Text>
               {item.reply_to_content?.startsWith("http") ? (
-                <Image source={{ uri: item.reply_to_content }} style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2 }} resizeMode="cover" />
+                item.reply_to_content.includes(".webm") && Platform.OS === "web" ? (
+                  <video
+                    src={item.reply_to_content}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2, objectFit: "cover", pointerEvents: "none" }}
+                  />
+                ) : (
+                  <Image source={{ uri: item.reply_to_content }} style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2 }} resizeMode="cover" />
+                )
               ) : (
                 <Text style={styles.replyQuoteText} numberOfLines={1}>{item.reply_to_content}</Text>
               )}
