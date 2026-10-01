@@ -124,47 +124,88 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
 
       setImportProgress(`Importing 0 / ${validStickers.length} stickers...`);
       
+      const fetchTelegramBlob = async (directUrl: string, isStaticImageOnly = false): Promise<Blob | null> => {
+        // 1. In browser, use Cloudflare Pages Function proxy (/api/telegram-file)
+        if (Platform.OS === "web") {
+          try {
+            const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+            const origin = isLocal ? "https://alatext.pages.dev" : "";
+            const proxyUrl = `${origin}/api/telegram-file?url=${encodeURIComponent(directUrl)}`;
+            const res = await fetch(proxyUrl);
+            if (res.ok) {
+              const b = await res.blob();
+              if (b && b.size > 0) return b;
+            }
+          } catch (e) {
+            console.warn("Pages function proxy fetch failed:", e);
+          }
+        }
+
+        // 2. Direct fetch (native mobile iOS/Android, or CORS-permissive clients)
+        try {
+          const res = await fetch(directUrl);
+          if (res.ok) {
+            const b = await res.blob();
+            if (b && b.size > 0) return b;
+          }
+        } catch (e) {
+          console.warn("Direct fetch failed:", e);
+        }
+
+        // 3. Fallback for static image files: images.weserv.nl
+        if (isStaticImageOnly) {
+          try {
+            const rawUrl = directUrl.replace(/^https?:\/\//, "");
+            const res = await fetch(`https://images.weserv.nl/?url=${encodeURIComponent(rawUrl)}`);
+            if (res.ok) {
+              const b = await res.blob();
+              if (b && b.size > 0) return b;
+            }
+          } catch (e) {
+            console.warn("weserv proxy failed:", e);
+          }
+        }
+
+        return null;
+      };
+
       // Parallel concurrent processing
       const CONCURRENCY = 6;
       let currentIndex = 0;
       let completedCount = 0;
+      let lastProcessError: string | null = null;
       const uploadedRecords: { pack_id: string; file_url: string; emoji: string }[] = [];
 
       const processSticker = async (s: any, idx: number) => {
         try {
           const fRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${s.file_id}`);
           const fData = await fRes.json();
-          if (!fData.ok || !fData.result?.file_path) return;
+          if (!fData.ok || !fData.result?.file_path) {
+            lastProcessError = fData?.description || "Telegram getFile failed";
+            return;
+          }
 
           const filePath = fData.result.file_path;
           const isTgs = filePath.endsWith(".tgs") || s.is_animated;
           const isVideoFile = filePath.endsWith(".webm") || s.is_video;
           const directFileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
 
-          let blob: Blob | null = null;
-          try {
-            const resp = await fetch(directFileUrl);
-            if (resp.ok) {
-              blob = await resp.blob();
-            }
-          } catch (e) {
-            console.warn("Direct fetch error", e);
-          }
-
+          const blob = await fetchTelegramBlob(directFileUrl, !isTgs && !isVideoFile);
           if (!blob || blob.size === 0) {
-            if (isTgs || isVideoFile) {
-              return;
-            }
-            const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(`api.telegram.org/file/bot${botToken}/${filePath}`)}`;
-            const imgRes = await fetch(proxyUrl);
-            blob = await imgRes.blob();
+            lastProcessError = `Could not download sticker asset (${filePath})`;
+            return;
           }
 
           let uploadBlob: Blob;
           if (isTgs) {
-            const arrayBuffer = await blob.arrayBuffer();
-            const decompressedBytes = pako.ungzip(new Uint8Array(arrayBuffer));
-            const decompressedStr = new TextDecoder().decode(decompressedBytes);
+            let decompressedStr: string;
+            try {
+              const arrayBuffer = await blob.arrayBuffer();
+              const decompressedBytes = pako.ungzip(new Uint8Array(arrayBuffer));
+              decompressedStr = new TextDecoder().decode(decompressedBytes);
+            } catch (gzipErr) {
+              decompressedStr = await blob.text();
+            }
             uploadBlob = new Blob([decompressedStr], { type: "application/json" });
           } else if (isVideoFile) {
             uploadBlob = new Blob([await blob.arrayBuffer()], { type: "video/webm" });
@@ -178,7 +219,8 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
             file_url: uploadedUrl,
             emoji: s.emoji || "",
           });
-        } catch (err) {
+        } catch (err: any) {
+          lastProcessError = err?.message || String(err);
           console.error("Error importing sticker index", idx, err);
         } finally {
           completedCount++;
@@ -197,7 +239,7 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
       await Promise.all(workers);
 
       if (uploadedRecords.length === 0) {
-        throw new Error("Failed to download or upload any stickers from this pack.");
+        throw new Error(`Failed to download or upload stickers from this pack (${lastProcessError || "unknown error"}).`);
       }
 
       setImportProgress("Saving stickers to database...");
@@ -218,9 +260,8 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
           const tData = await tRes.json();
           if (tData.ok && tData.result?.file_path) {
             const tUrl = `https://api.telegram.org/file/bot${botToken}/${tData.result.file_path}`;
-            const tResp = await fetch(tUrl);
-            if (tResp.ok) {
-              const tBlob = await tResp.blob();
+            const tBlob = await fetchTelegramBlob(tUrl, true);
+            if (tBlob) {
               coverUrl = await uploadBlobToR2(`stickers/${pack.id}/cover`, tBlob);
             }
           }
