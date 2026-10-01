@@ -4,6 +4,8 @@ import { X, Plus, Download, AlertCircle } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { uploadBlobToR2, getThumbnailUrl } from "../lib/r2";
+import pako from "pako";
+import { LottieSticker } from "./LottieSticker";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -106,10 +108,9 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
       if (!data.ok) throw new Error(data.description || "Failed to find pack");
       
       const stickerSet = data.result;
-      // Allow static (WebP) and video (.webm) stickers; only exclude .tgs vector animations
-      const validStickers = stickerSet.stickers.filter((s: any) => !s.is_animated);
+      const validStickers = stickerSet.stickers || [];
       if (validStickers.length === 0) {
-        throw new Error("Pack contains only .tgs vector animations (no static or video stickers).");
+        throw new Error("This sticker pack has no stickers.");
       }
 
       setImportProgress("Creating pack...");
@@ -136,6 +137,7 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
           if (!fData.ok || !fData.result?.file_path) return;
 
           const filePath = fData.result.file_path;
+          const isTgs = filePath.endsWith(".tgs") || s.is_animated;
           const isVideoFile = filePath.endsWith(".webm") || s.is_video;
           const directFileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
 
@@ -150,7 +152,7 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
           }
 
           if (!blob || blob.size === 0) {
-            if (isVideoFile) {
+            if (isTgs || isVideoFile) {
               return;
             }
             const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(`api.telegram.org/file/bot${botToken}/${filePath}`)}`;
@@ -158,17 +160,19 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
             blob = await imgRes.blob();
           }
 
-          if (isVideoFile) {
-            if (!blob.type || !blob.type.includes("webm")) {
-              blob = new Blob([await blob.arrayBuffer()], { type: "video/webm" });
-            }
+          let uploadBlob: Blob;
+          if (isTgs) {
+            const arrayBuffer = await blob.arrayBuffer();
+            const decompressedBytes = pako.ungzip(new Uint8Array(arrayBuffer));
+            const decompressedStr = new TextDecoder().decode(decompressedBytes);
+            uploadBlob = new Blob([decompressedStr], { type: "application/json" });
+          } else if (isVideoFile) {
+            uploadBlob = new Blob([await blob.arrayBuffer()], { type: "video/webm" });
           } else {
-            if (!blob.type || blob.type === "application/octet-stream") {
-              blob = new Blob([await blob.arrayBuffer()], { type: "image/webp" });
-            }
+            uploadBlob = new Blob([await blob.arrayBuffer()], { type: "image/webp" });
           }
 
-          const uploadedUrl = await uploadBlobToR2(`stickers/${pack.id}/${s.file_id}`, blob);
+          const uploadedUrl = await uploadBlobToR2(`stickers/${pack.id}/${s.file_id}`, uploadBlob);
           uploadedRecords.push({
             pack_id: pack.id,
             file_url: uploadedUrl,
@@ -205,7 +209,26 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
         }
       }
 
-      const coverUrl = uploadedRecords[0]?.file_url || null;
+      // Try to fetch static thumbnail for pack cover icon if available
+      let coverUrl = uploadedRecords[0]?.file_url || null;
+      const thumbFileId = stickerSet.thumbnail?.file_id || validStickers[0]?.thumbnail?.file_id || validStickers[0]?.thumb?.file_id;
+      if (thumbFileId) {
+        try {
+          const tRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${thumbFileId}`);
+          const tData = await tRes.json();
+          if (tData.ok && tData.result?.file_path) {
+            const tUrl = `https://api.telegram.org/file/bot${botToken}/${tData.result.file_path}`;
+            const tResp = await fetch(tUrl);
+            if (tResp.ok) {
+              const tBlob = await tResp.blob();
+              coverUrl = await uploadBlobToR2(`stickers/${pack.id}/cover`, tBlob);
+            }
+          }
+        } catch (e) {
+          console.warn("Could not fetch thumbnail cover", e);
+        }
+      }
+
       if (coverUrl) {
         await supabase.from("sticker_packs").update({ cover_url: coverUrl }).eq("id", pack.id);
       }
@@ -307,6 +330,7 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
                 contentContainerStyle={{ padding: 12, gap: 10 }}
                 columnWrapperStyle={{ gap: 10 }}
                 renderItem={({ item }) => {
+                  const isLottie = typeof item.file_url === "string" && item.file_url.includes(".json");
                   const isVideo = typeof item.file_url === "string" && item.file_url.includes(".webm");
                   return (
                     <TouchableOpacity 
@@ -318,7 +342,9 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
                       onPress={() => { onSelectSticker(item.file_url); onClose(); }}
                       activeOpacity={0.7}
                     >
-                      {isVideo && isWeb ? (
+                      {isLottie && isWeb ? (
+                        <LottieSticker url={item.file_url} size={64} />
+                      ) : isVideo && isWeb ? (
                         <video
                           src={item.file_url}
                           autoPlay
@@ -360,7 +386,9 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
                       onPress={() => setSelectedPackId(item.id)}
                     >
                       {item.cover_url ? (
-                        item.cover_url.includes(".webm") && isWeb ? (
+                        item.cover_url.includes(".json") && isWeb ? (
+                          <LottieSticker url={item.cover_url} size={28} />
+                        ) : item.cover_url.includes(".webm") && isWeb ? (
                           <video
                             src={item.cover_url}
                             autoPlay

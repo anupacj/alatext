@@ -155,7 +155,22 @@ export default function AlaContextMenu() {
       triggerAnimation(x || 100, y || 100);
     };
 
-    const handleClickOutside = () => setVisible(false);
+    const handleClickOutside = (e?: any) => {
+      // Guard: Ignore synthetic release clicks within 450ms of opening
+      if (Date.now() - lastMenuOpenTime < 450) {
+        return;
+      }
+      setVisible(false);
+    };
+
+    const handleScrollOutside = () => {
+      // Guard: Ignore initial inertia scroll bounces within 500ms of opening
+      if (Date.now() - lastMenuOpenTime < 500) {
+        return;
+      }
+      setVisible(false);
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setVisible(false);
     };
@@ -167,7 +182,7 @@ export default function AlaContextMenu() {
     window.addEventListener("contextmenu", handleContextMenu, { capture: true });
     window.addEventListener("open_ala_context_menu" as any, handleCustomMenu);
     window.addEventListener("click", handleClickOutside);
-    window.addEventListener("scroll", handleClickOutside);
+    window.addEventListener("scroll", handleScrollOutside, { passive: true });
     window.addEventListener("keydown", handleKeyDown);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
@@ -176,7 +191,7 @@ export default function AlaContextMenu() {
       window.removeEventListener("contextmenu", handleContextMenu, { capture: true } as any);
       window.removeEventListener("open_ala_context_menu" as any, handleCustomMenu);
       window.removeEventListener("click", handleClickOutside);
-      window.removeEventListener("scroll", handleClickOutside);
+      window.removeEventListener("scroll", handleScrollOutside);
       window.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
@@ -407,6 +422,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 99999,
     elevation: 100,
+    ...(Platform.OS === "web" ? ({ touchAction: "none" } as any) : {}),
   },
   menuCard: {
     position: (Platform.OS === "web" ? "fixed" : "absolute") as any,

@@ -36,6 +36,7 @@ import { detectEndlessByes, countByesInText } from "../lib/byeDetector";
 import { isLoveMessage } from "../lib/loveDetector";
 import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
+import { LottieSticker } from "../components/LottieSticker";
 import { supabase } from "../lib/supabase";
 import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
@@ -5617,6 +5618,30 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
 
   const isRead = item.isMe && targetUser?.last_read_at && item.created_at_ts <= new Date(targetUser.last_read_at).getTime();
 
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const touchMovedRef = useRef<boolean>(false);
+
+  const handleTouchStart = useCallback((e: any) => {
+    const t = e?.nativeEvent?.touches?.[0] || e?.nativeEvent?.changedTouches?.[0];
+    if (t) {
+      touchStartPosRef.current = { x: t.clientX ?? t.pageX, y: t.clientY ?? t.pageY };
+      touchMovedRef.current = false;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: any) => {
+    if (touchMovedRef.current || !touchStartPosRef.current) return;
+    const t = e?.nativeEvent?.touches?.[0] || e?.nativeEvent?.changedTouches?.[0];
+    if (t) {
+      const curX = t.clientX ?? t.pageX;
+      const curY = t.clientY ?? t.pageY;
+      const dist = Math.hypot(curX - touchStartPosRef.current.x, curY - touchStartPosRef.current.y);
+      if (dist > 8) {
+        touchMovedRef.current = true;
+      }
+    }
+  }, []);
+
   const renderBubbleContent = () => {
     if (isAlbumLeader && albumGroup.length > 1) {
       return <MediaAlbumGrid items={albumGroup} setImageViewerUrl={setImageViewerUrl} />;
@@ -5624,7 +5649,12 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
     if (item.type === "sticker") {
       const stickerDim = Platform.OS === "web" ? 104 : 128;
       const stickerOpacity = (chatSettings?.screen_dim > 0) ? Math.max(0.55, 1 - (chatSettings.screen_dim * 0.45)) : 1;
+      const isLottieSticker = typeof item.text === "string" && item.text.includes(".json");
       const isVideoSticker = typeof item.text === "string" && item.text.includes(".webm");
+
+      if (isLottieSticker && Platform.OS === "web") {
+        return <LottieSticker url={item.text} size={stickerDim} opacity={stickerOpacity} />;
+      }
 
       if (isVideoSticker && Platform.OS === "web") {
         return (
@@ -5687,6 +5717,10 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
   };
 
   const handleLongPress = (e?: any) => {
+    // If thumb moved >8px, user is scrolling or dragging, NOT long-pressing!
+    if (touchMovedRef.current) {
+      return;
+    }
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const touch = e?.nativeEvent?.touches?.[0] || e?.nativeEvent?.changedTouches?.[0];
       const rawX = e?.nativeEvent?.clientX ?? touch?.clientX ?? e?.clientX ?? e?.nativeEvent?.pageX;
@@ -5758,11 +5792,13 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
       <Pressable
         dataSet={{ msgId: item.id, "msg-id": item.id }}
         style={[styles.messageContainer, item.isMe ? styles.messageContainerRight : styles.messageContainerLeft, { marginBottom: groupWithNext ? 2 : 18 }]}
-        delayLongPress={280}
+        delayLongPress={450}
         onHoverIn={handleHoverIn}
         onHoverOut={handleHoverOut}
         onPress={handlePress}
         onLongPress={handleLongPress}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         {...({ "data-msg-id": item.id, "data-msgid": item.id } as any)}
       >
         {!item.isMe && (
@@ -5829,7 +5865,9 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
                 {item.reply_to_sender}
               </Text>
               {item.reply_to_content?.startsWith("http") ? (
-                item.reply_to_content.includes(".webm") && Platform.OS === "web" ? (
+                item.reply_to_content.includes(".json") && Platform.OS === "web" ? (
+                  <LottieSticker url={item.reply_to_content} size={40} />
+                ) : item.reply_to_content.includes(".webm") && Platform.OS === "web" ? (
                   <video
                     src={item.reply_to_content}
                     autoPlay
