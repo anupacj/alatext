@@ -54,13 +54,25 @@ export async function onRequest(context: any): Promise<Response> {
     headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
     headers.set("Access-Control-Allow-Headers", "*");
 
-    const contentType = tgResp.headers.get("content-type");
-    if (contentType) headers.set("Content-Type", contentType);
+    const isTgs = parsedTarget.pathname.endsWith(".tgs");
+    let responseBody = tgResp.body;
+    let contentType = tgResp.headers.get("content-type") || "application/octet-stream";
 
-    const contentLength = tgResp.headers.get("content-length");
-    if (contentLength) headers.set("Content-Length", contentLength);
+    if (isTgs && responseBody && typeof DecompressionStream !== "undefined") {
+      try {
+        responseBody = responseBody.pipeThrough(new DecompressionStream("gzip"));
+        contentType = "application/json";
+      } catch (e) {
+        console.warn("Edge decompress failed", e);
+      }
+    } else {
+      const contentLength = tgResp.headers.get("content-length");
+      if (contentLength) headers.set("Content-Length", contentLength);
+    }
 
-    return new Response(tgResp.body, {
+    headers.set("Content-Type", contentType);
+
+    return new Response(responseBody, {
       status: tgResp.status,
       headers,
     });

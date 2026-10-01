@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, FlatList, Image, Dimensions, TextInput, Platform, useWindowDimensions } from "react-native";
-import { X, Plus, Download, AlertCircle } from "lucide-react-native";
+import { X, Plus, Download, AlertCircle, Trash2 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { uploadBlobToR2, getThumbnailUrl } from "../lib/r2";
@@ -87,6 +87,21 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
     if (data) {
       setStickers(data);
       AsyncStorage.setItem(`cached_stickers_${packId}`, JSON.stringify(data)).catch(() => {});
+    }
+  };
+
+  const handleDeletePack = async (packId: string) => {
+    if (typeof window !== "undefined" && !window.confirm("Are you sure you want to delete this sticker pack?")) return;
+    try {
+      await supabase.from("stickers").delete().eq("pack_id", packId);
+      await supabase.from("sticker_packs").delete().eq("id", packId);
+      await AsyncStorage.removeItem(`cached_stickers_${packId}`);
+      await AsyncStorage.removeItem(`cached_sticker_packs_${chatId}`);
+      setSelectedPackId(null);
+      setStickers([]);
+      fetchPacks();
+    } catch (e: any) {
+      alert("Error deleting pack: " + e.message);
     }
   };
 
@@ -198,14 +213,45 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
 
           let uploadBlob: Blob;
           if (isTgs) {
-            let decompressedStr: string;
+            let decompressedStr = "";
+            // 1. Try reading as text to see if edge function already unzipped to JSON
             try {
-              const arrayBuffer = await blob.arrayBuffer();
-              const decompressedBytes = pako.ungzip(new Uint8Array(arrayBuffer));
-              decompressedStr = new TextDecoder().decode(decompressedBytes);
-            } catch (gzipErr) {
-              decompressedStr = await blob.text();
+              const text = await blob.text();
+              JSON.parse(text);
+              decompressedStr = text;
+            } catch (notJson) {
+              // 2. Gunzip via native DecompressionStream
+              if (typeof DecompressionStream !== "undefined") {
+                try {
+                  const stream = blob.stream().pipeThrough(new DecompressionStream("gzip"));
+                  const text = await new Response(stream).text();
+                  JSON.parse(text);
+                  decompressedStr = text;
+                } catch (e) {
+                  console.warn("DecompressionStream error", e);
+                }
+              }
+              // 3. Fallback via pako with safe function lookup
+              if (!decompressedStr) {
+                try {
+                  const ungzipFn = (pako as any).ungzip || (pako as any).default?.ungzip;
+                  if (typeof ungzipFn === "function") {
+                    const arrayBuffer = await blob.arrayBuffer();
+                    const decompressedBytes = ungzipFn(new Uint8Array(arrayBuffer));
+                    const text = new TextDecoder().decode(decompressedBytes);
+                    JSON.parse(text);
+                    decompressedStr = text;
+                  }
+                } catch (e) {
+                  console.warn("pako fallback error", e);
+                }
+              }
             }
+
+            if (!decompressedStr) {
+              throw new Error("Unable to unpack sticker to valid Lottie JSON");
+            }
+
             uploadBlob = new Blob([decompressedStr], { type: "application/json" });
           } else if (isVideoFile) {
             uploadBlob = new Blob([await blob.arrayBuffer()], { type: "video/webm" });
@@ -310,7 +356,16 @@ export default function StickerPicker({ visible, onClose, chatId, userId, onSele
           
           <View style={styles.header}>
             <Text style={styles.title}>{isImporting ? "Import Sticker Pack" : "Stickers"}</Text>
-            <View style={{ flexDirection: "row", gap: 12 }}>
+            <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+              {!isImporting && selectedPackId && (
+                <TouchableOpacity 
+                  onPress={() => handleDeletePack(selectedPackId)} 
+                  style={[styles.iconBtn, { backgroundColor: "rgba(237, 66, 69, 0.15)" }, isWeb && ({ cursor: "pointer" } as any)]}
+                  accessibilityLabel="Delete sticker pack"
+                >
+                  <Trash2 size={18} color="#ed4245" />
+                </TouchableOpacity>
+              )}
               {!isImporting && (
                 <TouchableOpacity onPress={() => setIsImporting(true)} style={[styles.iconBtn, isWeb && ({ cursor: "pointer" } as any)]}>
                   <Plus size={20} color="#f2f3f5" />
