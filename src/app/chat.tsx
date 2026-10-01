@@ -1668,7 +1668,9 @@ export default function ChatScreen() {
             const senderDisplayName = nm.sender || targetUser?.nickname || (name as string) || "New message";
             tabTitleManager.incrementUnread(senderDisplayName);
           }
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          if (Platform.OS !== "web") {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          }
           setMessages(prev => {
             if (prev.some(m => m.id === nm.id)) return prev;
             if (nm.sender_id === user?.id) {
@@ -1684,14 +1686,18 @@ export default function ChatScreen() {
           checkLiveByeTrigger(nm, messagesRef.current);
           checkLiveLoveTrigger(nm);
         } else if (payload.eventType === "DELETE") {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          if (Platform.OS !== "web") {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          }
           const delId = payload.old?.id;
           if (delId) {
             setMessages(prev => prev.filter(m => m.id !== delId));
           }
         } else if (payload.eventType === "UPDATE") {
           if (payload.new.type === "deleted") {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            if (Platform.OS !== "web") {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            }
             setMessages(prev => prev.filter(m => m.id !== payload.new.id));
           } else {
             setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, text: typeof payload.new.content === "string" ? payload.new.content : JSON.stringify(payload.new.content || "") } : m));
@@ -1700,7 +1706,9 @@ export default function ChatScreen() {
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
         if (payload.old?.id) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          if (Platform.OS !== "web") {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          }
           setMessages(prev => prev.filter(m => m.id !== payload.old.id));
         }
       }).subscribe();
@@ -1891,7 +1899,9 @@ export default function ChatScreen() {
       })
       .on("broadcast", { event: "message_deleted" }, (payload) => {
         if (payload.payload?.id) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          if (Platform.OS !== "web") {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          }
           setMessages(prev => prev.filter(m => m.id !== payload.payload.id));
           AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
             if (cached) {
@@ -2927,7 +2937,7 @@ export default function ChatScreen() {
       <MessageRow isAmoled={isAmoled} styles={styles} theme={theme}
         item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
         isGroup={isGroup}
-        hoveredMsg={hoveredMsg} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
+        isHovered={hoveredMsg === item.id} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
         setEditingMsgId={setEditingMsgId} setInputText={setInputText} deleteMessage={deleteMessage}
         handleApplyWallpaper={handleApplyWallpaper} setSettingsVisible={setSettingsVisible} setImageViewerUrl={setImageViewerUrl}
         handlePinMessage={handlePinMessage}
@@ -2936,7 +2946,7 @@ export default function ChatScreen() {
         chatAvatars={chatAvatars}
       />
     );
-  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage, chatAvatars]);
+  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage, chatAvatars, isAmoled, styles, theme]);
 
   const screenRadius = (styles.container as any)?.borderRadius ?? theme.screenRadius ?? 0;
 
@@ -3709,8 +3719,10 @@ export default function ChatScreen() {
             renderItem={renderMessage}
             keyExtractor={item => item.client_id || item.id}
             inverted
-            initialNumToRender={20}
-            windowSize={21}
+            initialNumToRender={15}
+            windowSize={Platform.OS === 'web' ? 7 : 11}
+            maxToRenderPerBatch={Platform.OS === 'web' ? 10 : 15}
+            updateCellsBatchingPeriod={50}
             removeClippedSubviews={false}
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             keyboardShouldPersistTaps="handled"
@@ -5275,7 +5287,7 @@ const SnappyCheckmark = React.memo(({ isRead, isAmoled, theme, styles }: any) =>
 });
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings, isGroup, hoveredMsg, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
+const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, isGroup, isHovered, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
   if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
 
   // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
@@ -5322,7 +5334,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
   const handlePress = () => {
     const now = Date.now();
     if (now - lastPressRef.current < 300) {
-      setHoveredMsg(hoveredMsg === item.id ? null : item.id);
+      setHoveredMsg(isHovered ? null : item.id);
     }
     lastPressRef.current = now;
   };
@@ -5687,9 +5699,9 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       </Animated.View>
 
       <Animated.View
-        layout={LinearTransition.springify().damping(15).stiffness(210).mass(0.85)}
+        layout={Platform.OS !== "web" ? LinearTransition.springify().damping(15).stiffness(210).mass(0.85) : undefined}
         style={animatedStyle}
-        {...panResponder.panHandlers}
+        {...(Platform.OS !== "web" || (typeof window !== "undefined" && ("ontouchstart" in window || (navigator as any)?.maxTouchPoints > 0)) ? panResponder.panHandlers : {})}
       >
       <Pressable
         dataSet={{ msgId: item.id }}
@@ -5815,7 +5827,7 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
           )}
           {!item.isMe && showMeta && <Text style={[styles.timeText, { alignSelf: "flex-start", marginTop: 4 }]}>{item.time}</Text>}
           
-          {hoveredMsg === item.id && (
+          {isHovered && (
             <MessageHoverActions
               item={item}
               isMe={item.isMe}
@@ -5835,7 +5847,45 @@ const MessageRow = React.memo(({ item, index, messages, targetUser, chatSettings
       </Animated.View>
     </View>
   );
-});
+};
+
+const areMessageRowsEqual = (prev: any, next: any) => {
+  if (prev.item.id !== next.item.id) return false;
+  if (prev.item.text !== next.item.text) return false;
+  if (prev.item.status !== next.item.status) return false;
+  if (prev.item.type !== next.item.type) return false;
+  if (prev.item.custom_font !== next.item.custom_font) return false;
+  if (prev.item.reply_to_id !== next.item.reply_to_id) return false;
+  if (prev.index !== next.index) return false;
+
+  if (prev.isHovered !== next.isHovered) return false;
+  if (prev.isHighlighted !== next.isHighlighted) return false;
+
+  if (prev.isAmoled !== next.isAmoled) return false;
+  if (prev.theme?.id !== next.theme?.id) return false;
+  if (prev.isGroup !== next.isGroup) return false;
+
+  if (prev.targetUser?.id !== next.targetUser?.id || prev.targetUser?.avatar_url !== next.targetUser?.avatar_url) return false;
+  if (prev.chatAvatars !== next.chatAvatars) return false;
+
+  if (prev.chatSettings?.bubble_gradient_enabled !== next.chatSettings?.bubble_gradient_enabled) return false;
+  if (prev.chatSettings?.bubble_color_sent !== next.chatSettings?.bubble_color_sent) return false;
+  if (prev.chatSettings?.bubble_color_received !== next.chatSettings?.bubble_color_received) return false;
+  if (prev.chatSettings?.font_family !== next.chatSettings?.font_family) return false;
+
+  // Check neighbor message IDs to know if grouping / clump changed
+  const prevNext = prev.messages[prev.index - 1]?.id;
+  const nextNext = next.messages[next.index - 1]?.id;
+  if (prevNext !== nextNext) return false;
+
+  const prevPrev = prev.messages[prev.index + 1]?.id;
+  const nextPrev = next.messages[next.index + 1]?.id;
+  if (prevPrev !== nextPrev) return false;
+
+  return true;
+};
+
+const MessageRow = React.memo(MessageRowComponent, areMessageRowsEqual);
 
 
 
