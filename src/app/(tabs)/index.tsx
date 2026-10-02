@@ -272,7 +272,18 @@ export default function Home() {
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
       onPress={() => {
         tryEnterFullscreen();
-        router.push({ pathname: "/chat", params: { id: item.id, name: item.name, isGroup: item.isGroup ? "true" : "false" } });
+        try {
+          router.push({
+            pathname: "/chat",
+            params: {
+              id: String(item.id),
+              name: String(item.name || ""),
+              isGroup: item.isGroup ? "true" : "false",
+            },
+          });
+        } catch (e) {
+          console.warn("Error navigating to chat:", e);
+        }
       }}>
       {item.avatar ? (
         <Image source={{ uri: item.avatar }} style={styles.avatar} />

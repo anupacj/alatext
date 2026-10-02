@@ -19,6 +19,29 @@ if (Platform.OS !== 'web' || typeof window === 'undefined') {
     removeItem: () => {},
     clear: () => {},
   };
+  const dummyElement: any = {
+    appendChild: () => {},
+    removeChild: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    setAttribute: () => {},
+    removeAttribute: () => {},
+    style: { setProperty: () => {} },
+    click: () => {},
+  };
+  const dummyDocument: any = {
+    ...dummyEventTarget,
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    createElement: () => ({ ...dummyElement }),
+    body: { ...dummyElement, style: {} },
+    head: { ...dummyElement, style: {} },
+    documentElement: { ...dummyElement, style: { setProperty: () => {} } },
+    title: 'Alatext',
+    hasFocus: () => true,
+    hidden: false,
+  };
   (globalThis as any).window = (globalThis as any).window || {
     ...dummyEventTarget,
     innerWidth: width || 360,
@@ -30,14 +53,10 @@ if (Platform.OS !== 'web' || typeof window === 'undefined') {
     alert: () => {},
     open: () => {},
     scrollTo: () => {},
-    document: {
-      getElementById: () => null,
-      createElement: () => ({ appendChild: () => {}, click: () => {} }),
-      body: { style: {} },
-    },
+    document: dummyDocument,
   };
   if (typeof (globalThis as any).document === 'undefined') {
-    (globalThis as any).document = (globalThis as any).window.document;
+    (globalThis as any).document = dummyDocument;
   }
 }
 
@@ -45,6 +64,7 @@ import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
 import AlaContextMenu from '../components/AlaContextMenu';
 import GlobalCallManager from '../components/GlobalCallManager';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -233,15 +253,17 @@ export default function Layout() {
   }, []);
 
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <AlaPinProvider>
-          <RootNavigator />
-          <AlaPinLockScreen />
-          <AlaContextMenu />
-          <GlobalCallManager />
-        </AlaPinProvider>
-      </ThemeProvider>
-    </AuthProvider>
+    <ErrorBoundary screenName="AlaText">
+      <AuthProvider>
+        <ThemeProvider>
+          <AlaPinProvider>
+            <RootNavigator />
+            <AlaPinLockScreen />
+            <AlaContextMenu />
+            <GlobalCallManager />
+          </AlaPinProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

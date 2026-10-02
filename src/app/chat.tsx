@@ -9,8 +9,7 @@ import { Image as ExpoImage } from "expo-image";
 import Animated, { useSharedValue, useAnimatedStyle, useAnimatedProps, withSpring, withDelay, withTiming, withSequence, LinearTransition, interpolate } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
-
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+import ErrorBoundary from "../components/ErrorBoundary";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Phone, Video, Hash, Plus, Camera, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -125,8 +124,12 @@ import {
   WebRTCCallState,
 } from "../utils/webrtcCall";
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
+try {
+  if (Platform.OS === "android" && (UIManager as any)?.setLayoutAnimationEnabledExperimental) {
+    (UIManager as any).setLayoutAnimationEnabledExperimental(true);
+  }
+} catch (e) {
+  // Ignored in New Architecture / Fabric
 }
 
 const PAGE_SIZE = 25;
@@ -161,7 +164,7 @@ function SendingDots() {
   return <>{dots}</>;
 }
 
-export default function ChatScreen() {
+function ChatScreenContent() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
   const { theme } = useTheme();
@@ -187,7 +190,7 @@ export default function ChatScreen() {
   const [wallpaperDeck, setWallpaperDeck] = useState<WallpaperDeckConfig | null>(null);
   const wallpaperDeckRef = useRef<WallpaperDeckConfig | null>(null);
   wallpaperDeckRef.current = wallpaperDeck;
-  const wallpaperSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const wallpaperSyncTimerRef = useRef<any>(null);
   // showWallpaper must come AFTER chatSettings useState - never show wallpaper in AMOLED
   const showWallpaper = !isAmoled && !!chatSettings?.wallpaper_url;
 
@@ -1759,7 +1762,9 @@ export default function ChatScreen() {
             tabTitleManager.incrementUnread(senderDisplayName);
           }
           if (Platform.OS !== "web") {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            try {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            } catch (e) {}
           }
           setMessages(prev => {
             if (prev.some(m => m.id === nm.id)) return prev;
@@ -1777,7 +1782,9 @@ export default function ChatScreen() {
           checkLiveLoveTrigger(nm);
         } else if (payload.eventType === "DELETE") {
           if (Platform.OS !== "web") {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            try {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            } catch (e) {}
           }
           const delId = payload.old?.id;
           if (delId) {
@@ -1786,7 +1793,9 @@ export default function ChatScreen() {
         } else if (payload.eventType === "UPDATE") {
           if (payload.new.type === "deleted") {
             if (Platform.OS !== "web") {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              try {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              } catch (e) {}
             }
             setMessages(prev => prev.filter(m => m.id !== payload.new.id));
           } else {
@@ -1797,7 +1806,9 @@ export default function ChatScreen() {
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
         if (payload.old?.id) {
           if (Platform.OS !== "web") {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            try {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            } catch (e) {}
           }
           setMessages(prev => prev.filter(m => m.id !== payload.old.id));
         }
@@ -2008,7 +2019,9 @@ export default function ChatScreen() {
       .on("broadcast", { event: "message_deleted" }, (payload) => {
         if (payload.payload?.id) {
           if (Platform.OS !== "web") {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            try {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            } catch (e) {}
           }
           setMessages(prev => prev.filter(m => m.id !== payload.payload.id));
           AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
@@ -4945,6 +4958,14 @@ export default function ChatScreen() {
   return chatViewContent;
 }
 
+export default function ChatScreen() {
+  return (
+    <ErrorBoundary screenName="Chat">
+      <ChatScreenContent />
+    </ErrorBoundary>
+  );
+}
+
 const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false) => {
   const bg = isAmoled ? '#000000' : theme.background;
   const surface = isAmoled ? '#000000' : (theme.surface || '#2b2d31');
@@ -5889,15 +5910,7 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
       { scaleY: scaleY.value },
     ],
     opacity: opacity.value,
-    transformOrigin: item.isMe ? "bottom right" : "bottom left",
   }));
-
-  const swipeCircleCircumference = 2 * Math.PI * 13;
-  const animatedCircleProps = useAnimatedProps(() => {
-    return {
-      strokeDashoffset: swipeCircleCircumference * (1 - swipeProgress.value),
-    };
-  });
 
   const badgeAnimatedStyle = useAnimatedStyle(() => {
     const isSwipingLeft = translateX.value < 0;
@@ -6186,17 +6199,14 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
             strokeWidth={2.5}
             fill={isAmoled ? "#141414" : (theme.id === "pink" ? "#fce7f3" : (theme.id === "light" ? "#f0f2f5" : "#222428"))}
           />
-          <AnimatedCircle
+          <Circle
             cx={18}
             cy={18}
             r={13}
             stroke={theme.accent || "#5865F2"}
             strokeWidth={2.5}
-            strokeDasharray={swipeCircleCircumference}
-            animatedProps={animatedCircleProps}
             strokeLinecap="round"
             fill="none"
-            transform="rotate(-90 18 18)"
           />
         </Svg>
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -6207,7 +6217,6 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
       </Animated.View>
 
       <Animated.View
-        layout={Platform.OS !== "web" ? LinearTransition.springify().damping(15).stiffness(210).mass(0.85) : undefined}
         style={animatedStyle}
         {...(Platform.OS !== "web" || (typeof window !== "undefined" && ("ontouchstart" in window || (navigator as any)?.maxTouchPoints > 0)) ? panResponder.panHandlers : {})}
       >
