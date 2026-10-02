@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Text, Platform, Animated, Easing } from "react-native";
+import { Text, Platform, Animated, Easing, Linking } from "react-native";
 import ShinyText from "../components/ShinyText";
 import { hasHeartEmojis } from "./loveDetector";
 import "../components/ShinyText.css";
@@ -14,6 +14,7 @@ export interface FormatOptions {
 }
 
 const HEART_SPLIT_REGEX = /(❤️|🩷|🧡|💛|💚|💙|🩵|💜|🤎|🖤|🤍|💔|❤️‍🔥|❤️‍🩹|❣️|💕|💞|💓|💗|💖|💘|💝|💟|💌|🫶)/u;
+const URL_SPLIT_REGEX = /(https?:\/\/[^\s<>"'{}|\\^`\[\]]+)/g;
 
 const RhythmicHeartNative: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const scale = useRef(new Animated.Value(1)).current;
@@ -63,6 +64,42 @@ function renderTextOrHearts(chunk: string, keyPrefix: string | number) {
       );
     }
     return sub;
+  });
+}
+
+function renderChunkWithLinks(
+  chunk: string,
+  keyPrefix: string | number,
+  options: FormatOptions
+) {
+  if (!chunk) return null;
+  const parts = chunk.split(URL_SPLIT_REGEX);
+  if (parts.length === 1) {
+    return options.isLove ? renderTextOrHearts(chunk, keyPrefix) : chunk;
+  }
+
+  return parts.map((sub, idx) => {
+    if (!sub) return null;
+    if (sub.match(/^https?:\/\//i)) {
+      return (
+        <Text
+          key={`${keyPrefix}-link-${idx}`}
+          style={{
+            textDecorationLine: "underline",
+            opacity: 0.95,
+            fontWeight: "600",
+          }}
+          onPress={() => {
+            try {
+              Linking.openURL(sub);
+            } catch (e) {}
+          }}
+        >
+          {sub}
+        </Text>
+      );
+    }
+    return options.isLove ? renderTextOrHearts(sub, `${keyPrefix}-t-${idx}`) : sub;
   });
 }
 
@@ -121,7 +158,7 @@ export function renderFormattedContent(
   if (parts.length === 1) {
     return (
       <Text style={[options.baseStyle, fontStyle, colorStyle, wrapStyle]}>
-        {options.isLove ? renderTextOrHearts(text, "plain") : text}
+        {renderChunkWithLinks(text, "plain", options)}
       </Text>
     );
   }
@@ -178,7 +215,7 @@ export function renderFormattedContent(
             </Text>
           );
         }
-        return options.isLove ? renderTextOrHearts(part, `t-${i}`) : part;
+        return renderChunkWithLinks(part, `t-${i}`, options);
       })}
     </Text>
   );

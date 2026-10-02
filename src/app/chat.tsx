@@ -12,7 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Camera, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
@@ -23,6 +23,7 @@ import { HeartPing } from "../components/HeartPing";
 import ShinyText from "../components/ShinyText";
 import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
+import { LinkPreviewCard, extractFirstUrl } from "../components/LinkPreviewCard";
 import ZoomableImageViewer from "../components/ZoomableImageViewer";
 import { tryEnterFullscreen } from "../lib/fullscreen";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
@@ -991,6 +992,7 @@ export default function ChatScreen() {
   const typingChannelRef = useRef<any>(null);
   const profileCache = useRef<Map<string, any>>(new Map());
   const fileInputRef = useRef<any>(null);
+  const cameraInputRef = useRef<any>(null);
   const textInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -2732,6 +2734,70 @@ export default function ChatScreen() {
     }
   }, [id, user?.id, replyingTo, formatMsg]);
 
+  const handleTakePhoto = useCallback(async () => {
+    if (Platform.OS === "web") {
+      if (cameraInputRef.current) {
+        cameraInputRef.current.click();
+      }
+      return;
+    }
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        alert("Camera permission is required to take photos.");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.7,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setUploadingImage(true);
+        setUploadProgress({ active: true, current: 1, total: 1, percent: 0 });
+        try {
+          const resp = await fetch(asset.uri);
+          const blob = await resp.blob();
+          const prefix = `chat-images/${id}-${Date.now()}`;
+          const url = await uploadBlobToR2(prefix, blob, (pct) => {
+            setUploadProgress({ active: true, current: 1, total: 1, percent: pct });
+          });
+          const { data: insertedMsgs, error: insertErr } = await supabase
+            .from("messages")
+            .insert([{
+              chat_id: id,
+              sender_id: user?.id,
+              content: url,
+              type: "image",
+              reply_to_id: replyingTo?.id || null,
+              reply_to_content: replyingTo?.text || null,
+              reply_to_sender: replyingTo?.sender || null,
+            }])
+            .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)");
+
+          if (!insertErr && insertedMsgs && insertedMsgs.length > 0) {
+            const formatted = insertedMsgs.map(formatMsg);
+            setMessages(prev => {
+              const existingIds = new Set(prev.map(m => m.id));
+              const additions = formatted.filter(m => !existingIds.has(m.id));
+              return [...additions, ...prev];
+            });
+          }
+          setReplyingTo(null);
+        } catch (e: any) {
+          console.error("Camera upload error:", e);
+          alert("Failed to upload photo: " + (e.message || e));
+        } finally {
+          setUploadingImage(false);
+          setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
+        }
+      }
+    } catch (err: any) {
+      console.error("Take photo error:", err);
+    }
+  }, [id, user?.id, replyingTo, formatMsg]);
+
   const handleWebFileChange = useCallback((e: any) => {
     const files = Array.from(e.target.files || []).slice(0, 10) as File[];
     if (files.length === 0) return;
@@ -4234,11 +4300,17 @@ export default function ChatScreen() {
                     { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
                     inputText.includes("\n") ? { height: undefined, minHeight: 46, maxHeight: 120 } : { height: 46 }
                   ]}>
-                    <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
+                    <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage} accessibilityLabel="Attach Gallery Photos & Videos">
                       {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
                     </TouchableOpacity>
+                    <TouchableOpacity style={[styles.attachButton, { marginLeft: 3, backgroundColor: isAmoled ? "#222" : (theme.id === "pink" ? "rgba(244,114,182,0.3)" : "rgba(255,255,255,0.14)") }]} onPress={handleTakePhoto} disabled={uploadingImage} accessibilityLabel="Take Photo">
+                      <Camera size={19} color="#ffffff" />
+                    </TouchableOpacity>
                     {Platform.OS === "web" && (
-                      <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                      <>
+                        <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                      </>
                     )}
                     {isDesktop && isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
                       <TouchableOpacity 
@@ -5925,16 +5997,26 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
       return <VideoPlayerBubble videoUrl={item.text} isMe={item.isMe} />;
     }
     const loveTextColor = isLove ? "#ffffff" : bubbleTextColor;
-    return renderFormattedContent(
-      typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : ""),
-      {
-        isShimmer,
-        baseStyle: [styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft],
-        textColor: loveTextColor,
-        isMe: item.isMe,
-        fontFamily: activeFont,
-        isLove,
-      }
+    const textStr = typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : "");
+    const previewUrl = extractFirstUrl(textStr);
+
+    return (
+      <View style={{ width: "100%" }}>
+        {renderFormattedContent(
+          textStr,
+          {
+            isShimmer,
+            baseStyle: [styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft],
+            textColor: loveTextColor,
+            isMe: item.isMe,
+            fontFamily: activeFont,
+            isLove,
+          }
+        )}
+        {previewUrl && (
+          <LinkPreviewCard url={previewUrl} isMe={item.isMe} />
+        )}
+      </View>
     );
   };
 
