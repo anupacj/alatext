@@ -3,7 +3,43 @@ import { AuthProvider } from '../context/AuthContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
-import { Platform } from 'react-native';
+import { Dimensions, Platform } from 'react-native';
+
+// Safe browser environment polyfill for native Android/iOS
+if (Platform.OS !== 'web' || typeof window === 'undefined') {
+  const { width, height } = Dimensions.get('window');
+  const dummyEventTarget = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => true,
+  };
+  const dummyStorage = {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+    clear: () => {},
+  };
+  (globalThis as any).window = (globalThis as any).window || {
+    ...dummyEventTarget,
+    innerWidth: width || 360,
+    innerHeight: height || 640,
+    location: { reload: () => {}, href: '', hostname: 'localhost' },
+    localStorage: dummyStorage,
+    sessionStorage: dummyStorage,
+    confirm: () => true,
+    alert: () => {},
+    open: () => {},
+    scrollTo: () => {},
+    document: {
+      getElementById: () => null,
+      createElement: () => ({ appendChild: () => {}, click: () => {} }),
+      body: { style: {} },
+    },
+  };
+  if (typeof (globalThis as any).document === 'undefined') {
+    (globalThis as any).document = (globalThis as any).window.document;
+  }
+}
 
 import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
