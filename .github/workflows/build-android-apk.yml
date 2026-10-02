@@ -52,7 +52,7 @@ jobs:
           EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_OscqiOYBnBklEvtmcrlmyw_w6OMtTqN
         run: |
           cd android
-          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures="arm64-v8a,armeabi-v7a" -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m"
 
       - name: 🔍 Verify Generated APK
         run: ls -lh android/app/build/outputs/apk/release/
