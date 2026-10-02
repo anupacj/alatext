@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "../lib/supabase";
 
 export interface RadarLocation {
   lat: number;
@@ -7,8 +8,8 @@ export interface RadarLocation {
   accuracy?: number;
 }
 
-export const RADAR_UPDATE_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
-export const RADAR_EXPIRY_TTL_MS = 40 * 60 * 1000; // 40 minutes (2 pings)
+export const RADAR_UPDATE_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes background check
+export const RADAR_EXPIRY_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours TTL for couple location
 
 /**
  * Calculates distance in kilometers between two GPS coordinates using the Haversine formula
@@ -68,22 +69,24 @@ export function formatDataAge(timestamp: number): string {
   const mins = Math.floor(elapsedSec / 60);
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
-  return `${hours}h ago`;
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 /**
- * Storage helpers with 40-minute TTL auto-purge
+ * Storage helpers with 24-hour TTL caching
  */
 export async function getStoredPartnerLocation(chatId: string): Promise<RadarLocation | null> {
   try {
     const raw = await AsyncStorage.getItem(`@couple_partner_loc_${chatId}`);
     if (!raw) return null;
     const parsed: RadarLocation = JSON.parse(raw);
-    if (!parsed || !parsed.timestamp) return null;
+    if (!parsed || !parsed.timestamp || typeof parsed.lat !== "number" || typeof parsed.lng !== "number") return null;
 
-    // Purge if older than 40 minutes (40m TTL)
+    // Discard if older than 24h
     if (Date.now() - parsed.timestamp > RADAR_EXPIRY_TTL_MS) {
-      await AsyncStorage.removeItem(`@couple_partner_loc_${chatId}`);
+      await AsyncStorage.removeItem(`@couple_partner_loc_${chatId}`).catch(() => {});
       return null;
     }
     return parsed;
@@ -94,6 +97,7 @@ export async function getStoredPartnerLocation(chatId: string): Promise<RadarLoc
 
 export async function savePartnerLocation(chatId: string, loc: RadarLocation): Promise<void> {
   try {
+    if (!loc || typeof loc.lat !== "number" || typeof loc.lng !== "number") return;
     await AsyncStorage.setItem(`@couple_partner_loc_${chatId}`, JSON.stringify(loc));
   } catch {}
 }
@@ -103,7 +107,7 @@ export async function getStoredMyLocation(): Promise<RadarLocation | null> {
     const raw = await AsyncStorage.getItem(`@couple_my_loc`);
     if (!raw) return null;
     const parsed: RadarLocation = JSON.parse(raw);
-    if (!parsed || !parsed.timestamp) return null;
+    if (!parsed || !parsed.timestamp || typeof parsed.lat !== "number" || typeof parsed.lng !== "number") return null;
     if (Date.now() - parsed.timestamp > RADAR_EXPIRY_TTL_MS) {
       return null;
     }
@@ -115,12 +119,13 @@ export async function getStoredMyLocation(): Promise<RadarLocation | null> {
 
 export async function saveMyLocation(loc: RadarLocation): Promise<void> {
   try {
+    if (!loc || typeof loc.lat !== "number" || typeof loc.lng !== "number") return;
     await AsyncStorage.setItem(`@couple_my_loc`, JSON.stringify(loc));
   } catch {}
 }
 
 /**
- * Request device location safely
+ * Request device location safely with fallback retry
  */
 export function getCurrentDeviceLocation(): Promise<RadarLocation | null> {
   return new Promise((resolve) => {
@@ -138,14 +143,144 @@ export function getCurrentDeviceLocation(): Promise<RadarLocation | null> {
           accuracy: pos.coords.accuracy,
         });
       },
-      () => {
-        resolve(null);
+      (err) => {
+        // Fallback retry with highAccuracy and longer timeout
+        console.warn("Geolocation standard lock failed, attempting fallback:", err?.message || err);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              timestamp: Date.now(),
+              accuracy: pos.coords.accuracy,
+            });
+          },
+          (err2) => {
+            console.warn("Geolocation fallback attempt also failed:", err2?.message || err2);
+            resolve(null);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 30 * 60 * 1000, // Accept up to 30 mins cached position
+          }
+        );
       },
       {
         enableHighAccuracy: false,
-        timeout: 8000,
-        maximumAge: 10 * 60 * 1000, // Accept cached position up to 10 mins
+        timeout: 12000,
+        maximumAge: 15 * 60 * 1000, // Accept up to 15 mins cached position
       }
     );
   });
+}
+
+/**
+ * Persists user's location to Supabase with dual-layer fallback:
+ * 1. chat_participants.radar_location
+ * 2. messages table with type "radar_ping" (0 SQL migration requirement)
+ */
+export async function persistRadarLocationToCloud(chatId: string, userId: string, loc: RadarLocation): Promise<void> {
+  try {
+    if (!chatId || !userId || !loc || typeof loc.lat !== "number" || typeof loc.lng !== "number") return;
+
+    // 1. Try updating chat_participants directly
+    try {
+      await supabase
+        .from("chat_participants")
+        .update({ radar_location: loc })
+        .eq("chat_id", chatId)
+        .eq("user_id", userId);
+    } catch (e) {}
+
+    // 2. Clean up previous radar_pings from this user in this chat to prevent DB clutter
+    try {
+      await supabase
+        .from("messages")
+        .delete()
+        .eq("chat_id", chatId)
+        .eq("sender_id", userId)
+        .eq("type", "radar_ping");
+    } catch (e) {}
+
+    // 3. Insert fallback message with type "radar_ping"
+    try {
+      await supabase.from("messages").insert({
+        chat_id: chatId,
+        sender_id: userId,
+        content: JSON.stringify(loc),
+        type: "radar_ping",
+      });
+    } catch (e) {
+      console.warn("Failed to insert fallback radar_ping message:", e);
+    }
+  } catch (e) {
+    console.error("Failed to persist radar location to cloud:", e);
+  }
+}
+
+/**
+ * Fetches the partner's latest radar location from Supabase:
+ * 1. Checks chat_participants table
+ * 2. Checks messages table fallback
+ */
+export async function fetchPartnerRadarLocationFromCloud(chatId: string, currentUserId: string): Promise<RadarLocation | null> {
+  try {
+    if (!chatId || !currentUserId) return null;
+
+    // 1. Check chat_participants
+    try {
+      const { data: partData, error: partErr } = await supabase
+        .from("chat_participants")
+        .select("radar_location, user_id")
+        .eq("chat_id", chatId)
+        .neq("user_id", currentUserId)
+        .limit(1)
+        .maybeSingle();
+
+      if (!partErr && partData?.radar_location) {
+        const parsed = typeof partData.radar_location === "string" 
+          ? JSON.parse(partData.radar_location) 
+          : partData.radar_location;
+        if (parsed && typeof parsed.lat === "number" && typeof parsed.lng === "number" && parsed.timestamp) {
+          if (Date.now() - parsed.timestamp <= RADAR_EXPIRY_TTL_MS) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Fallback check from messages table
+    try {
+      const { data: msgData, error: msgErr } = await supabase
+        .from("messages")
+        .select("content, created_at, sender_id")
+        .eq("chat_id", chatId)
+        .eq("type", "radar_ping")
+        .neq("sender_id", currentUserId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!msgErr && msgData?.content) {
+        const parsed = typeof msgData.content === "string" ? JSON.parse(msgData.content) : msgData.content;
+        if (parsed && typeof parsed.lat === "number" && typeof parsed.lng === "number") {
+          const timestamp = parsed.timestamp || new Date(msgData.created_at).getTime();
+          if (Date.now() - timestamp <= RADAR_EXPIRY_TTL_MS) {
+            return {
+              lat: parsed.lat,
+              lng: parsed.lng,
+              timestamp,
+              accuracy: parsed.accuracy,
+            };
+          }
+        }
+      }
+    } catch (e) {}
+
+    return null;
+  } catch (e) {
+    console.warn("Failed to fetch partner radar location from cloud:", e);
+    return null;
+  }
 }

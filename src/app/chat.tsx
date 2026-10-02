@@ -93,6 +93,8 @@ import {
   getStoredMyLocation,
   saveMyLocation,
   getCurrentDeviceLocation,
+  persistRadarLocationToCloud,
+  fetchPartnerRadarLocationFromCloud,
   RADAR_UPDATE_INTERVAL_MS,
   RADAR_EXPIRY_TTL_MS,
 } from "../utils/coupleRadar";
@@ -471,26 +473,51 @@ export default function ChatScreen() {
 
   const radarLastUpdated = radarPartnerLoc?.timestamp ?? null;
 
-  // Refresh radar location (enforcing 20min interval unless force=true)
+  // Refresh radar location (both cloud fetch of partner + device location broadcast)
   const refreshRadarLocation = useCallback(async (force = false) => {
     if (isGroup || !id || !user) return;
     const now = Date.now();
     const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
 
+    // 1. Fetch partner's latest location from cloud if we don't have it or if forced
+    if (force || !radarPartnerLoc || now - (radarPartnerLoc?.timestamp || 0) > 10 * 60 * 1000) {
+      fetchPartnerRadarLocationFromCloud(chatIdStr, user.id).then((cloudPartnerLoc) => {
+        if (cloudPartnerLoc && (!radarPartnerLoc || cloudPartnerLoc.timestamp > radarPartnerLoc.timestamp)) {
+          setRadarPartnerLoc(cloudPartnerLoc);
+          savePartnerLocation(chatIdStr, cloudPartnerLoc);
+        }
+      }).catch(() => {});
+    }
+
+    // 2. Broadcast a live radar_request so if partner is active they reply immediately
+    if (typingChannelRef.current) {
+      try {
+        typingChannelRef.current.send({
+          type: "broadcast",
+          event: "radar_request",
+          payload: { requester_id: user.id },
+        });
+      } catch (e) {}
+    }
+
+    // Rate-limit device GPS acquisitions unless forced
     if (!force && now - lastRadarBroadcastRef.current < RADAR_UPDATE_INTERVAL_MS) {
-      if (radarPartnerLoc && now - radarPartnerLoc.timestamp > RADAR_EXPIRY_TTL_MS) {
-        setRadarPartnerLoc(null);
-        getStoredPartnerLocation(chatIdStr);
-      }
       return;
     }
 
-    const myNewLoc = await getCurrentDeviceLocation();
+    let myNewLoc = await getCurrentDeviceLocation();
+    if (!myNewLoc) {
+      // Fallback to previously stored location if GPS lock timed out
+      myNewLoc = await getStoredMyLocation();
+    }
     if (!myNewLoc) return;
 
     setRadarMyLoc(myNewLoc);
     saveMyLocation(myNewLoc);
     lastRadarBroadcastRef.current = now;
+
+    // Persist to cloud (chat_participants + messages table)
+    persistRadarLocationToCloud(chatIdStr, user.id, myNewLoc);
 
     if (typingChannelRef.current) {
       try {
@@ -508,9 +535,9 @@ export default function ChatScreen() {
     }
   }, [id, user, isGroup, radarPartnerLoc]);
 
-  // Load cached radar locations on mount and set up periodic 20-min sync check
+  // Load cached radar locations on mount and set up periodic sync check
   useEffect(() => {
-    if (!id || isGroup) return;
+    if (!id || isGroup || !user) return;
     const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
 
     getStoredPartnerLocation(chatIdStr).then((loc) => {
@@ -521,6 +548,14 @@ export default function ChatScreen() {
       if (loc) setRadarMyLoc(loc);
     });
 
+    // Check cloud immediately on entering chat
+    fetchPartnerRadarLocationFromCloud(chatIdStr, user.id).then((cloudLoc) => {
+      if (cloudLoc) {
+        setRadarPartnerLoc(cloudLoc);
+        savePartnerLocation(chatIdStr, cloudLoc);
+      }
+    }).catch(() => {});
+
     // Check device location & broadcast once on entering chat if permissions allow
     refreshRadarLocation(false);
 
@@ -529,7 +564,7 @@ export default function ChatScreen() {
     }, 60 * 1000);
 
     return () => clearInterval(syncInterval);
-  }, [id, isGroup, refreshRadarLocation]);
+  }, [id, isGroup, user, refreshRadarLocation]);
 
   // Load cached couple moods on mount and prune expired moods (>6 hours)
   useEffect(() => {
@@ -1592,7 +1627,18 @@ export default function ChatScreen() {
           } catch (e) {}
         }
         
-        const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar");
+        const partnerRadarMsg = data.find(m => m.type === "radar_ping" && m.sender_id !== user?.id);
+        if (partnerRadarMsg) {
+          try {
+            const loc = typeof partnerRadarMsg.content === "string" ? JSON.parse(partnerRadarMsg.content) : partnerRadarMsg.content;
+            if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
+              setRadarPartnerLoc(loc);
+              savePartnerLocation(id as string, loc);
+            }
+          } catch (e) {}
+        }
+
+        const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar" && m.type !== "radar_ping");
         const formatted = filtered.map(formatMsg);
         setMessages(formatted); 
         setHasMore(data.length === PAGE_SIZE); 
@@ -1604,6 +1650,24 @@ export default function ChatScreen() {
     const channel = supabase.channel(`chat_${sessionToken}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `chat_id=eq.${id}` }, async (payload) => {
         if (payload.eventType === "INSERT") {
+          if (payload.new.type === "radar_ping") {
+            if (payload.new.sender_id !== user?.id) {
+              try {
+                const parsedLoc = typeof payload.new.content === "string" ? JSON.parse(payload.new.content) : payload.new.content;
+                if (parsedLoc && typeof parsedLoc.lat === "number" && typeof parsedLoc.lng === "number") {
+                  const newPartnerLoc: RadarLocation = {
+                    lat: parsedLoc.lat,
+                    lng: parsedLoc.lng,
+                    timestamp: parsedLoc.timestamp || new Date(payload.new.created_at).getTime(),
+                    accuracy: parsedLoc.accuracy,
+                  };
+                  setRadarPartnerLoc(newPartnerLoc);
+                  savePartnerLocation(id as string, newPartnerLoc);
+                }
+              } catch (e) {}
+            }
+            return;
+          }
           if (payload.new.type === "wallpaper_deck") {
             try {
               const parsedDeck = typeof payload.new.content === "string" ? JSON.parse(payload.new.content) : payload.new.content;
@@ -1885,6 +1949,24 @@ export default function ChatScreen() {
           });
         }
       })
+      .on("broadcast", { event: "radar_request" }, (payload: any) => {
+        const p = payload?.payload;
+        if (!p || p.requester_id === user.id) return;
+        getStoredMyLocation().then((loc) => {
+          if (loc && Date.now() - loc.timestamp < RADAR_EXPIRY_TTL_MS) {
+            typingChannelRef.current?.send({
+              type: "broadcast",
+              event: "radar_ping",
+              payload: {
+                user_id: user.id,
+                lat: loc.lat,
+                lng: loc.lng,
+                timestamp: loc.timestamp,
+              },
+            });
+          }
+        });
+      })
       .on("broadcast", { event: "radar_ping" }, (payload: any) => {
         const p = payload?.payload;
         if (!p || p.user_id === user.id) return;
@@ -1992,6 +2074,25 @@ export default function ChatScreen() {
             event: "mood_ping",
             payload: { sender_id: user.id },
           });
+          tChannel.send({
+            type: "broadcast",
+            event: "radar_request",
+            payload: { requester_id: user.id },
+          });
+          getStoredMyLocation().then((loc) => {
+            if (loc && Date.now() - loc.timestamp < RADAR_EXPIRY_TTL_MS) {
+              tChannel.send({
+                type: "broadcast",
+                event: "radar_ping",
+                payload: {
+                  user_id: user.id,
+                  lat: loc.lat,
+                  lng: loc.lng,
+                  timestamp: loc.timestamp,
+                },
+              });
+            }
+          });
         }
       });
     typingChannelRef.current = tChannel;
@@ -2042,7 +2143,7 @@ export default function ChatScreen() {
       .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
       .eq("chat_id", id).lt("created_at", oldest.created_at).order("created_at", { ascending: false }).limit(PAGE_SIZE);
     if (!error && data) {
-      const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar");
+      const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar" && m.type !== "radar_ping");
       setMessages(prev => [...prev, ...filtered.map(formatMsg)]);
       setHasMore(data.length === PAGE_SIZE);
     }
@@ -3453,7 +3554,10 @@ export default function ChatScreen() {
                     radarBearing={radarBearing}
                     radarLastUpdated={radarLastUpdated}
                     radarPartnerLoc={radarPartnerLoc}
-                    onRefreshRadar={() => refreshRadarLocation(true)}
+                    onRefreshRadar={() => {
+                      triggerHeartbeatHaptic();
+                      refreshRadarLocation(true);
+                    }}
                     onStartCall={(type) => {
                       if (!targetUser?.id) return;
                       initiateCall({
@@ -5616,7 +5720,7 @@ const SnappyCheckmark = React.memo(({ isRead, isAmoled, theme, styles }: any) =>
 
 // --- MessageRow Component for Animations & Gradients ---
 const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, isGroup, isHovered, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
-  if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
+  if (item.type === "wallpaper_deck" || item.type === "chat_avatar" || item.type === "radar_ping") return null;
 
   // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
   const isLiveEntrance = useRef(
