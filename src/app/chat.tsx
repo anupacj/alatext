@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
-  Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
+  Image as RNImage, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
   LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder, Vibration,
   Animated as RNAnimated, Easing, Dimensions, useWindowDimensions, Keyboard, AppState,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import Animated, { useSharedValue, useAnimatedStyle, useAnimatedProps, withSpring, withDelay, withTiming, withSequence, LinearTransition, interpolate } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
@@ -38,7 +39,7 @@ import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
 import { LottieSticker } from "../components/LottieSticker";
 import { supabase } from "../lib/supabase";
-import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
+import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2, getThumbnailUrl } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
@@ -125,7 +126,7 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 25;
 
 interface Message {
   id: string;
@@ -1385,21 +1386,38 @@ export default function ChatScreen() {
     const init = async () => {
       let initialSettings: any = {};
       try {
-        const cachedSettings = await AsyncStorage.getItem(`chat_${id}_settings`);
+        const [cachedSettings, cachedPin, cachedProf, cachedFeatures] = await Promise.all([
+          AsyncStorage.getItem(`chat_${id}_settings`),
+          AsyncStorage.getItem(`chat_${id}_pinned`),
+          AsyncStorage.getItem(`@cached_profile_${user.id}`),
+          AsyncStorage.getItem(`@cached_public_features`),
+        ]);
         if (cachedSettings) {
           initialSettings = JSON.parse(cachedSettings);
           setChatSettings(initialSettings);
         }
-        const cachedPin = await AsyncStorage.getItem(`chat_${id}_pinned`);
         if (cachedPin) setPinnedMessage(JSON.parse(cachedPin));
+        if (cachedProf) setMyProfile(JSON.parse(cachedProf));
+        if (cachedFeatures) setPublicFeatures(JSON.parse(cachedFeatures));
       } catch (e) {}
 
-      const { data: prof } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-      if (prof) setMyProfile(prof);
-      const { data: st } = await supabase.from("app_settings").select("value").eq("key", "public_features").single();
-      if (st?.value && Array.isArray(st.value)) setPublicFeatures(st.value);
+      // Parallelize profile, public features, and participant settings queries
+      const [profRes, stRes, mySettingsRes] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+        supabase.from("app_settings").select("value").eq("key", "public_features").maybeSingle(),
+        supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).maybeSingle(),
+      ]);
 
-      const { data: mySettings } = await supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).single();
+      if (profRes.data) {
+        setMyProfile(profRes.data);
+        AsyncStorage.setItem(`@cached_profile_${user.id}`, JSON.stringify(profRes.data)).catch(() => {});
+      }
+      if (stRes.data?.value && Array.isArray(stRes.data.value)) {
+        setPublicFeatures(stRes.data.value);
+        AsyncStorage.setItem(`@cached_public_features`, JSON.stringify(stRes.data.value)).catch(() => {});
+      }
+
+      const mySettings = mySettingsRes.data;
       const mergedSettings = { ...initialSettings, ...(mySettings || {}) };
       if (!mySettings?.send_button_emoji && initialSettings?.send_button_emoji) {
         mergedSettings.send_button_emoji = initialSettings.send_button_emoji;
@@ -2358,8 +2376,8 @@ export default function ChatScreen() {
       if (now - lastTypingSentRef.current > 1500) {
         sendGhostPayload();
       } else {
-        // Subsequent keystrokes debounced by 120ms for smooth live letter reveal without flooding
-        typingDebounceTimeoutRef.current = setTimeout(sendGhostPayload, 120);
+        // Subsequent keystrokes debounced by 200ms for smooth live letter reveal without flooding
+        typingDebounceTimeoutRef.current = setTimeout(sendGhostPayload, 200);
       }
     } else {
       // Normal typing indicator: broadcast every 2000ms
@@ -2504,6 +2522,63 @@ export default function ChatScreen() {
     }
   }, [id, user?.id]);
 
+  const compressImageForUpload = useCallback(async (file: Blob | File): Promise<Blob | File> => {
+    if (Platform.OS !== "web" || typeof window === "undefined" || !window.document) return file;
+    if (!file.type?.startsWith("image/") || file.type.includes("gif") || file.type.includes("svg")) {
+      return file;
+    }
+    // Only compress if larger than 300KB
+    if (file.size && file.size < 300 * 1024) return file;
+
+    return new Promise((resolve) => {
+      try {
+        const img = new (window as any).Image();
+        const objectUrl = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          const maxDimension = 1800;
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(file);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (blob && blob.size < file.size) {
+                resolve(blob);
+              } else {
+                resolve(file);
+              }
+            },
+            "image/jpeg",
+            0.75
+          );
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+        };
+        img.src = objectUrl;
+      } catch (e) {
+        resolve(file);
+      }
+    });
+  }, []);
+
   const handleUploadFiles = useCallback(async (files: (File | Blob)[]) => {
     const selectedFiles = Array.from(files).slice(0, 10);
     if (selectedFiles.length === 0) return;
@@ -2525,8 +2600,9 @@ export default function ChatScreen() {
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         const isVideo = file.type?.startsWith("video");
+        const blobToUpload = isVideo ? file : await compressImageForUpload(file);
         const prefix = isVideo ? `chat-videos/${id}-${Date.now()}-${i}` : `chat-images/${id}-${Date.now()}-${i}`;
-        const url = await uploadBlobToR2(prefix, file, (pct) => updateOverallProgress(i, pct));
+        const url = await uploadBlobToR2(prefix, blobToUpload, (pct) => updateOverallProgress(i, pct));
         updateOverallProgress(i, 100);
         msgs.push({
           chat_id: id,
@@ -2561,7 +2637,7 @@ export default function ChatScreen() {
       setUploadingImage(false);
       setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
     }
-  }, [id, user?.id, replyingTo, formatMsg]);
+  }, [id, user?.id, replyingTo, formatMsg, compressImageForUpload]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -2590,7 +2666,7 @@ export default function ChatScreen() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") return;
     const result = await ImagePicker.launchImageLibraryAsync({
-      quality: 0.8,
+      quality: 0.7,
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
       selectionLimit: 10,
@@ -3362,7 +3438,13 @@ export default function ChatScreen() {
                         <Users size={18} color="#fff" />
                       </View>
                     ) : ((targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url) ? (
-                      <Image source={{ uri: (targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url }} style={styles.floatingAvatar} />
+                      <ExpoImage
+                        source={{ uri: getThumbnailUrl((targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url, 120, 120, 80) }}
+                        style={styles.floatingAvatar}
+                        cachePolicy="disk"
+                        transition={150}
+                        contentFit="cover"
+                      />
                     ) : (
                       <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
                         <User size={18} color="#fff" />
@@ -3980,7 +4062,13 @@ export default function ChatScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.replyBannerSender, { color: theme.accent }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>{replyingTo.sender}</Text>
                     {replyingTo.text?.startsWith("http") ? (
-                      <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
+                      <ExpoImage
+                        source={{ uri: getThumbnailUrl(replyingTo.text, 80, 80, 75) }}
+                        style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }}
+                        cachePolicy="disk"
+                        transition={150}
+                        contentFit="cover"
+                      />
                     ) : (
                       <Text style={[styles.replyBannerText, { color: isAmoled ? "#aaaaaa" : theme.textMuted }]} numberOfLines={1}>{replyingTo.text}</Text>
                     )}
@@ -5189,7 +5277,7 @@ const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress
   useEffect(() => {
     if (!uri || typeof uri !== "string") return;
     try {
-      Image.getSize(
+      RNImage.getSize(
         uri,
         (w, h) => {
           if (w && h) {
@@ -5207,20 +5295,23 @@ const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress
   const maxW = 274;
   const computedW = Math.min(maxW, Math.max(160, 220 * (aspectRatio >= 1 ? Math.min(1.35, aspectRatio) : 1)));
   const computedH = Math.min(330, computedW / aspectRatio);
+  const thumbUri = getThumbnailUrl(uri, Math.round(computedW * 2), Math.round(computedH * 2), 75);
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
-      <Image
-        source={{ uri }}
+      <ExpoImage
+        source={{ uri: thumbUri }}
         style={[
           {
             width: computedW,
             height: computedH,
             borderRadius: 12,
-            resizeMode: "cover",
           },
           style,
         ]}
+        cachePolicy="disk"
+        transition={150}
+        contentFit="cover"
       />
     </TouchableOpacity>
   );
@@ -5238,7 +5329,13 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
       <View style={{ flexDirection: "row", gap: 2, borderRadius: 12, overflow: "hidden", maxWidth: 274 }}>
         {items.map((item) => (
           <TouchableOpacity key={item.id} onPress={() => setImageViewerUrl(item.text)} style={{ width: 136, height: 180 }} activeOpacity={0.85}>
-            <Image source={{ uri: item.text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+            <ExpoImage
+              source={{ uri: getThumbnailUrl(item.text, 300, 380, 75) }}
+              style={{ width: "100%", height: "100%" }}
+              cachePolicy="disk"
+              transition={150}
+              contentFit="cover"
+            />
           </TouchableOpacity>
         ))}
       </View>
@@ -5249,14 +5346,32 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
     return (
       <View style={{ flexDirection: "row", gap: 2, borderRadius: 12, overflow: "hidden", maxWidth: 274, height: 274 }}>
         <TouchableOpacity onPress={() => setImageViewerUrl(items[0].text)} style={{ width: 136, height: 274 }} activeOpacity={0.85}>
-          <Image source={{ uri: items[0].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+          <ExpoImage
+            source={{ uri: getThumbnailUrl(items[0].text, 300, 600, 75) }}
+            style={{ width: "100%", height: "100%" }}
+            cachePolicy="disk"
+            transition={150}
+            contentFit="cover"
+          />
         </TouchableOpacity>
         <View style={{ width: 136, height: 274, gap: 2 }}>
           <TouchableOpacity onPress={() => setImageViewerUrl(items[1].text)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
-            <Image source={{ uri: items[1].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+            <ExpoImage
+              source={{ uri: getThumbnailUrl(items[1].text, 300, 300, 75) }}
+              style={{ width: "100%", height: "100%" }}
+              cachePolicy="disk"
+              transition={150}
+              contentFit="cover"
+            />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setImageViewerUrl(items[2].text)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
-            <Image source={{ uri: items[2].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+            <ExpoImage
+              source={{ uri: getThumbnailUrl(items[2].text, 300, 300, 75) }}
+              style={{ width: "100%", height: "100%" }}
+              cachePolicy="disk"
+              transition={150}
+              contentFit="cover"
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -5277,7 +5392,13 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
             style={{ width: 136, height: 136, position: "relative" }}
             activeOpacity={0.85}
           >
-            <Image source={{ uri: item.text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+            <ExpoImage
+              source={{ uri: getThumbnailUrl(item.text, 300, 300, 75) }}
+              style={{ width: "100%", height: "100%" }}
+              cachePolicy="disk"
+              transition={150}
+              contentFit="cover"
+            />
             {isFourth && (
               <View style={{
                 position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
@@ -5783,7 +5904,15 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         );
       }
 
-      return <Image source={{ uri: item.text }} style={{ width: stickerDim, height: stickerDim, opacity: stickerOpacity }} resizeMode="contain" />;
+      return (
+        <ExpoImage
+          source={{ uri: getThumbnailUrl(item.text, 250, 250, 80) }}
+          style={{ width: stickerDim, height: stickerDim, opacity: stickerOpacity }}
+          cachePolicy="disk"
+          transition={150}
+          contentFit="contain"
+        />
+      );
     }
     if (item.type === "image") {
       const imgOpacity = (chatSettings?.screen_dim > 0) ? Math.max(0.7, 1 - (chatSettings.screen_dim * 0.3)) : 1;
@@ -5911,7 +6040,15 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         {!item.isMe && (
           <View style={styles.avatarSlot}>
             {showMeta && (((item.sender_id && chatAvatars?.[item.sender_id]) || item.avatar)
-              ? <Image source={{ uri: (item.sender_id && chatAvatars?.[item.sender_id]) || item.avatar }} style={styles.messageAvatar} />
+              ? (
+                <ExpoImage
+                  source={{ uri: getThumbnailUrl((item.sender_id && chatAvatars?.[item.sender_id]) || item.avatar, 90, 90, 80) }}
+                  style={styles.messageAvatar}
+                  cachePolicy="disk"
+                  transition={150}
+                  contentFit="cover"
+                />
+              )
               : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} /></View>
             )}
           </View>
@@ -5984,7 +6121,13 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
                     style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2, objectFit: "cover", pointerEvents: "none" }}
                   />
                 ) : (
-                  <Image source={{ uri: item.reply_to_content }} style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2 }} resizeMode="cover" />
+                  <ExpoImage
+                    source={{ uri: getThumbnailUrl(item.reply_to_content, 100, 100, 75) }}
+                    style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2 }}
+                    cachePolicy="disk"
+                    transition={150}
+                    contentFit="cover"
+                  />
                 )
               ) : (
                 <Text style={styles.replyQuoteText} numberOfLines={1}>{item.reply_to_content}</Text>
