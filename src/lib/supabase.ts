@@ -17,7 +17,7 @@ const supabaseUrl =
 const supabaseAnonKey =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY !== 'your-anon-key-here'
     ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-    : 'sb_publishable_XT1WQ9GD8ECesZUOKPtlLw_cbd7ftuW';
+    : 'sb_publishable_OscqiOYBnBklEvtmcrlmyw_w6OMtTqN';
 
 // Safe storage adapter that doesn't crash during Web Server-Side Rendering (SSR)
 const customStorageAdapter = {
