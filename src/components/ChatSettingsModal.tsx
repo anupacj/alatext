@@ -148,6 +148,7 @@ const THEMES = [
 
 const SEND_EMOJI_PRESETS = [
   { label: "Default", emoji: "" },
+  { label: "🚀 Rocket", emoji: "🚀" },
   { label: "🔥 Fire", emoji: "🔥" },
   { label: "❤️ Heart", emoji: "❤️" },
   { label: "⚡ Bolt", emoji: "⚡" },
@@ -159,6 +160,15 @@ const SEND_EMOJI_PRESETS = [
   { label: "💌 Letter", emoji: "💌" },
   { label: "👾 Arcade", emoji: "👾" },
   { label: "🍕 Pizza", emoji: "🍕" },
+];
+
+export const DOODLE_OPTIONS = [
+  { label: "None", value: "none", emoji: "🚫" },
+  { label: "Sparkles", value: "sparkles", emoji: "✨" },
+  { label: "Hearts", value: "hearts", emoji: "💕" },
+  { label: "Stars", value: "stars", emoji: "⭐" },
+  { label: "Snow", value: "snow", emoji: "❄️" },
+  { label: "Petals", value: "petals", emoji: "🌸" },
 ];
 
 export const FONT_OPTIONS = [
@@ -1940,6 +1950,40 @@ export default function ChatSettingsModal({
           )}
         </View>
 
+        {/* Floating Screen Doodles / Particles */}
+        <View style={{ marginTop: 24, marginBottom: 18 }}>
+          <Text style={styles.sectionTitle}>✨ Floating Screen Particles</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
+            Animated floating particles across your chat background (stars, hearts, sparkles).
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            {DOODLE_OPTIONS.map((opt) => {
+              const isSelected = wallpaperDoodle === opt.value;
+              return (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.shapeBtn,
+                    { minWidth: 80, marginRight: 8, paddingVertical: 10, paddingHorizontal: 12, alignItems: "center" },
+                    isSelected && styles.shapeBtnSelected,
+                  ]}
+                  onPress={() => setWallpaperDoodle(opt.value)}
+                >
+                  <Text style={{ fontSize: 20, marginBottom: 4 }}>{opt.emoji}</Text>
+                  <Text
+                    style={[
+                      styles.shapeLabel,
+                      isSelected && { color: theme.accent || "#5865F2", fontWeight: "700" },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
         {/* Session Auto-Rotate & Auto-Mood Automation */}
         <View style={styles.automationBox}>
           <Text style={styles.automationTitle}>⚡ Wallpaper Automations</Text>
@@ -2055,6 +2099,71 @@ export default function ChatSettingsModal({
             <Text style={{ color: "#f43f5e", fontSize: 12, fontWeight: "600" }}>Reset Sound</Text>
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* Send Button Icon / Custom Emoji */}
+      <View style={{ marginTop: 24, marginBottom: 20 }}>
+        <Text style={styles.sectionTitle}>🚀 Custom Send Button Icon</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
+          Replace the default send arrow with a custom emoji or symbol for this chat.
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+          {SEND_EMOJI_PRESETS.map((item) => {
+            const isSelected = (sendButtonEmoji || "") === item.emoji;
+            return (
+              <TouchableOpacity
+                key={item.label}
+                style={[
+                  styles.shapeBtn,
+                  { minWidth: 68, marginRight: 8, paddingVertical: 8, paddingHorizontal: 10, alignItems: "center" },
+                  isSelected && styles.shapeBtnSelected,
+                ]}
+                onPress={() => setSendButtonEmoji(item.emoji)}
+              >
+                <Text style={{ fontSize: item.emoji ? 20 : 16 }}>{item.emoji || "➤"}</Text>
+                <Text
+                  style={[
+                    styles.shapeLabel,
+                    { fontSize: 11, marginTop: 4 },
+                    isSelected && { color: theme.accent || "#5865F2", fontWeight: "700" },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Text style={{ color: theme.text, fontSize: 13 }}>Or type custom emoji:</Text>
+          <TextInput
+            style={[
+              styles.alertInput,
+              {
+                width: 72,
+                textAlign: "center",
+                fontSize: 18,
+                paddingVertical: 6,
+                backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+                color: theme.text,
+                borderWidth: 1,
+                borderColor: theme.border,
+                borderRadius: 10,
+              },
+            ]}
+            value={sendButtonEmoji}
+            onChangeText={setSendButtonEmoji}
+            placeholder="🛸"
+            placeholderTextColor={theme.textMuted}
+            maxLength={4}
+          />
+          {sendButtonEmoji ? (
+            <TouchableOpacity onPress={() => setSendButtonEmoji("")} style={{ padding: 6 }}>
+              <Text style={{ color: "#f43f5e", fontSize: 12, fontWeight: "600" }}>Reset to Arrow</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
     </View>
   );

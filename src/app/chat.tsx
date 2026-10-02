@@ -24,7 +24,6 @@ import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
 import { LinkPreviewCard, extractFirstUrl } from "../components/LinkPreviewCard";
 import ZoomableImageViewer from "../components/ZoomableImageViewer";
-import { tryEnterFullscreen } from "../lib/fullscreen";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
@@ -1134,29 +1133,6 @@ function ChatScreenContent() {
       document.removeEventListener("pointerdown", handlePointerDown, true);
     };
   }, [fontPickerOpen]);
-
-  // Automatically enter fullscreen when entering a chat (MOBILE ONLY)
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined" || isDesktop) return;
-
-    tryEnterFullscreen();
-
-    const handleFirstTap = () => {
-      if (!isDesktop) {
-        tryEnterFullscreen();
-      }
-      window.removeEventListener("pointerdown", handleFirstTap, true);
-      window.removeEventListener("touchstart", handleFirstTap, true);
-    };
-
-    window.addEventListener("pointerdown", handleFirstTap, true);
-    window.addEventListener("touchstart", handleFirstTap, true);
-
-    return () => {
-      window.removeEventListener("pointerdown", handleFirstTap, true);
-      window.removeEventListener("touchstart", handleFirstTap, true);
-    };
-  }, [isDesktop]);
 
   // Listen for context menu resolution requests from AlaContextMenu
   useEffect(() => {
@@ -3220,8 +3196,8 @@ function ChatScreenContent() {
   }, [handlePinMessage, deleteMessage, openChatInfo, handleSaveMessageToMemories, handleSaveMessageToNotes]);
 
   // Fluid screen entrance slide animation (works across Web/PWA/mobile browsers)
-  const screenSlideAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 44 : 0)).current;
-  const screenFadeAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 0 : 1)).current;
+  const screenSlideAnim = useRef(new RNAnimated.Value(0)).current;
+  const screenFadeAnim = useRef(new RNAnimated.Value(1)).current;
 
   useEffect(() => {
     if (Platform.OS === "web") {

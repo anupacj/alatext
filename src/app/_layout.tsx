@@ -138,7 +138,6 @@ export default function Layout() {
           margin: 0 !important;
           padding: 0 !important;
           overflow: hidden !important;
-          background-color: #000000 !important;
           font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           -webkit-tap-highlight-color: transparent;
         }
@@ -153,7 +152,6 @@ export default function Layout() {
           left: 0 !important;
           right: 0 !important;
           bottom: 0 !important;
-          background-color: #000000 !important;
         }
         #root > div {
           height: 100% !important;
@@ -168,7 +166,6 @@ export default function Layout() {
         :fullscreen, :-webkit-full-screen, :-moz-full-screen, :-ms-fullscreen {
           height: 100% !important;
           width: 100% !important;
-          background-color: #000000 !important;
         }
         :fullscreen body, :-webkit-full-screen body {
           height: 100% !important;
@@ -176,7 +173,6 @@ export default function Layout() {
           margin: 0 !important;
           padding: 0 !important;
           overflow: hidden !important;
-          background-color: #000000 !important;
         }
         :fullscreen #root, :-webkit-full-screen #root {
           height: 100% !important;
@@ -188,7 +184,6 @@ export default function Layout() {
           bottom: 0 !important;
           display: flex !important;
           flex-direction: column !important;
-          background-color: #000000 !important;
         }
         :fullscreen #root > div, :-webkit-full-screen #root > div {
           height: 100% !important;

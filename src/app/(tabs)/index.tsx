@@ -271,7 +271,6 @@ export default function Home() {
   const renderItem = useCallback(({ item }: { item: any }) => (
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
       onPress={() => {
-        tryEnterFullscreen();
         try {
           router.push({
             pathname: "/chat",
