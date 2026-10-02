@@ -93,7 +93,7 @@ function RootNavigator() {
         options={{
           headerShown: false,
           animation: 'slide_from_right',
-          fullScreenGestureEnabled: true,
+          fullScreenGestureEnabled: Platform.OS === 'ios',
         }}
       />
       <Stack.Screen
@@ -101,7 +101,7 @@ function RootNavigator() {
         options={{
           headerShown: false,
           animation: 'slide_from_right',
-          fullScreenGestureEnabled: true,
+          fullScreenGestureEnabled: Platform.OS === 'ios',
         }}
       />
       <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />

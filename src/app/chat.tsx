@@ -124,7 +124,7 @@ import {
 } from "../utils/webrtcCall";
 
 try {
-  if (Platform.OS === "android" && (UIManager as any)?.setLayoutAnimationEnabledExperimental) {
+  if (Platform.OS === "android" && !(globalThis as any)?._IS_FABRIC && (UIManager as any)?.setLayoutAnimationEnabledExperimental) {
     (UIManager as any).setLayoutAnimationEnabledExperimental(true);
   }
 } catch (e) {
@@ -507,7 +507,7 @@ function ChatScreenContent() {
       return;
     }
 
-    let myNewLoc = await getCurrentDeviceLocation();
+    let myNewLoc = await getCurrentDeviceLocation(force);
     if (!myNewLoc) {
       // Fallback to previously stored location if GPS lock timed out
       myNewLoc = await getStoredMyLocation();
@@ -558,14 +558,19 @@ function ChatScreenContent() {
       }
     }).catch(() => {});
 
-    // Check device location & broadcast once on entering chat if permissions allow
-    refreshRadarLocation(false);
+    // Delay device location check so screen transition completes smoothly
+    const radarInitTimer = setTimeout(() => {
+      refreshRadarLocation(false);
+    }, 1500);
 
     const syncInterval = setInterval(() => {
       refreshRadarLocation(false);
     }, 60 * 1000);
 
-    return () => clearInterval(syncInterval);
+    return () => {
+      clearTimeout(radarInitTimer);
+      clearInterval(syncInterval);
+    };
   }, [id, isGroup, user, refreshRadarLocation]);
 
   // Load cached couple moods on mount and prune expired moods (>6 hours)
@@ -5439,6 +5444,28 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     fontSize: 15,
     fontWeight: "600",
   },
+  swipeReplyBadgeLeft: {
+    position: "absolute",
+    left: 14,
+    top: "50%",
+    marginTop: -18,
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 0,
+  },
+  swipeReplyBadgeRight: {
+    position: "absolute",
+    right: 14,
+    top: "50%",
+    marginTop: -18,
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 0,
+  },
 });
 };
 
@@ -5888,20 +5915,23 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
     opacity: opacity.value,
   }));
 
-  const badgeAnimatedStyle = useAnimatedStyle(() => {
-    const isSwipingLeft = translateX.value < 0;
-    const isVisible = swipeProgress.value > 0.05;
+  const leftBadgeAnimatedStyle = useAnimatedStyle(() => {
+    const isVisible = translateX.value > 0 && swipeProgress.value > 0.05;
     return {
       opacity: isVisible ? interpolate(swipeProgress.value, [0.05, 0.35, 1], [0, 0.75, 1]) : 0,
       transform: [
         { scale: interpolate(swipeProgress.value, [0, 0.85, 1], [0.5, 0.95, 1.15]) },
       ],
-      position: "absolute" as const,
-      top: "50%",
-      marginTop: -18,
-      left: isSwipingLeft ? undefined : 14,
-      right: isSwipingLeft ? 14 : undefined,
-      zIndex: 0,
+    };
+  });
+
+  const rightBadgeAnimatedStyle = useAnimatedStyle(() => {
+    const isVisible = translateX.value < 0 && swipeProgress.value > 0.05;
+    return {
+      opacity: isVisible ? interpolate(swipeProgress.value, [0.05, 0.35, 1], [0, 0.75, 1]) : 0,
+      transform: [
+        { scale: interpolate(swipeProgress.value, [0, 0.85, 1], [0.5, 0.95, 1.15]) },
+      ],
     };
   });
 
@@ -6153,17 +6183,12 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
 
   return (
     <View style={{ position: "relative", width: "100%", justifyContent: "center" }}>
-      {/* Instagram-style Circular Reply Indicator behind the message */}
+      {/* Instagram-style Circular Reply Indicator (Left - reveals on swiping right) */}
       <Animated.View
         pointerEvents="none"
         style={[
-          {
-            width: 36,
-            height: 36,
-            alignItems: "center",
-            justifyContent: "center",
-          },
-          badgeAnimatedStyle,
+          styles.swipeReplyBadgeLeft,
+          leftBadgeAnimatedStyle,
         ]}
       >
         <Svg width={36} height={36} viewBox="0 0 36 36">
@@ -6188,6 +6213,40 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
             <Reply size={15} color={theme.accent || (isAmoled ? "#ffffff" : theme.text)} />
+          </View>
+        </View>
+      </Animated.View>
+
+      {/* Instagram-style Circular Reply Indicator (Right - reveals on swiping left) */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.swipeReplyBadgeRight,
+          rightBadgeAnimatedStyle,
+        ]}
+      >
+        <Svg width={36} height={36} viewBox="0 0 36 36">
+          <Circle
+            cx={18}
+            cy={18}
+            r={13}
+            stroke={isAmoled ? "rgba(255, 255, 255, 0.15)" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.25)" : "rgba(255, 255, 255, 0.20)")}
+            strokeWidth={2.5}
+            fill={isAmoled ? "#141414" : (theme.id === "pink" ? "#fce7f3" : (theme.id === "light" ? "#f0f2f5" : "#222428"))}
+          />
+          <Circle
+            cx={18}
+            cy={18}
+            r={13}
+            stroke={theme.accent || "#5865F2"}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            fill="none"
+          />
+        </Svg>
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <Reply size={15} color={theme.accent || (isAmoled ? "#ffffff" : theme.text)} style={{ transform: [{ scaleX: -1 }] }} />
           </View>
         </View>
       </Animated.View>

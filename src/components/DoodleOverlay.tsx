@@ -1,4 +1,4 @@
-﻿import React, { useEffect } from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, Dimensions } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, Easing, withDelay } from "react-native-reanimated";
 
@@ -50,13 +50,11 @@ function Particle({ particle, type }: { particle: any, type: string }) {
   }, []);
 
   const style = useAnimatedStyle(() => ({
-    position: "absolute",
-    left: particle.x,
-    top: translateY.value,
     opacity: opacity.value,
     transform: [
+      { translateY: translateY.value },
       { scale: particle.scale },
-      { rotate: `${rotation.value}deg` }
+      { rotate: `${rotation.value}deg` },
     ],
   }));
 
@@ -66,15 +64,30 @@ function Particle({ particle, type }: { particle: any, type: string }) {
   if (type === "snow") content = "❄️";
   if (type === "petals") content = "🌸";
 
-  return <Animated.Text style={[style, { fontSize: 24, pointerEvents: "none" }]}>{content}</Animated.Text>;
+  return (
+    <Animated.Text
+      pointerEvents="none"
+      style={[
+        style,
+        {
+          position: "absolute",
+          left: particle.x,
+          top: 0,
+          fontSize: 24,
+        },
+      ]}
+    >
+      {content}
+    </Animated.Text>
+  );
 }
 
 export function DoodleOverlay({ type }: { type: string }) {
   if (!type || type === "none") return null;
 
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, { pointerEvents: "none", zIndex: 1 }]} pointerEvents="none">
-      {PARTICLES.map(p => (
+    <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 1 }]} pointerEvents="none">
+      {PARTICLES.map((p) => (
         <Particle key={p.id} particle={p} type={type} />
       ))}
     </Animated.View>

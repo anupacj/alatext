@@ -129,18 +129,44 @@ export async function saveMyLocation(loc: RadarLocation): Promise<void> {
 /**
  * Request device location safely with fallback retry
  */
-export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> {
+export async function getCurrentDeviceLocation(requestIfMissing: boolean = false): Promise<RadarLocation | null> {
   // If running natively on Android / iOS, use expo-location
   if (Platform.OS !== "web") {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        console.warn("Location permission not granted on native device");
+      const perm = await Location.getForegroundPermissionsAsync().catch(() => null);
+      if (!perm || perm.status !== "granted") {
+        if (!requestIfMissing) {
+          return null;
+        }
+        const req = await Location.requestForegroundPermissionsAsync().catch(() => null);
+        if (!req || req.status !== "granted") {
+          console.warn("Location permission not granted on native device");
+          return null;
+        }
+      }
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => false);
+      if (!servicesEnabled) {
+        const lastPos = await Location.getLastKnownPositionAsync().catch(() => null);
+        if (lastPos) {
+          return {
+            lat: lastPos.coords.latitude,
+            lng: lastPos.coords.longitude,
+            timestamp: lastPos.timestamp || Date.now(),
+            accuracy: lastPos.coords.accuracy || undefined,
+          };
+        }
         return null;
       }
+
       const pos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
+      }).catch(async () => {
+        return await Location.getLastKnownPositionAsync().catch(() => null);
       });
+
+      if (!pos) return null;
+
       return {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
