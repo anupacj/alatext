@@ -3,7 +3,7 @@ import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
   Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
   LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder, Vibration,
-  Animated as RNAnimated, Easing, Dimensions, useWindowDimensions, Keyboard,
+  Animated as RNAnimated, Easing, Dimensions, useWindowDimensions, Keyboard, AppState,
 } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, useAnimatedProps, withSpring, withDelay, withTiming, withSequence, LinearTransition, interpolate } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
@@ -57,6 +57,7 @@ import {
   mergeDecks,
   getSmartBubbleColors,
   resolveSmartBubbleColors,
+  checkPartnerWallpaperUpdate,
 } from "../utils/wallpaperDeck";
 import {
   ChatAvatarMap,
@@ -176,10 +177,13 @@ export default function ChatScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [infoVisible, setInfoVisible] = useState(false);
   const [chatSettings, setChatSettings] = useState<any>(null);
+  const chatSettingsRef = useRef<any>(null);
+  chatSettingsRef.current = chatSettings;
   const [chatAvatars, setChatAvatars] = useState<ChatAvatarMap>({});
   const [wallpaperDeck, setWallpaperDeck] = useState<WallpaperDeckConfig | null>(null);
   const wallpaperDeckRef = useRef<WallpaperDeckConfig | null>(null);
   wallpaperDeckRef.current = wallpaperDeck;
+  const wallpaperSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
   // showWallpaper must come AFTER chatSettings useState - never show wallpaper in AMOLED
   const showWallpaper = !isAmoled && !!chatSettings?.wallpaper_url;
 
@@ -1430,7 +1434,8 @@ export default function ChatScreen() {
       } else if (partnerPartData?.wallpaper_deck) {
         cloudDeck = normalizeDeck(partnerPartData.wallpaper_deck, fallbackWallpaperUrl, user.id);
       }
-      if (!cloudDeck) {
+      // If we don't have either a local deck or a cloud deck from participants, do a cloud fetch
+      if (!cloudDeck && !loadedDeck) {
         cloudDeck = await fetchDeckFromCloud(id as string, user.id);
       }
       loadedDeck = mergeDecks(loadedDeck, cloudDeck, fallbackWallpaperUrl, user.id);
@@ -1928,6 +1933,7 @@ export default function ChatScreen() {
         setWallpaperDeck(incomingDeck);
         wallpaperDeckRef.current = incomingDeck;
         saveDeckToLocal(id as string, incomingDeck);
+        persistDeckToCloud(id as string, user.id, incomingDeck);
 
         const activeSlot = getActiveSlot(incomingDeck);
         if (activeSlot) {
@@ -2028,6 +2034,96 @@ export default function ChatScreen() {
       AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(messages.slice(0, PAGE_SIZE))).catch(() => {});
     }
   }, [messages, id]);
+
+  // Deferred Wallpaper Sync: Check if partner updated wallpaper while we were away/offline
+  // Runs 3 seconds after entering to keep initial entry snappy and avoid network contention on slow connections
+  const runDeferredWallpaperSync = useCallback(async () => {
+    if (!id || !user?.id) return;
+    try {
+      const currentDeck = wallpaperDeckRef.current;
+      const currentSettings = chatSettingsRef.current;
+      const currentUrl = currentSettings?.wallpaper_url;
+
+      const check = await checkPartnerWallpaperUpdate(
+        id as string,
+        user.id,
+        currentDeck,
+        currentUrl
+      );
+
+      if (!check.hasUpdate || !check.newDeck) return;
+
+      const newDeck = check.newDeck;
+      const activeSlot = check.activeSlot || getActiveSlot(newDeck);
+
+      // 1. Update state & ref smoothly
+      setWallpaperDeck(newDeck);
+      wallpaperDeckRef.current = newDeck;
+
+      // 2. Persist locally immediately
+      await saveDeckToLocal(id as string, newDeck);
+
+      // 3. Update chatSettings (ParallaxWallpaper will cross-fade over 550ms!)
+      setChatSettings((prev: any) => {
+        const nextSettings: any = {
+          ...(prev || {}),
+          wallpaper_url: activeSlot?.url || check.wallpaperUrl || null,
+          wallpaper_dim: activeSlot?.dim ?? check.wallpaperDim ?? 0,
+          wallpaper_blur: activeSlot?.blur ?? check.wallpaperBlur ?? 0,
+          wallpaper_zoom: activeSlot?.zoom ?? check.wallpaperZoom ?? 1,
+        };
+
+        if (newDeck.autoMatchBubbles !== false && !prev?.personal_color_override && activeSlot) {
+          const colors = getSmartBubbleColors(activeSlot);
+          nextSettings.bubble_color_sent = colors.sent;
+          nextSettings.bubble_color_received = colors.received;
+          if (activeSlot.url) {
+            resolveSmartBubbleColors(activeSlot).then((dyn) => {
+              setChatSettings((p: any) => {
+                if (!p || p.personal_color_override) return p;
+                if (p.bubble_color_sent === dyn.sent && p.bubble_color_received === dyn.received) return p;
+                const up = { ...p, bubble_color_sent: dyn.sent, bubble_color_received: dyn.received };
+                AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(up)).catch(() => {});
+                return up;
+              });
+            });
+          }
+        }
+
+        AsyncStorage.setItem(`chat_${id}_settings`, JSON.stringify(nextSettings)).catch(() => {});
+        return nextSettings;
+      });
+
+      // 4. Update local user's DB row so backend records stay synchronized
+      await persistDeckToCloud(id as string, user.id, newDeck);
+    } catch (e) {
+      console.warn("Deferred wallpaper sync check failed:", e);
+    }
+  }, [id, user?.id]);
+
+  useEffect(() => {
+    if (!id || !user?.id) return;
+
+    if (wallpaperSyncTimerRef.current) clearTimeout(wallpaperSyncTimerRef.current);
+    // Trigger deferred sync ~3 seconds after entering chat
+    wallpaperSyncTimerRef.current = setTimeout(() => {
+      runDeferredWallpaperSync();
+    }, 3000);
+
+    const appStateSub = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        if (wallpaperSyncTimerRef.current) clearTimeout(wallpaperSyncTimerRef.current);
+        wallpaperSyncTimerRef.current = setTimeout(() => {
+          runDeferredWallpaperSync();
+        }, 2000);
+      }
+    });
+
+    return () => {
+      if (wallpaperSyncTimerRef.current) clearTimeout(wallpaperSyncTimerRef.current);
+      appStateSub.remove();
+    };
+  }, [id, user?.id, runDeferredWallpaperSync]);
 
   const handleApplyWallpaper = useCallback(async () => {
     if (!targetUser || !user || !id) return;

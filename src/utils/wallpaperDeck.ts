@@ -485,7 +485,7 @@ export function mergeDecks(
     autoMatchBubbles: primary.autoMatchBubbles ?? secondary.autoMatchBubbles ?? true,
     groups: finalGroups,
     slots: allSlots,
-    updatedAt: Math.max(localTime, cloudTime, Date.now()),
+    updatedAt: Math.max(localTime, cloudTime) > 0 ? Math.max(localTime, cloudTime) : Date.now(),
     updatedBy: primary.updatedBy || secondary.updatedBy || userId,
   };
 }
@@ -572,18 +572,25 @@ export async function fetchDeckFromCloud(chatId: string, userId?: string): Promi
   try {
     // 1. Try chat_participants table (first-class database column)
     try {
-      let query = supabase.from("chat_participants").select("wallpaper_deck, user_id").eq("chat_id", chatId);
-      const { data: parts, error: partErr } = await query;
+      const { data: parts, error: partErr } = await supabase
+        .from("chat_participants")
+        .select("wallpaper_deck, user_id")
+        .eq("chat_id", chatId);
+
       if (!partErr && Array.isArray(parts) && parts.length > 0) {
-        // Prioritize the requested user's record first if userId is provided
-        const sorted = userId
-          ? [...parts].sort((a, b) => (a.user_id === userId ? -1 : b.user_id === userId ? 1 : 0))
-          : parts;
-        for (const p of sorted) {
+        const parsedDecks: WallpaperDeckConfig[] = [];
+        for (const p of parts) {
           if (p.wallpaper_deck) {
             const parsed = typeof p.wallpaper_deck === "string" ? JSON.parse(p.wallpaper_deck) : p.wallpaper_deck;
-            if (parsed) return normalizeDeck(parsed, undefined, userId);
+            if (parsed) {
+              parsedDecks.push(normalizeDeck(parsed, undefined, userId));
+            }
           }
+        }
+        if (parsedDecks.length > 0) {
+          // Sort by updatedAt descending so the latest update wins across participants
+          parsedDecks.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          return parsedDecks[0];
         }
       }
     } catch (e) {}
@@ -606,6 +613,157 @@ export async function fetchDeckFromCloud(chatId: string, userId?: string): Promi
     return null;
   } catch (e) {
     return null;
+  }
+}
+
+export interface PartnerWallpaperCheckResult {
+  hasUpdate: boolean;
+  newDeck?: WallpaperDeckConfig;
+  activeSlot?: WallpaperSlot | null;
+  wallpaperUrl?: string | null;
+  wallpaperDim?: number;
+  wallpaperBlur?: number;
+  wallpaperZoom?: number;
+  sourceUserId?: string;
+}
+
+export async function checkPartnerWallpaperUpdate(
+  chatId: string,
+  currentUserId: string,
+  currentDeck: WallpaperDeckConfig | null,
+  currentWallpaperUrl?: string | null
+): Promise<PartnerWallpaperCheckResult> {
+  try {
+    // 1. Query all participant rows for this chat
+    const { data: parts, error: partErr } = await supabase
+      .from("chat_participants")
+      .select("user_id, wallpaper_deck, wallpaper_url, wallpaper_dim, wallpaper_blur, wallpaper_zoom")
+      .eq("chat_id", chatId);
+
+    if (partErr || !Array.isArray(parts) || parts.length === 0) {
+      return { hasUpdate: false };
+    }
+
+    const partnerRows = parts.filter(p => p.user_id !== currentUserId);
+    if (partnerRows.length === 0) {
+      return { hasUpdate: false };
+    }
+
+    const currentTimestamp = currentDeck?.updatedAt || 0;
+    const currentActiveSlot = currentDeck ? getActiveSlot(currentDeck) : null;
+    const currentUrl = currentWallpaperUrl || currentActiveSlot?.url || null;
+
+    // Collect all valid partner decks
+    let newestPartnerDeck: WallpaperDeckConfig | null = null;
+    let newestPartnerRow: any = null;
+    let newestTimestamp = 0;
+
+    for (const p of partnerRows) {
+      if (p.wallpaper_deck) {
+        const parsed = typeof p.wallpaper_deck === "string" ? JSON.parse(p.wallpaper_deck) : p.wallpaper_deck;
+        if (parsed) {
+          const norm = normalizeDeck(parsed, p.wallpaper_url, p.user_id);
+          const t = norm.updatedAt || 0;
+          if (t > newestTimestamp || !newestPartnerDeck) {
+            newestTimestamp = t;
+            newestPartnerDeck = norm;
+            newestPartnerRow = p;
+          }
+        }
+      } else if (p.wallpaper_url && !newestPartnerRow) {
+        newestPartnerRow = p;
+      }
+    }
+
+    if (newestPartnerDeck) {
+      const partnerActiveSlot = getActiveSlot(newestPartnerDeck);
+      const partnerUrl = partnerActiveSlot?.url || newestPartnerRow?.wallpaper_url || null;
+
+      const isNewer = newestTimestamp > currentTimestamp;
+      const isSlotChanged = newestPartnerDeck.activeSlotId !== currentDeck?.activeSlotId;
+      const isUrlChanged = partnerUrl !== currentUrl;
+
+      // If partner's deck is newer, or if it changed slot/URL while timestamps are equal/missing
+      if (isNewer || ((isSlotChanged || isUrlChanged) && newestTimestamp >= currentTimestamp)) {
+        // Merge partner's deck into current deck, prioritizing partner's active selection
+        const merged = mergeDecks(currentDeck, newestPartnerDeck, partnerUrl, currentUserId);
+        if (newestPartnerDeck.activeSlotId) {
+          merged.activeSlotId = newestPartnerDeck.activeSlotId;
+          merged.activeGroupId = newestPartnerDeck.activeGroupId;
+        }
+        merged.updatedAt = Math.max(newestTimestamp, Date.now());
+        merged.updatedBy = newestPartnerRow?.user_id || newestPartnerDeck.updatedBy || currentUserId;
+
+        const mergedActiveSlot = getActiveSlot(merged);
+
+        return {
+          hasUpdate: true,
+          newDeck: merged,
+          activeSlot: mergedActiveSlot,
+          wallpaperUrl: mergedActiveSlot?.url || partnerUrl,
+          wallpaperDim: mergedActiveSlot?.dim ?? newestPartnerRow?.wallpaper_dim ?? 0,
+          wallpaperBlur: mergedActiveSlot?.blur ?? newestPartnerRow?.wallpaper_blur ?? 0,
+          wallpaperZoom: mergedActiveSlot?.zoom ?? newestPartnerRow?.wallpaper_zoom ?? 1,
+          sourceUserId: newestPartnerRow?.user_id,
+        };
+      }
+    } else if (newestPartnerRow?.wallpaper_url && newestPartnerRow.wallpaper_url !== currentUrl) {
+      // Partner only updated wallpaper_url without a deck column
+      const fallbackDeck = createDefaultDeck(newestPartnerRow.wallpaper_url, currentUserId);
+      const activeSlot = getActiveSlot(fallbackDeck);
+      return {
+        hasUpdate: true,
+        newDeck: fallbackDeck,
+        activeSlot,
+        wallpaperUrl: newestPartnerRow.wallpaper_url,
+        wallpaperDim: newestPartnerRow.wallpaper_dim ?? 0,
+        wallpaperBlur: newestPartnerRow.wallpaper_blur ?? 0,
+        wallpaperZoom: newestPartnerRow.wallpaper_zoom ?? 1,
+        sourceUserId: newestPartnerRow.user_id,
+      };
+    }
+
+    // 2. Fallback check from messages table
+    const { data: msgData, error: msgErr } = await supabase
+      .from("messages")
+      .select("content, created_at, sender_id")
+      .eq("chat_id", chatId)
+      .eq("type", "wallpaper_deck")
+      .neq("sender_id", currentUserId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!msgErr && msgData?.content) {
+      const parsed = typeof msgData.content === "string" ? JSON.parse(msgData.content) : msgData.content;
+      if (parsed) {
+        const norm = normalizeDeck(parsed, undefined, msgData.sender_id);
+        const msgTime = new Date(msgData.created_at).getTime();
+        const deckTime = norm.updatedAt || msgTime;
+        if (deckTime > currentTimestamp) {
+          const merged = mergeDecks(currentDeck, norm, undefined, currentUserId);
+          merged.activeSlotId = norm.activeSlotId;
+          merged.activeGroupId = norm.activeGroupId;
+          merged.updatedAt = deckTime;
+          const activeSlot = getActiveSlot(merged);
+          return {
+            hasUpdate: true,
+            newDeck: merged,
+            activeSlot,
+            wallpaperUrl: activeSlot?.url || null,
+            wallpaperDim: activeSlot?.dim || 0,
+            wallpaperBlur: activeSlot?.blur || 0,
+            wallpaperZoom: activeSlot?.zoom || 1,
+            sourceUserId: msgData.sender_id,
+          };
+        }
+      }
+    }
+
+    return { hasUpdate: false };
+  } catch (e) {
+    console.warn("Failed to check partner wallpaper update:", e);
+    return { hasUpdate: false };
   }
 }
 
