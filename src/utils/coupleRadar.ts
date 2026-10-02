@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
+import * as Location from "expo-location";
 import { supabase } from "../lib/supabase";
 
 export interface RadarLocation {
@@ -127,7 +129,31 @@ export async function saveMyLocation(loc: RadarLocation): Promise<void> {
 /**
  * Request device location safely with fallback retry
  */
-export function getCurrentDeviceLocation(): Promise<RadarLocation | null> {
+export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> {
+  // If running natively on Android / iOS, use expo-location
+  if (Platform.OS !== "web") {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        console.warn("Location permission not granted on native device");
+        return null;
+      }
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      return {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        timestamp: pos.timestamp || Date.now(),
+        accuracy: pos.coords.accuracy || undefined,
+      };
+    } catch (e) {
+      console.warn("Native expo-location error:", e);
+      return null;
+    }
+  }
+
+  // Web fallback using navigator.geolocation
   return new Promise((resolve) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       resolve(null);
