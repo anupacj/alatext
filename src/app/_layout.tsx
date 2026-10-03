@@ -5,60 +5,7 @@ import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { Dimensions, Platform } from 'react-native';
 
-// Safe browser environment polyfill for native Android/iOS
-if (Platform.OS !== 'web' || typeof window === 'undefined') {
-  const { width, height } = Dimensions.get('window');
-  const dummyEventTarget = {
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => true,
-  };
-  const dummyStorage = {
-    getItem: () => null,
-    setItem: () => {},
-    removeItem: () => {},
-    clear: () => {},
-  };
-  const dummyElement: any = {
-    appendChild: () => {},
-    removeChild: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    setAttribute: () => {},
-    removeAttribute: () => {},
-    style: { setProperty: () => {} },
-    click: () => {},
-  };
-  const dummyDocument: any = {
-    ...dummyEventTarget,
-    getElementById: () => null,
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    createElement: () => ({ ...dummyElement }),
-    body: { ...dummyElement, style: {} },
-    head: { ...dummyElement, style: {} },
-    documentElement: { ...dummyElement, style: { setProperty: () => {} } },
-    title: 'Alatext',
-    hasFocus: () => true,
-    hidden: false,
-  };
-  (globalThis as any).window = (globalThis as any).window || {
-    ...dummyEventTarget,
-    innerWidth: width || 360,
-    innerHeight: height || 640,
-    location: { reload: () => {}, href: '', hostname: 'localhost' },
-    localStorage: dummyStorage,
-    sessionStorage: dummyStorage,
-    confirm: () => true,
-    alert: () => {},
-    open: () => {},
-    scrollTo: () => {},
-    document: dummyDocument,
-  };
-  if (typeof (globalThis as any).document === 'undefined') {
-    (globalThis as any).document = dummyDocument;
-  }
-}
+
 
 import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
@@ -84,7 +31,7 @@ function RootNavigator() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: theme.background },
-        animation: 'slide_from_right',
+        animation: Platform.OS === 'ios' ? 'slide_from_right' : 'default',
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -92,7 +39,7 @@ function RootNavigator() {
         name="chat"
         options={{
           headerShown: false,
-          animation: 'slide_from_right',
+          animation: Platform.OS === 'ios' ? 'slide_from_right' : 'default',
           fullScreenGestureEnabled: Platform.OS === 'ios',
         }}
       />
@@ -100,7 +47,7 @@ function RootNavigator() {
         name="chat-info"
         options={{
           headerShown: false,
-          animation: 'slide_from_right',
+          animation: Platform.OS === 'ios' ? 'slide_from_right' : 'default',
           fullScreenGestureEnabled: Platform.OS === 'ios',
         }}
       />

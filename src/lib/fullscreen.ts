@@ -6,7 +6,7 @@ export function isFullscreenActive(): boolean {
 }
 
 export function isMobileDevice(): boolean {
-  if (Platform.OS !== "web") return true;
+  if (Platform.OS !== "web") return false;
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
   const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
