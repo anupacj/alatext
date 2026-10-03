@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity, Image,
-  SafeAreaView, Platform, ActivityIndicator, Modal, TextInput,
+  Platform, ActivityIndicator, Modal, TextInput,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2, Lock } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";

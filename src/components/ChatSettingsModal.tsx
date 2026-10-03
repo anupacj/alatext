@@ -1464,18 +1464,21 @@ export default function ChatSettingsModal({
         {/* FONT FAMILY */}
         <Text style={[styles.sectionTitle, { marginTop: 18 }]}>🔤 Message Font Family</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-          {FONT_OPTIONS.map((f) => (
-            <TouchableOpacity
-              key={f.value}
-              style={[styles.fontCard, fontFamily === f.value && styles.fontCardSelected]}
-              onPress={() => setFontFamily(f.value)}
-            >
-              <Text style={[styles.fontCardSample, { fontFamily: f.value }]}>Aa</Text>
-              <Text style={[styles.fontCardName, fontFamily === f.value && { color: theme.text, fontWeight: "700" }]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {FONT_OPTIONS.map((f) => {
+            const fontVal = f.value;
+            return (
+              <TouchableOpacity
+                key={f.value}
+                style={[styles.fontCard, fontFamily === f.value && styles.fontCardSelected]}
+                onPress={() => setFontFamily(f.value)}
+              >
+                <Text style={[styles.fontCardSample, { fontFamily: fontVal }]}>Aa</Text>
+                <Text style={[styles.fontCardName, fontFamily === f.value && { color: theme.text, fontWeight: "700" }]}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
     );

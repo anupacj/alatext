@@ -123,13 +123,7 @@ import {
   WebRTCCallState,
 } from "../utils/webrtcCall";
 
-try {
-  if (Platform.OS === "android" && !(globalThis as any)?._IS_FABRIC && (UIManager as any)?.setLayoutAnimationEnabledExperimental) {
-    (UIManager as any).setLayoutAnimationEnabledExperimental(true);
-  }
-} catch (e) {
-  // Ignored in New Architecture / Fabric
-}
+
 
 const PAGE_SIZE = 25;
 

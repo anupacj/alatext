@@ -4,8 +4,13 @@ import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { Dimensions, Platform } from 'react-native';
+import { enableScreens } from 'react-native-screens';
 
-
+// Disable native screen Fragment recycling on Android New Architecture (Fabric)
+// to prevent native SIGSEGV and FragmentTransaction crashes on navigation
+if (Platform.OS === 'android') {
+  enableScreens(false);
+}
 
 import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
