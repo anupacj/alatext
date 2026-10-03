@@ -15,13 +15,11 @@ export function isMobileDevice(): boolean {
   return isMobileUA || (isTouch && isNarrow);
 }
 
-export function tryEnterFullscreen(forceOnDesktop = false) {
+export function tryEnterFullscreen(onlyOnMobile = false) {
   if (Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined") return;
   if (isFullscreenActive()) return;
 
-  // STRICT REQUIREMENT: Only enter fullscreen when explicitly requested by user action.
-  // Never automatically on mobile devices, as HTML5 fullscreen causes black screen flashes and keyboard collisions.
-  if (!forceOnDesktop) {
+  if (onlyOnMobile && !isMobileDevice()) {
     return;
   }
 

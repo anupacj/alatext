@@ -16,7 +16,7 @@ import ChatSidebar from "../../components/ChatSidebar";
 import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholder";
 import ShinyText from "../../components/ShinyText";
 import { useTabsLoading } from "../../context/TabsLoadingContext";
-import { isFullscreenActive, tryEnterFullscreen, exitFullscreen } from "../../lib/fullscreen";
+import { isFullscreenActive, tryEnterFullscreen, exitFullscreen, isMobileDevice } from "../../lib/fullscreen";
 
 export default function Home() {
   const { width } = useWindowDimensions();
@@ -272,6 +272,9 @@ export default function Home() {
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
       onPress={() => {
         try {
+          if (isMobileDevice()) {
+            tryEnterFullscreen(true);
+          }
           router.push({
             pathname: "/chat",
             params: {
@@ -337,7 +340,6 @@ export default function Home() {
         <View style={{ width: 380, height: "100%" }}>
           <ChatSidebar
             onSelectChat={(chatId, name) => {
-              tryEnterFullscreen();
               router.push({ pathname: "/chat", params: { id: chatId, name } });
             }}
           />
