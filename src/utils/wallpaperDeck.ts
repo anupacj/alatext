@@ -34,6 +34,7 @@ export interface WallpaperDeckConfig {
   autoMoodEnabled: boolean;
   autoRotateEnabled: boolean;
   autoMatchBubbles: boolean; // default true: auto apply smart bubble colors when wallpaper changes
+  wallpaper_doodle?: string;
   groups: WallpaperGroup[];
   slots: WallpaperSlot[]; // flat list maintained for 100% backward compatibility
   updatedAt: number;
@@ -400,6 +401,7 @@ export function normalizeDeck(raw: any, fallbackUrl?: string | null, userId = "d
     autoMoodEnabled: raw.autoMoodEnabled ?? false,
     autoRotateEnabled: raw.autoRotateEnabled ?? false,
     autoMatchBubbles: raw.autoMatchBubbles ?? true,
+    wallpaper_doodle: raw.wallpaper_doodle || undefined,
     groups,
     slots: allSlots,
     updatedAt: raw.updatedAt || Date.now(),
@@ -483,6 +485,7 @@ export function mergeDecks(
     autoMoodEnabled: primary.autoMoodEnabled ?? secondary.autoMoodEnabled ?? false,
     autoRotateEnabled: primary.autoRotateEnabled ?? secondary.autoRotateEnabled ?? false,
     autoMatchBubbles: primary.autoMatchBubbles ?? secondary.autoMatchBubbles ?? true,
+    wallpaper_doodle: primary.wallpaper_doodle || secondary.wallpaper_doodle || undefined,
     groups: finalGroups,
     slots: allSlots,
     updatedAt: Math.max(localTime, cloudTime) > 0 ? Math.max(localTime, cloudTime) : Date.now(),

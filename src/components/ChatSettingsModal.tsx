@@ -1050,6 +1050,7 @@ export default function ChatSettingsModal({
         ...deck,
         activeSlotId: activeSlot?.id || deck.activeSlotId,
         autoMatchBubbles,
+        wallpaper_doodle: wallpaperDoodle,
         updatedAt: Date.now(),
         updatedBy: userId,
       };
@@ -1103,7 +1104,7 @@ export default function ChatSettingsModal({
 
         if (error) {
           console.warn("Retrying chat_participants update without optional columns:", error);
-          const { send_button_emoji, anniversary_date, partner_nickname, custom_avatar_url, wallpaper_deck, screen_dim, ...restUpdates } = updates;
+          const { send_button_emoji, anniversary_date, partner_nickname, custom_avatar_url, wallpaper_deck, screen_dim, wallpaper_doodle, ...restUpdates } = updates;
           await supabase
             .from("chat_participants")
             .update(restUpdates)

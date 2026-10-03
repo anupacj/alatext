@@ -1443,6 +1443,9 @@ function ChatScreenContent() {
       if (!mySettings?.send_button_emoji && initialSettings?.send_button_emoji) {
         mergedSettings.send_button_emoji = initialSettings.send_button_emoji;
       }
+      if (!mySettings?.wallpaper_doodle && initialSettings?.wallpaper_doodle) {
+        mergedSettings.wallpaper_doodle = initialSettings.wallpaper_doodle;
+      }
 
       if (mySettings?.custom_avatar_url) {
         setChatAvatars(prev => ({ ...prev, [user.id]: mySettings.custom_avatar_url }));
@@ -1498,6 +1501,9 @@ function ChatScreenContent() {
 
       setWallpaperDeck(loadedDeck);
       wallpaperDeckRef.current = loadedDeck;
+      if (loadedDeck?.wallpaper_doodle) {
+        mergedSettings.wallpaper_doodle = loadedDeck.wallpaper_doodle;
+      }
       const activeSlot = getActiveSlot(loadedDeck);
       if (activeSlot) {
         mergedSettings.wallpaper_url = activeSlot.url || null;
@@ -1669,6 +1675,7 @@ function ChatScreenContent() {
                       wallpaper_dim: activeSlot.dim || 0,
                       wallpaper_blur: activeSlot.blur || 0,
                       wallpaper_zoom: activeSlot.zoom || 1,
+                      wallpaper_doodle: normDeck.wallpaper_doodle || prev?.wallpaper_doodle || "none",
                     };
                     if (normDeck.autoMatchBubbles !== false && !prev?.personal_color_override) {
                       const colors = getSmartBubbleColors(activeSlot);
