@@ -18,6 +18,7 @@ import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholde
 import ShinyText from "../../components/ShinyText";
 import { useTabsLoading } from "../../context/TabsLoadingContext";
 import { isFullscreenActive, tryEnterFullscreen, exitFullscreen, isMobileDevice } from "../../lib/fullscreen";
+import { sessionChats, setSessionChats } from "../../utils/sessionCache";
 
 export default function Home() {
   const { width } = useWindowDimensions();
@@ -77,14 +78,10 @@ export default function Home() {
 
   const fetchChats = useCallback(async () => {
     if (!user) return;
-    const cacheKey = `user_${user.id}_chats`;
-    try {
-      const cached = await AsyncStorage.getItem(cacheKey);
-      if (cached) {
-        setChats(JSON.parse(cached));
-        setLoading(false);
-      }
-    } catch (e) {}
+    if (sessionChats) {
+      setChats(sessionChats);
+      setLoading(false);
+    }
 
     try {
       const { data, error } = await supabase
@@ -106,7 +103,7 @@ export default function Home() {
 
       if (!data || data.length === 0) {
         setChats([]);
-        AsyncStorage.setItem(cacheKey, JSON.stringify([])).catch(() => {});
+        setSessionChats([]);
         setLoading(false);
         return;
       }
@@ -179,7 +176,7 @@ export default function Home() {
       formatted.sort((a, b) => b.timestamp - a.timestamp);
       
       setChats(formatted);
-      AsyncStorage.setItem(cacheKey, JSON.stringify(formatted)).catch(() => {});
+      setSessionChats(formatted);
     } catch (e) { console.error("Error fetching chats", e); }
     finally { setLoading(false); }
   }, [user]);

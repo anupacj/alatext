@@ -16,6 +16,7 @@ import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getSessionMessages, setSessionMessages } from "../utils/sessionCache";
 import ChatSettingsModal, { FONT_OPTIONS } from '../components/ChatSettingsModal';
 import StickerPicker from '../components/StickerPicker';
 import { HeartPing } from "../components/HeartPing";
@@ -1401,19 +1402,11 @@ function ChatScreenContent() {
     const init = async () => {
       let initialSettings: any = {};
       try {
-        const [cachedSettings, cachedPin, cachedProf, cachedFeatures] = await Promise.all([
-          AsyncStorage.getItem(`chat_${id}_settings`),
-          AsyncStorage.getItem(`chat_${id}_pinned`),
-          AsyncStorage.getItem(`@cached_profile_${user.id}`),
-          AsyncStorage.getItem(`@cached_public_features`),
-        ]);
+        const cachedSettings = await AsyncStorage.getItem(`chat_${id}_settings`);
         if (cachedSettings) {
           initialSettings = JSON.parse(cachedSettings);
           setChatSettings(initialSettings);
         }
-        if (cachedPin) setPinnedMessage(JSON.parse(cachedPin));
-        if (cachedProf) setMyProfile(JSON.parse(cachedProf));
-        if (cachedFeatures) setPublicFeatures(JSON.parse(cachedFeatures));
       } catch (e) {}
 
       // Parallelize profile, public features, and participant settings queries
@@ -1425,11 +1418,9 @@ function ChatScreenContent() {
 
       if (profRes.data) {
         setMyProfile(profRes.data);
-        AsyncStorage.setItem(`@cached_profile_${user.id}`, JSON.stringify(profRes.data)).catch(() => {});
       }
       if (stRes.data?.value && Array.isArray(stRes.data.value)) {
         setPublicFeatures(stRes.data.value);
-        AsyncStorage.setItem(`@cached_public_features`, JSON.stringify(stRes.data.value)).catch(() => {});
       }
 
       const mySettings = mySettingsRes.data;
@@ -1508,7 +1499,7 @@ function ChatScreenContent() {
           const colors = getSmartBubbleColors(activeSlot);
           mergedSettings.bubble_color_sent = colors.sent;
           mergedSettings.bubble_color_received = colors.received;
-          if (activeSlot.url) {
+          if (activeSlot.url && (!mergedSettings.bubble_color_sent || !mergedSettings.bubble_color_received)) {
             resolveSmartBubbleColors(activeSlot).then((dyn) => {
               setChatSettings((prev: any) => {
                 if (!prev || prev.personal_color_override) return prev;
@@ -1585,10 +1576,9 @@ function ChatScreenContent() {
 
     const fetchMsgs = async () => {
       try {
-        const cachedMsgs = await AsyncStorage.getItem(`chat_${id}_messages`);
-        if (cachedMsgs) {
-          const parsed = JSON.parse(cachedMsgs);
-          setMessages(prev => prev.length === 0 ? parsed : prev);
+        const sessionMsgs = getSessionMessages(id as string);
+        if (sessionMsgs && sessionMsgs.length > 0) {
+          setMessages(prev => prev.length === 0 ? sessionMsgs : prev);
         }
       } catch (e) {}
 
@@ -1626,7 +1616,7 @@ function ChatScreenContent() {
         const formatted = filtered.map(formatMsg);
         setMessages(formatted); 
         setHasMore(data.length === PAGE_SIZE); 
-        AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(formatted)).catch(() => {});
+        setSessionMessages(id as string, formatted);
       }
     };
     fetchMsgs();
@@ -2005,12 +1995,10 @@ function ChatScreenContent() {
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             } catch (e) {}
           }
-          setMessages(prev => prev.filter(m => m.id !== payload.payload.id));
-          AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
-            if (cached) {
-              const msgs = JSON.parse(cached).filter((m: any) => m.id !== payload.payload.id);
-              AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(msgs)).catch(() => {});
-            }
+          setMessages(prev => {
+            const next = prev.filter(m => m.id !== payload.payload.id);
+            setSessionMessages(id as string, next);
+            return next;
           });
         }
       })
@@ -2147,7 +2135,7 @@ function ChatScreenContent() {
 
   useEffect(() => {
     if (messages.length > 0 && id) {
-      AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(messages.slice(0, PAGE_SIZE))).catch(() => {});
+      setSessionMessages(id as string, messages.slice(0, PAGE_SIZE));
     }
   }, [messages, id]);
 
@@ -2600,13 +2588,8 @@ function ChatScreenContent() {
       }
     } catch (e) {}
 
-    // 3. Update local storage cache immediately
-    AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
-      if (cached) {
-        const list = JSON.parse(cached).filter((m: any) => m.id !== msgId);
-        AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(list));
-      }
-    }).catch(() => {});
+    // 3. Update in-memory session cache immediately
+    setSessionMessages(id as string, messages.filter(m => m.id !== msgId));
 
     // 4. Delete from Supabase database (both hard DELETE and soft UPDATE to guarantee DB persistence across refreshes)
     try {
