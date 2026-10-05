@@ -36,7 +36,7 @@ function RootNavigator() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: theme.background },
-        animation: Platform.OS === 'ios' ? 'slide_from_right' : 'default',
+        animation: Platform.OS === 'ios' ? 'slide_from_right' : 'none',
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -44,7 +44,7 @@ function RootNavigator() {
         name="chat"
         options={{
           headerShown: false,
-          animation: Platform.OS === 'ios' ? 'slide_from_right' : 'default',
+          animation: Platform.OS === 'ios' ? 'slide_from_right' : 'none',
           fullScreenGestureEnabled: Platform.OS === 'ios',
         }}
       />
@@ -52,7 +52,7 @@ function RootNavigator() {
         name="chat-info"
         options={{
           headerShown: false,
-          animation: Platform.OS === 'ios' ? 'slide_from_right' : 'default',
+          animation: Platform.OS === 'ios' ? 'slide_from_right' : 'none',
           fullScreenGestureEnabled: Platform.OS === 'ios',
         }}
       />
