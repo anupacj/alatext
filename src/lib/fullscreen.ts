@@ -27,7 +27,7 @@ export function tryEnterFullscreen(onlyOnMobile = false) {
     const el = document.documentElement as any;
     const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
     if (rfs) {
-      const p = rfs.call(el);
+      const p = rfs.call(el, { navigationUI: "auto" });
       if (p && typeof p.catch === "function") {
         p.catch(() => {});
       }

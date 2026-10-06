@@ -1062,6 +1062,12 @@ function ChatScreenContent() {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
 
     const resetScroll = () => {
+      // On Android, the OS & browser manage virtual keyboard resizing natively.
+      // Calling scrollTo(0, 0) during keyboard open/close transitions fights the GPU compositor,
+      // creating an immediate compositor stall and black screen flash on Samsung devices.
+      const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
+      if (isAndroid) return;
+
       if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0 || document.body.scrollTop !== 0) {
         window.scrollTo(0, 0);
         document.documentElement.scrollTop = 0;
@@ -1079,7 +1085,7 @@ function ChatScreenContent() {
         let diff = layoutHeight - (visualHeight + offsetTop);
         const keyboardHeight = (diff > 40 && diff < 450) ? Math.min(diff, 320) : 0;
 
-        setViewportBottom(keyboardHeight);
+        setViewportBottom(prev => prev === keyboardHeight ? prev : keyboardHeight);
         if (keyboardHeight > 0) {
           setTimeout(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
