@@ -1062,21 +1062,16 @@ function ChatScreenContent() {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
 
     const resetScroll = () => {
-      // On Android, the OS & browser manage virtual keyboard resizing natively.
-      // Calling scrollTo(0, 0) during keyboard open/close transitions fights the GPU compositor,
-      // creating an immediate compositor stall and black screen flash on Samsung devices.
-      const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
-      if (isAndroid) return;
-
-      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0 || document.body.scrollTop !== 0) {
-        window.scrollTo(0, 0);
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
+      if (typeof window !== "undefined") {
+        if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0 || (document.body && document.body.scrollTop !== 0)) {
+          window.scrollTo(0, 0);
+          if (document.documentElement) document.documentElement.scrollTop = 0;
+          if (document.body) document.body.scrollTop = 0;
+        }
       }
     };
 
     const handleViewport = () => {
-      resetScroll();
       if (window.visualViewport) {
         const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
         const visualHeight = window.visualViewport.height;
@@ -1100,6 +1095,9 @@ function ChatScreenContent() {
       resetScroll();
       handleViewport();
     };
+
+    // Ensure page scroll is reset to top upon entering chat
+    resetScroll();
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", handleViewport);
@@ -3195,46 +3193,14 @@ function ChatScreenContent() {
   const screenFadeAnim = useRef(new RNAnimated.Value(1)).current;
 
   useEffect(() => {
-    if (Platform.OS === "web") {
-      RNAnimated.parallel([
-        RNAnimated.spring(screenSlideAnim, {
-          toValue: 0,
-          friction: 8,
-          tension: 70,
-          useNativeDriver: false,
-        }),
-        RNAnimated.timing(screenFadeAnim, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: false,
-        }),
-      ]).start();
-    }
-  }, [screenSlideAnim, screenFadeAnim]);
+    screenSlideAnim.setValue(0);
+    screenFadeAnim.setValue(1);
+  }, [id, screenSlideAnim, screenFadeAnim]);
 
   const handleGoBack = useCallback(() => {
-    if (Platform.OS === "web") {
-      RNAnimated.parallel([
-        RNAnimated.timing(screenSlideAnim, {
-          toValue: 44,
-          duration: 180,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: false,
-        }),
-        RNAnimated.timing(screenFadeAnim, {
-          toValue: 0,
-          duration: 160,
-          useNativeDriver: false,
-        }),
-      ]).start(() => {
-        if (router.canGoBack()) router.back();
-        else router.replace("/");
-      });
-    } else {
-      if (router.canGoBack()) router.back();
-      else router.replace("/");
-    }
-  }, [router, screenSlideAnim, screenFadeAnim]);
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  }, [router]);
 
   // Escape key handler to exit chat to home or close active modals
   useEffect(() => {
@@ -4475,13 +4441,6 @@ function ChatScreenContent() {
                       onChangeText={handleInputChange}
                       onFocus={() => {
                         tabTitleManager.clearUnread();
-                        if (Platform.OS === "web" && typeof window !== "undefined") {
-                          setTimeout(() => {
-                            window.scrollTo(0, 0);
-                            document.documentElement.scrollTop = 0;
-                            document.body.scrollTop = 0;
-                          }, 50);
-                        }
                       }}
                       onKeyPress={(e: any) => {
                         if (emojiMatches.length > 0) {

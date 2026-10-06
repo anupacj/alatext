@@ -92,7 +92,7 @@ export default function Layout() {
           margin: 0 !important;
           padding: 0 !important;
           overflow: hidden !important;
-          background-color: var(--app-bg, #1e1f22) !important;
+          background-color: var(--app-bg, #1e1f22);
           font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           -webkit-tap-highlight-color: transparent;
         }
@@ -107,7 +107,7 @@ export default function Layout() {
           left: 0 !important;
           right: 0 !important;
           bottom: 0 !important;
-          background-color: var(--app-bg, #1e1f22) !important;
+          background-color: var(--app-bg, #1e1f22);
         }
         #root > div {
           height: 100% !important;
@@ -119,40 +119,12 @@ export default function Layout() {
         input, button, textarea, select {
           font-family: inherit;
         }
-        :fullscreen, :-webkit-full-screen, :-moz-full-screen, :-ms-fullscreen {
+        :fullscreen {
           height: 100% !important;
           width: 100% !important;
-          background-color: var(--app-bg, #1e1f22) !important;
-        }
-        :fullscreen body, :-webkit-full-screen body {
-          height: 100% !important;
-          width: 100% !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          overflow: hidden !important;
-          background-color: var(--app-bg, #1e1f22) !important;
-        }
-        :fullscreen #root, :-webkit-full-screen #root {
-          height: 100% !important;
-          width: 100% !important;
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          background-color: var(--app-bg, #1e1f22) !important;
-        }
-        :fullscreen #root > div, :-webkit-full-screen #root > div {
-          height: 100% !important;
-          width: 100% !important;
-          display: flex !important;
-          flex: 1 1 0% !important;
-          flex-direction: column !important;
         }
         ::backdrop {
-          background-color: var(--app-bg, #1e1f22) !important;
+          background-color: var(--app-bg, #1e1f22);
         }
       `;
       document.head.appendChild(globalStyle);
