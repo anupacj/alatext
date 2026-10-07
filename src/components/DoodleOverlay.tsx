@@ -83,7 +83,15 @@ function Particle({ particle, type }: { particle: any, type: string }) {
 }
 
 export function DoodleOverlay({ type }: { type: string }) {
-  if (!type || type === "none") return null;
+  const [ready, setReady] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!type || type === "none") return;
+    const t = setTimeout(() => setReady(true), 350);
+    return () => clearTimeout(t);
+  }, [type]);
+
+  if (!type || type === "none" || !ready) return null;
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 1 }]} pointerEvents="none">

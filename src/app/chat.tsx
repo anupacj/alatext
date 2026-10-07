@@ -247,6 +247,17 @@ function ChatScreenContent() {
   }>({ active: false, current: 0, total: 0, percent: 0 });
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(isGroupParam === "true");
+  const [isChatReady, setIsChatReady] = useState(Platform.OS !== "web");
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      const raf = requestAnimationFrame(() => {
+        setIsChatReady(true);
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+  }, []);
+
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const myProfileRef = useRef<UserProfile | null>(null);
   myProfileRef.current = myProfile;
@@ -4001,7 +4012,9 @@ function ChatScreenContent() {
 
         <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
 
-        {messages.length === 0 ? (
+        {!isChatReady ? (
+          <View style={{ flex: 1 }} />
+        ) : messages.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.hashCircle}><Hash size={36} color={isAmoled ? "#ffffff" : theme.text} /></View>
             <Text style={[styles.welcomeTitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
@@ -4018,10 +4031,10 @@ function ChatScreenContent() {
             renderItem={renderMessage}
             keyExtractor={item => item.client_id || item.id}
             inverted
-            initialNumToRender={15}
-            windowSize={Platform.OS === 'web' ? 7 : 11}
-            maxToRenderPerBatch={Platform.OS === 'web' ? 10 : 15}
-            updateCellsBatchingPeriod={50}
+            initialNumToRender={Platform.OS === 'web' ? 7 : 12}
+            windowSize={Platform.OS === 'web' ? 5 : 9}
+            maxToRenderPerBatch={Platform.OS === 'web' ? 6 : 12}
+            updateCellsBatchingPeriod={40}
             removeClippedSubviews={false}
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             keyboardShouldPersistTaps="handled"
@@ -5773,8 +5786,9 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
   const swipeProgress = useSharedValue(0);
   const hapticTriggeredRef = useRef(false);
 
-  const panResponder = useRef(
-    PanResponder.create({
+  const panResponderRef = useRef<any>(null);
+  if (!panResponderRef.current) {
+    panResponderRef.current = PanResponder.create({
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
       },
@@ -5819,8 +5833,9 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         swipeProgress.value = withTiming(0, { duration: 180 });
         hapticTriggeredRef.current = false;
       },
-    })
-  ).current;
+    });
+  }
+  const panResponder = panResponderRef.current;
 
   useEffect(() => {
     if (isLiveEntrance) {

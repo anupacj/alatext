@@ -18,3 +18,8 @@ export const getSessionMessages = (chatId: string): any[] | null => {
 export const setSessionMessages = (chatId: string, messages: any[]) => {
   sessionMessagesMap.set(chatId, messages);
 };
+
+export const clearSessionCache = () => {
+  sessionChats = null;
+  sessionMessagesMap.clear();
+};

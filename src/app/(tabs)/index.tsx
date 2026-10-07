@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2, Lock } from "lucide-react-native";
+import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2, Lock, Trash2 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { useTheme } from "../../context/ThemeContext";
@@ -18,7 +18,7 @@ import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholde
 import ShinyText from "../../components/ShinyText";
 import { useTabsLoading } from "../../context/TabsLoadingContext";
 import { isFullscreenActive, tryEnterFullscreen, exitFullscreen, isMobileDevice } from "../../lib/fullscreen";
-import { sessionChats, setSessionChats } from "../../utils/sessionCache";
+import { sessionChats, setSessionChats, clearSessionCache } from "../../utils/sessionCache";
 
 export default function Home() {
   const { width } = useWindowDimensions();
@@ -73,6 +73,23 @@ export default function Home() {
       }
     } catch (e) {
       console.error("Fullscreen toggle error:", e);
+    }
+  };
+
+  const handleWipeData = async () => {
+    try {
+      clearSessionCache();
+      await AsyncStorage.clear();
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        try { window.localStorage.clear(); } catch (e) {}
+        try { window.sessionStorage.clear(); } catch (e) {}
+        window.location.reload();
+      } else {
+        setChats([]);
+        fetchChats();
+      }
+    } catch (e) {
+      console.warn("Wipe data error:", e);
     }
   };
 
@@ -270,9 +287,6 @@ export default function Home() {
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
       onPress={() => {
         try {
-          if (isMobileDevice()) {
-            tryEnterFullscreen(true);
-          }
           router.push({
             pathname: "/chat",
             params: {
@@ -281,6 +295,11 @@ export default function Home() {
               isGroup: item.isGroup ? "true" : "false",
             },
           });
+          if (isMobileDevice()) {
+            setTimeout(() => {
+              tryEnterFullscreen(true);
+            }, 50);
+          }
         } catch (e) {
           console.warn("Error navigating to chat:", e);
         }
@@ -376,6 +395,13 @@ export default function Home() {
                 )}
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={handleWipeData}
+              accessibilityLabel="Wipe App Data & Cache"
+            >
+              <Trash2 size={18} color="#ef4444" />
+            </TouchableOpacity>
             <TouchableOpacity style={styles.iconButton}><Search size={20} color={theme.textMuted} /></TouchableOpacity>
           </View>
         </View>
