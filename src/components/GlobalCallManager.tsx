@@ -310,6 +310,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: Platform.OS === "web" ? 14 : 44,
     paddingHorizontal: 16,
+    pointerEvents: "box-none",
   },
   callCard: {
     width: "100%",

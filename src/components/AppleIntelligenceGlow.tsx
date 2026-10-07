@@ -136,7 +136,8 @@ export const AppleIntelligenceGlow: React.FC<AppleIntelligenceGlowProps> = ({
             {
               opacity: pulseAnim,
               borderRadius: numericRadius,
-            },
+              boxShadow: HALO_BOX_SHADOW,
+            } as any,
           ]}
         >
           <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={StyleSheet.absoluteFill}>

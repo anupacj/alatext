@@ -1,30 +1,29 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity,
-  Image as RNImage, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
+  Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable,
   LayoutAnimation, UIManager, Modal, ActivityIndicator, PanResponder, Vibration,
   Animated as RNAnimated, Easing, Dimensions, useWindowDimensions, Keyboard, AppState,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
 import Animated, { useSharedValue, useAnimatedStyle, useAnimatedProps, withSpring, withDelay, withTiming, withSequence, LinearTransition, interpolate } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
-import ErrorBoundary from "../components/ErrorBoundary";
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Camera, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getSessionMessages, setSessionMessages } from "../utils/sessionCache";
 import ChatSettingsModal, { FONT_OPTIONS } from '../components/ChatSettingsModal';
 import StickerPicker from '../components/StickerPicker';
 import { HeartPing } from "../components/HeartPing";
 import ShinyText from "../components/ShinyText";
 import { DoodleOverlay } from "../components/DoodleOverlay";
 import ChatInfoModal from "../components/ChatInfoModal";
-import { LinkPreviewCard, extractFirstUrl } from "../components/LinkPreviewCard";
 import ZoomableImageViewer from "../components/ZoomableImageViewer";
+import { tryEnterFullscreen } from "../lib/fullscreen";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
@@ -39,7 +38,7 @@ import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
 import { LottieSticker } from "../components/LottieSticker";
 import { supabase } from "../lib/supabase";
-import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2, getThumbnailUrl } from "../lib/r2";
+import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
@@ -92,8 +91,6 @@ import {
   getStoredMyLocation,
   saveMyLocation,
   getCurrentDeviceLocation,
-  persistRadarLocationToCloud,
-  fetchPartnerRadarLocationFromCloud,
   RADAR_UPDATE_INTERVAL_MS,
   RADAR_EXPIRY_TTL_MS,
 } from "../utils/coupleRadar";
@@ -124,9 +121,11 @@ import {
   WebRTCCallState,
 } from "../utils/webrtcCall";
 
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
-
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 50;
 
 interface Message {
   id: string;
@@ -158,7 +157,7 @@ function SendingDots() {
   return <>{dots}</>;
 }
 
-function ChatScreenContent() {
+export default function ChatScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
   const { theme } = useTheme();
@@ -247,17 +246,6 @@ function ChatScreenContent() {
   }>({ active: false, current: 0, total: 0, percent: 0 });
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const [isGroup, setIsGroup] = useState(isGroupParam === "true");
-  const [isChatReady, setIsChatReady] = useState(Platform.OS !== "web");
-
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      const raf = requestAnimationFrame(() => {
-        setIsChatReady(true);
-      });
-      return () => cancelAnimationFrame(raf);
-    }
-  }, []);
-
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const myProfileRef = useRef<UserProfile | null>(null);
   myProfileRef.current = myProfile;
@@ -481,51 +469,26 @@ function ChatScreenContent() {
 
   const radarLastUpdated = radarPartnerLoc?.timestamp ?? null;
 
-  // Refresh radar location (both cloud fetch of partner + device location broadcast)
+  // Refresh radar location (enforcing 20min interval unless force=true)
   const refreshRadarLocation = useCallback(async (force = false) => {
     if (isGroup || !id || !user) return;
     const now = Date.now();
     const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
 
-    // 1. Fetch partner's latest location from cloud if we don't have it or if forced
-    if (force || !radarPartnerLoc || now - (radarPartnerLoc?.timestamp || 0) > 10 * 60 * 1000) {
-      fetchPartnerRadarLocationFromCloud(chatIdStr, user.id).then((cloudPartnerLoc) => {
-        if (cloudPartnerLoc && (!radarPartnerLoc || cloudPartnerLoc.timestamp > radarPartnerLoc.timestamp)) {
-          setRadarPartnerLoc(cloudPartnerLoc);
-          savePartnerLocation(chatIdStr, cloudPartnerLoc);
-        }
-      }).catch(() => {});
-    }
-
-    // 2. Broadcast a live radar_request so if partner is active they reply immediately
-    if (typingChannelRef.current) {
-      try {
-        typingChannelRef.current.send({
-          type: "broadcast",
-          event: "radar_request",
-          payload: { requester_id: user.id },
-        });
-      } catch (e) {}
-    }
-
-    // Rate-limit device GPS acquisitions unless forced
     if (!force && now - lastRadarBroadcastRef.current < RADAR_UPDATE_INTERVAL_MS) {
+      if (radarPartnerLoc && now - radarPartnerLoc.timestamp > RADAR_EXPIRY_TTL_MS) {
+        setRadarPartnerLoc(null);
+        getStoredPartnerLocation(chatIdStr);
+      }
       return;
     }
 
-    let myNewLoc = await getCurrentDeviceLocation(force);
-    if (!myNewLoc) {
-      // Fallback to previously stored location if GPS lock timed out
-      myNewLoc = await getStoredMyLocation();
-    }
+    const myNewLoc = await getCurrentDeviceLocation();
     if (!myNewLoc) return;
 
     setRadarMyLoc(myNewLoc);
     saveMyLocation(myNewLoc);
     lastRadarBroadcastRef.current = now;
-
-    // Persist to cloud (chat_participants + messages table)
-    persistRadarLocationToCloud(chatIdStr, user.id, myNewLoc);
 
     if (typingChannelRef.current) {
       try {
@@ -543,9 +506,9 @@ function ChatScreenContent() {
     }
   }, [id, user, isGroup, radarPartnerLoc]);
 
-  // Load cached radar locations on mount and set up periodic sync check
+  // Load cached radar locations on mount and set up periodic 20-min sync check
   useEffect(() => {
-    if (!id || isGroup || !user) return;
+    if (!id || isGroup) return;
     const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
 
     getStoredPartnerLocation(chatIdStr).then((loc) => {
@@ -556,28 +519,15 @@ function ChatScreenContent() {
       if (loc) setRadarMyLoc(loc);
     });
 
-    // Check cloud immediately on entering chat
-    fetchPartnerRadarLocationFromCloud(chatIdStr, user.id).then((cloudLoc) => {
-      if (cloudLoc) {
-        setRadarPartnerLoc(cloudLoc);
-        savePartnerLocation(chatIdStr, cloudLoc);
-      }
-    }).catch(() => {});
-
-    // Delay device location check so screen transition completes smoothly
-    const radarInitTimer = setTimeout(() => {
-      refreshRadarLocation(false);
-    }, 1500);
+    // Check device location & broadcast once on entering chat if permissions allow
+    refreshRadarLocation(false);
 
     const syncInterval = setInterval(() => {
       refreshRadarLocation(false);
     }, 60 * 1000);
 
-    return () => {
-      clearTimeout(radarInitTimer);
-      clearInterval(syncInterval);
-    };
-  }, [id, isGroup, user, refreshRadarLocation]);
+    return () => clearInterval(syncInterval);
+  }, [id, isGroup, refreshRadarLocation]);
 
   // Load cached couple moods on mount and prune expired moods (>6 hours)
   useEffect(() => {
@@ -1040,7 +990,6 @@ function ChatScreenContent() {
   const typingChannelRef = useRef<any>(null);
   const profileCache = useRef<Map<string, any>>(new Map());
   const fileInputRef = useRef<any>(null);
-  const cameraInputRef = useRef<any>(null);
   const textInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -1073,16 +1022,15 @@ function ChatScreenContent() {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
 
     const resetScroll = () => {
-      if (typeof window !== "undefined") {
-        if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0 || (document.body && document.body.scrollTop !== 0)) {
-          window.scrollTo(0, 0);
-          if (document.documentElement) document.documentElement.scrollTop = 0;
-          if (document.body) document.body.scrollTop = 0;
-        }
+      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0 || document.body.scrollTop !== 0) {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
       }
     };
 
     const handleViewport = () => {
+      resetScroll();
       if (window.visualViewport) {
         const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
         const visualHeight = window.visualViewport.height;
@@ -1091,7 +1039,7 @@ function ChatScreenContent() {
         let diff = layoutHeight - (visualHeight + offsetTop);
         const keyboardHeight = (diff > 40 && diff < 450) ? Math.min(diff, 320) : 0;
 
-        setViewportBottom(prev => prev === keyboardHeight ? prev : keyboardHeight);
+        setViewportBottom(keyboardHeight);
         if (keyboardHeight > 0) {
           setTimeout(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -1106,9 +1054,6 @@ function ChatScreenContent() {
       resetScroll();
       handleViewport();
     };
-
-    // Ensure page scroll is reset to top upon entering chat
-    resetScroll();
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", handleViewport);
@@ -1148,6 +1093,29 @@ function ChatScreenContent() {
       document.removeEventListener("pointerdown", handlePointerDown, true);
     };
   }, [fontPickerOpen]);
+
+  // Automatically enter fullscreen when entering a chat (MOBILE ONLY)
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined" || isDesktop) return;
+
+    tryEnterFullscreen();
+
+    const handleFirstTap = () => {
+      if (!isDesktop) {
+        tryEnterFullscreen();
+      }
+      window.removeEventListener("pointerdown", handleFirstTap, true);
+      window.removeEventListener("touchstart", handleFirstTap, true);
+    };
+
+    window.addEventListener("pointerdown", handleFirstTap, true);
+    window.addEventListener("touchstart", handleFirstTap, true);
+
+    return () => {
+      window.removeEventListener("pointerdown", handleFirstTap, true);
+      window.removeEventListener("touchstart", handleFirstTap, true);
+    };
+  }, [isDesktop]);
 
   // Listen for context menu resolution requests from AlaContextMenu
   useEffect(() => {
@@ -1422,29 +1390,19 @@ function ChatScreenContent() {
           initialSettings = JSON.parse(cachedSettings);
           setChatSettings(initialSettings);
         }
+        const cachedPin = await AsyncStorage.getItem(`chat_${id}_pinned`);
+        if (cachedPin) setPinnedMessage(JSON.parse(cachedPin));
       } catch (e) {}
 
-      // Parallelize profile, public features, and participant settings queries
-      const [profRes, stRes, mySettingsRes] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
-        supabase.from("app_settings").select("value").eq("key", "public_features").maybeSingle(),
-        supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).maybeSingle(),
-      ]);
+      const { data: prof } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      if (prof) setMyProfile(prof);
+      const { data: st } = await supabase.from("app_settings").select("value").eq("key", "public_features").single();
+      if (st?.value && Array.isArray(st.value)) setPublicFeatures(st.value);
 
-      if (profRes.data) {
-        setMyProfile(profRes.data);
-      }
-      if (stRes.data?.value && Array.isArray(stRes.data.value)) {
-        setPublicFeatures(stRes.data.value);
-      }
-
-      const mySettings = mySettingsRes.data;
+      const { data: mySettings } = await supabase.from("chat_participants").select("*").eq("chat_id", id).eq("user_id", user.id).single();
       const mergedSettings = { ...initialSettings, ...(mySettings || {}) };
       if (!mySettings?.send_button_emoji && initialSettings?.send_button_emoji) {
         mergedSettings.send_button_emoji = initialSettings.send_button_emoji;
-      }
-      if (!mySettings?.wallpaper_doodle && initialSettings?.wallpaper_doodle) {
-        mergedSettings.wallpaper_doodle = initialSettings.wallpaper_doodle;
       }
 
       if (mySettings?.custom_avatar_url) {
@@ -1501,9 +1459,6 @@ function ChatScreenContent() {
 
       setWallpaperDeck(loadedDeck);
       wallpaperDeckRef.current = loadedDeck;
-      if (loadedDeck?.wallpaper_doodle) {
-        mergedSettings.wallpaper_doodle = loadedDeck.wallpaper_doodle;
-      }
       const activeSlot = getActiveSlot(loadedDeck);
       if (activeSlot) {
         mergedSettings.wallpaper_url = activeSlot.url || null;
@@ -1514,7 +1469,7 @@ function ChatScreenContent() {
           const colors = getSmartBubbleColors(activeSlot);
           mergedSettings.bubble_color_sent = colors.sent;
           mergedSettings.bubble_color_received = colors.received;
-          if (activeSlot.url && (!mergedSettings.bubble_color_sent || !mergedSettings.bubble_color_received)) {
+          if (activeSlot.url) {
             resolveSmartBubbleColors(activeSlot).then((dyn) => {
               setChatSettings((prev: any) => {
                 if (!prev || prev.personal_color_override) return prev;
@@ -1591,9 +1546,10 @@ function ChatScreenContent() {
 
     const fetchMsgs = async () => {
       try {
-        const sessionMsgs = getSessionMessages(id as string);
-        if (sessionMsgs && sessionMsgs.length > 0) {
-          setMessages(prev => prev.length === 0 ? sessionMsgs : prev);
+        const cachedMsgs = await AsyncStorage.getItem(`chat_${id}_messages`);
+        if (cachedMsgs) {
+          const parsed = JSON.parse(cachedMsgs);
+          setMessages(prev => prev.length === 0 ? parsed : prev);
         }
       } catch (e) {}
 
@@ -1616,22 +1572,11 @@ function ChatScreenContent() {
           } catch (e) {}
         }
         
-        const partnerRadarMsg = data.find(m => m.type === "radar_ping" && m.sender_id !== user?.id);
-        if (partnerRadarMsg) {
-          try {
-            const loc = typeof partnerRadarMsg.content === "string" ? JSON.parse(partnerRadarMsg.content) : partnerRadarMsg.content;
-            if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
-              setRadarPartnerLoc(loc);
-              savePartnerLocation(id as string, loc);
-            }
-          } catch (e) {}
-        }
-
-        const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar" && m.type !== "radar_ping");
+        const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar");
         const formatted = filtered.map(formatMsg);
         setMessages(formatted); 
         setHasMore(data.length === PAGE_SIZE); 
-        setSessionMessages(id as string, formatted);
+        AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(formatted)).catch(() => {});
       }
     };
     fetchMsgs();
@@ -1639,24 +1584,6 @@ function ChatScreenContent() {
     const channel = supabase.channel(`chat_${sessionToken}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `chat_id=eq.${id}` }, async (payload) => {
         if (payload.eventType === "INSERT") {
-          if (payload.new.type === "radar_ping") {
-            if (payload.new.sender_id !== user?.id) {
-              try {
-                const parsedLoc = typeof payload.new.content === "string" ? JSON.parse(payload.new.content) : payload.new.content;
-                if (parsedLoc && typeof parsedLoc.lat === "number" && typeof parsedLoc.lng === "number") {
-                  const newPartnerLoc: RadarLocation = {
-                    lat: parsedLoc.lat,
-                    lng: parsedLoc.lng,
-                    timestamp: parsedLoc.timestamp || new Date(payload.new.created_at).getTime(),
-                    accuracy: parsedLoc.accuracy,
-                  };
-                  setRadarPartnerLoc(newPartnerLoc);
-                  savePartnerLocation(id as string, newPartnerLoc);
-                }
-              } catch (e) {}
-            }
-            return;
-          }
           if (payload.new.type === "wallpaper_deck") {
             try {
               const parsedDeck = typeof payload.new.content === "string" ? JSON.parse(payload.new.content) : payload.new.content;
@@ -1674,7 +1601,6 @@ function ChatScreenContent() {
                       wallpaper_dim: activeSlot.dim || 0,
                       wallpaper_blur: activeSlot.blur || 0,
                       wallpaper_zoom: activeSlot.zoom || 1,
-                      wallpaper_doodle: normDeck.wallpaper_doodle || prev?.wallpaper_doodle || "none",
                     };
                     if (normDeck.autoMatchBubbles !== false && !prev?.personal_color_override) {
                       const colors = getSmartBubbleColors(activeSlot);
@@ -1749,9 +1675,7 @@ function ChatScreenContent() {
             tabTitleManager.incrementUnread(senderDisplayName);
           }
           if (Platform.OS !== "web") {
-            try {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            } catch (e) {}
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           }
           setMessages(prev => {
             if (prev.some(m => m.id === nm.id)) return prev;
@@ -1769,9 +1693,7 @@ function ChatScreenContent() {
           checkLiveLoveTrigger(nm);
         } else if (payload.eventType === "DELETE") {
           if (Platform.OS !== "web") {
-            try {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            } catch (e) {}
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           }
           const delId = payload.old?.id;
           if (delId) {
@@ -1780,9 +1702,7 @@ function ChatScreenContent() {
         } else if (payload.eventType === "UPDATE") {
           if (payload.new.type === "deleted") {
             if (Platform.OS !== "web") {
-              try {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              } catch (e) {}
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             }
             setMessages(prev => prev.filter(m => m.id !== payload.new.id));
           } else {
@@ -1793,9 +1713,7 @@ function ChatScreenContent() {
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
         if (payload.old?.id) {
           if (Platform.OS !== "web") {
-            try {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            } catch (e) {}
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           }
           setMessages(prev => prev.filter(m => m.id !== payload.old.id));
         }
@@ -1947,24 +1865,6 @@ function ChatScreenContent() {
           });
         }
       })
-      .on("broadcast", { event: "radar_request" }, (payload: any) => {
-        const p = payload?.payload;
-        if (!p || p.requester_id === user.id) return;
-        getStoredMyLocation().then((loc) => {
-          if (loc && Date.now() - loc.timestamp < RADAR_EXPIRY_TTL_MS) {
-            typingChannelRef.current?.send({
-              type: "broadcast",
-              event: "radar_ping",
-              payload: {
-                user_id: user.id,
-                lat: loc.lat,
-                lng: loc.lng,
-                timestamp: loc.timestamp,
-              },
-            });
-          }
-        });
-      })
       .on("broadcast", { event: "radar_ping" }, (payload: any) => {
         const p = payload?.payload;
         if (!p || p.user_id === user.id) return;
@@ -2006,14 +1906,14 @@ function ChatScreenContent() {
       .on("broadcast", { event: "message_deleted" }, (payload) => {
         if (payload.payload?.id) {
           if (Platform.OS !== "web") {
-            try {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            } catch (e) {}
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           }
-          setMessages(prev => {
-            const next = prev.filter(m => m.id !== payload.payload.id);
-            setSessionMessages(id as string, next);
-            return next;
+          setMessages(prev => prev.filter(m => m.id !== payload.payload.id));
+          AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
+            if (cached) {
+              const msgs = JSON.parse(cached).filter((m: any) => m.id !== payload.payload.id);
+              AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(msgs)).catch(() => {});
+            }
           });
         }
       })
@@ -2072,25 +1972,6 @@ function ChatScreenContent() {
             event: "mood_ping",
             payload: { sender_id: user.id },
           });
-          tChannel.send({
-            type: "broadcast",
-            event: "radar_request",
-            payload: { requester_id: user.id },
-          });
-          getStoredMyLocation().then((loc) => {
-            if (loc && Date.now() - loc.timestamp < RADAR_EXPIRY_TTL_MS) {
-              tChannel.send({
-                type: "broadcast",
-                event: "radar_ping",
-                payload: {
-                  user_id: user.id,
-                  lat: loc.lat,
-                  lng: loc.lng,
-                  timestamp: loc.timestamp,
-                },
-              });
-            }
-          });
         }
       });
     typingChannelRef.current = tChannel;
@@ -2141,7 +2022,7 @@ function ChatScreenContent() {
       .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)")
       .eq("chat_id", id).lt("created_at", oldest.created_at).order("created_at", { ascending: false }).limit(PAGE_SIZE);
     if (!error && data) {
-      const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar" && m.type !== "radar_ping");
+      const filtered = data.filter(m => m.type !== "alert" && m.type !== "deleted" && m.type !== "wallpaper_deck" && m.type !== "chat_avatar");
       setMessages(prev => [...prev, ...filtered.map(formatMsg)]);
       setHasMore(data.length === PAGE_SIZE);
     }
@@ -2150,7 +2031,7 @@ function ChatScreenContent() {
 
   useEffect(() => {
     if (messages.length > 0 && id) {
-      setSessionMessages(id as string, messages.slice(0, PAGE_SIZE));
+      AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(messages.slice(0, PAGE_SIZE))).catch(() => {});
     }
   }, [messages, id]);
 
@@ -2477,8 +2358,8 @@ function ChatScreenContent() {
       if (now - lastTypingSentRef.current > 1500) {
         sendGhostPayload();
       } else {
-        // Subsequent keystrokes debounced by 200ms for smooth live letter reveal without flooding
-        typingDebounceTimeoutRef.current = setTimeout(sendGhostPayload, 200);
+        // Subsequent keystrokes debounced by 120ms for smooth live letter reveal without flooding
+        typingDebounceTimeoutRef.current = setTimeout(sendGhostPayload, 120);
       }
     } else {
       // Normal typing indicator: broadcast every 2000ms
@@ -2603,8 +2484,13 @@ function ChatScreenContent() {
       }
     } catch (e) {}
 
-    // 3. Update in-memory session cache immediately
-    setSessionMessages(id as string, messages.filter(m => m.id !== msgId));
+    // 3. Update local storage cache immediately
+    AsyncStorage.getItem(`chat_${id}_messages`).then(cached => {
+      if (cached) {
+        const list = JSON.parse(cached).filter((m: any) => m.id !== msgId);
+        AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(list));
+      }
+    }).catch(() => {});
 
     // 4. Delete from Supabase database (both hard DELETE and soft UPDATE to guarantee DB persistence across refreshes)
     try {
@@ -2617,63 +2503,6 @@ function ChatScreenContent() {
       console.error("Delete DB error:", e);
     }
   }, [id, user?.id]);
-
-  const compressImageForUpload = useCallback(async (file: Blob | File): Promise<Blob | File> => {
-    if (Platform.OS !== "web" || typeof window === "undefined" || !window.document) return file;
-    if (!file.type?.startsWith("image/") || file.type.includes("gif") || file.type.includes("svg")) {
-      return file;
-    }
-    // Only compress if larger than 300KB
-    if (file.size && file.size < 300 * 1024) return file;
-
-    return new Promise((resolve) => {
-      try {
-        const img = new (window as any).Image();
-        const objectUrl = URL.createObjectURL(file);
-        img.onload = () => {
-          URL.revokeObjectURL(objectUrl);
-          const maxDimension = 1800;
-          let { width, height } = img;
-          if (width > maxDimension || height > maxDimension) {
-            if (width > height) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
-            } else {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
-          }
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            resolve(file);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob(
-            (blob) => {
-              if (blob && blob.size < file.size) {
-                resolve(blob);
-              } else {
-                resolve(file);
-              }
-            },
-            "image/jpeg",
-            0.75
-          );
-        };
-        img.onerror = () => {
-          URL.revokeObjectURL(objectUrl);
-          resolve(file);
-        };
-        img.src = objectUrl;
-      } catch (e) {
-        resolve(file);
-      }
-    });
-  }, []);
 
   const handleUploadFiles = useCallback(async (files: (File | Blob)[]) => {
     const selectedFiles = Array.from(files).slice(0, 10);
@@ -2696,9 +2525,8 @@ function ChatScreenContent() {
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         const isVideo = file.type?.startsWith("video");
-        const blobToUpload = isVideo ? file : await compressImageForUpload(file);
         const prefix = isVideo ? `chat-videos/${id}-${Date.now()}-${i}` : `chat-images/${id}-${Date.now()}-${i}`;
-        const url = await uploadBlobToR2(prefix, blobToUpload, (pct) => updateOverallProgress(i, pct));
+        const url = await uploadBlobToR2(prefix, file, (pct) => updateOverallProgress(i, pct));
         updateOverallProgress(i, 100);
         msgs.push({
           chat_id: id,
@@ -2733,7 +2561,7 @@ function ChatScreenContent() {
       setUploadingImage(false);
       setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
     }
-  }, [id, user?.id, replyingTo, formatMsg, compressImageForUpload]);
+  }, [id, user?.id, replyingTo, formatMsg]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -2762,7 +2590,7 @@ function ChatScreenContent() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") return;
     const result = await ImagePicker.launchImageLibraryAsync({
-      quality: 0.7,
+      quality: 0.8,
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
       selectionLimit: 10,
@@ -2825,70 +2653,6 @@ function ChatScreenContent() {
         setUploadingImage(false);
         setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
       }
-    }
-  }, [id, user?.id, replyingTo, formatMsg]);
-
-  const handleTakePhoto = useCallback(async () => {
-    if (Platform.OS === "web") {
-      if (cameraInputRef.current) {
-        cameraInputRef.current.click();
-      }
-      return;
-    }
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        alert("Camera permission is required to take photos.");
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        quality: 0.7,
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-      });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        setUploadingImage(true);
-        setUploadProgress({ active: true, current: 1, total: 1, percent: 0 });
-        try {
-          const resp = await fetch(asset.uri);
-          const blob = await resp.blob();
-          const prefix = `chat-images/${id}-${Date.now()}`;
-          const url = await uploadBlobToR2(prefix, blob, (pct) => {
-            setUploadProgress({ active: true, current: 1, total: 1, percent: pct });
-          });
-          const { data: insertedMsgs, error: insertErr } = await supabase
-            .from("messages")
-            .insert([{
-              chat_id: id,
-              sender_id: user?.id,
-              content: url,
-              type: "image",
-              reply_to_id: replyingTo?.id || null,
-              reply_to_content: replyingTo?.text || null,
-              reply_to_sender: replyingTo?.sender || null,
-            }])
-            .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)");
-
-          if (!insertErr && insertedMsgs && insertedMsgs.length > 0) {
-            const formatted = insertedMsgs.map(formatMsg);
-            setMessages(prev => {
-              const existingIds = new Set(prev.map(m => m.id));
-              const additions = formatted.filter(m => !existingIds.has(m.id));
-              return [...additions, ...prev];
-            });
-          }
-          setReplyingTo(null);
-        } catch (e: any) {
-          console.error("Camera upload error:", e);
-          alert("Failed to upload photo: " + (e.message || e));
-        } finally {
-          setUploadingImage(false);
-          setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
-        }
-      }
-    } catch (err: any) {
-      console.error("Take photo error:", err);
     }
   }, [id, user?.id, replyingTo, formatMsg]);
 
@@ -3200,18 +2964,50 @@ function ChatScreenContent() {
   }, [handlePinMessage, deleteMessage, openChatInfo, handleSaveMessageToMemories, handleSaveMessageToNotes]);
 
   // Fluid screen entrance slide animation (works across Web/PWA/mobile browsers)
-  const screenSlideAnim = useRef(new RNAnimated.Value(0)).current;
-  const screenFadeAnim = useRef(new RNAnimated.Value(1)).current;
+  const screenSlideAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 44 : 0)).current;
+  const screenFadeAnim = useRef(new RNAnimated.Value(Platform.OS === "web" ? 0 : 1)).current;
 
   useEffect(() => {
-    screenSlideAnim.setValue(0);
-    screenFadeAnim.setValue(1);
-  }, [id, screenSlideAnim, screenFadeAnim]);
+    if (Platform.OS === "web") {
+      RNAnimated.parallel([
+        RNAnimated.spring(screenSlideAnim, {
+          toValue: 0,
+          friction: 8,
+          tension: 70,
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(screenFadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }
+  }, [screenSlideAnim, screenFadeAnim]);
 
   const handleGoBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/");
-  }, [router]);
+    if (Platform.OS === "web") {
+      RNAnimated.parallel([
+        RNAnimated.timing(screenSlideAnim, {
+          toValue: 44,
+          duration: 180,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(screenFadeAnim, {
+          toValue: 0,
+          duration: 160,
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/");
+      });
+    } else {
+      if (router.canGoBack()) router.back();
+      else router.replace("/");
+    }
+  }, [router, screenSlideAnim, screenFadeAnim]);
 
   // Escape key handler to exit chat to home or close active modals
   useEffect(() => {
@@ -3515,10 +3311,7 @@ function ChatScreenContent() {
                     radarBearing={radarBearing}
                     radarLastUpdated={radarLastUpdated}
                     radarPartnerLoc={radarPartnerLoc}
-                    onRefreshRadar={() => {
-                      triggerHeartbeatHaptic();
-                      refreshRadarLocation(true);
-                    }}
+                    onRefreshRadar={() => refreshRadarLocation(true)}
                     onStartCall={(type) => {
                       if (!targetUser?.id) return;
                       initiateCall({
@@ -3569,13 +3362,7 @@ function ChatScreenContent() {
                         <Users size={18} color="#fff" />
                       </View>
                     ) : ((targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url) ? (
-                      <ExpoImage
-                        source={{ uri: getThumbnailUrl((targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url, 120, 120, 80) }}
-                        style={styles.floatingAvatar}
-                        cachePolicy="disk"
-                        transition={150}
-                        contentFit="cover"
-                      />
+                      <Image source={{ uri: (targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url }} style={styles.floatingAvatar} />
                     ) : (
                       <View style={[styles.floatingAvatar, { backgroundColor: isAmoled ? '#222' : theme.accent, justifyContent: "center", alignItems: "center" }]}>
                         <User size={18} color="#fff" />
@@ -4012,9 +3799,7 @@ function ChatScreenContent() {
 
         <DoodleOverlay type={chatSettings?.wallpaper_doodle || "none"} />
 
-        {!isChatReady ? (
-          <View style={{ flex: 1 }} />
-        ) : messages.length === 0 ? (
+        {messages.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.hashCircle}><Hash size={36} color={isAmoled ? "#ffffff" : theme.text} /></View>
             <Text style={[styles.welcomeTitle, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>
@@ -4031,10 +3816,10 @@ function ChatScreenContent() {
             renderItem={renderMessage}
             keyExtractor={item => item.client_id || item.id}
             inverted
-            initialNumToRender={Platform.OS === 'web' ? 7 : 12}
-            windowSize={Platform.OS === 'web' ? 5 : 9}
-            maxToRenderPerBatch={Platform.OS === 'web' ? 6 : 12}
-            updateCellsBatchingPeriod={40}
+            initialNumToRender={15}
+            windowSize={Platform.OS === 'web' ? 7 : 11}
+            maxToRenderPerBatch={Platform.OS === 'web' ? 10 : 15}
+            updateCellsBatchingPeriod={50}
             removeClippedSubviews={false}
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             keyboardShouldPersistTaps="handled"
@@ -4195,13 +3980,7 @@ function ChatScreenContent() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.replyBannerSender, { color: theme.accent }, chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}]}>{replyingTo.sender}</Text>
                     {replyingTo.text?.startsWith("http") ? (
-                      <ExpoImage
-                        source={{ uri: getThumbnailUrl(replyingTo.text, 80, 80, 75) }}
-                        style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }}
-                        cachePolicy="disk"
-                        transition={150}
-                        contentFit="cover"
-                      />
+                      <Image source={{ uri: replyingTo.text }} style={{ width: 32, height: 32, borderRadius: 4, marginTop: 4 }} resizeMode="cover" />
                     ) : (
                       <Text style={[styles.replyBannerText, { color: isAmoled ? "#aaaaaa" : theme.textMuted }]} numberOfLines={1}>{replyingTo.text}</Text>
                     )}
@@ -4367,17 +4146,11 @@ function ChatScreenContent() {
                     { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
                     inputText.includes("\n") ? { height: undefined, minHeight: 46, maxHeight: 120 } : { height: 46 }
                   ]}>
-                    <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage} accessibilityLabel="Attach Gallery Photos & Videos">
+                    <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                       {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.attachButton, { marginLeft: 3, backgroundColor: isAmoled ? "#222" : (theme.id === "pink" ? "rgba(244,114,182,0.3)" : "rgba(255,255,255,0.14)") }]} onPress={handleTakePhoto} disabled={uploadingImage} accessibilityLabel="Take Photo">
-                      <Camera size={19} color="#ffffff" />
-                    </TouchableOpacity>
                     {Platform.OS === "web" && (
-                      <>
-                        <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
-                        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" } as any} onChange={handleWebFileChange} />
-                      </>
+                      <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
                     )}
                     {isDesktop && isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
                       <TouchableOpacity 
@@ -4454,6 +4227,13 @@ function ChatScreenContent() {
                       onChangeText={handleInputChange}
                       onFocus={() => {
                         tabTitleManager.clearUnread();
+                        if (Platform.OS === "web" && typeof window !== "undefined") {
+                          setTimeout(() => {
+                            window.scrollTo(0, 0);
+                            document.documentElement.scrollTop = 0;
+                            document.body.scrollTop = 0;
+                          }, 50);
+                        }
                       }}
                       onKeyPress={(e: any) => {
                         if (emojiMatches.length > 0) {
@@ -4899,14 +4679,6 @@ function ChatScreenContent() {
   }
 
   return chatViewContent;
-}
-
-export default function ChatScreen() {
-  return (
-    <ErrorBoundary screenName="Chat">
-      <ChatScreenContent />
-    </ErrorBoundary>
-  );
 }
 
 const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false) => {
@@ -5406,28 +5178,6 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     fontSize: 15,
     fontWeight: "600",
   },
-  swipeReplyBadgeLeft: {
-    position: "absolute",
-    left: 14,
-    top: "50%",
-    marginTop: -18,
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 0,
-  },
-  swipeReplyBadgeRight: {
-    position: "absolute",
-    right: 14,
-    top: "50%",
-    marginTop: -18,
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 0,
-  },
 });
 };
 
@@ -5439,7 +5189,7 @@ const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress
   useEffect(() => {
     if (!uri || typeof uri !== "string") return;
     try {
-      RNImage.getSize(
+      Image.getSize(
         uri,
         (w, h) => {
           if (w && h) {
@@ -5457,23 +5207,20 @@ const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress
   const maxW = 274;
   const computedW = Math.min(maxW, Math.max(160, 220 * (aspectRatio >= 1 ? Math.min(1.35, aspectRatio) : 1)));
   const computedH = Math.min(330, computedW / aspectRatio);
-  const thumbUri = getThumbnailUrl(uri, Math.round(computedW * 2), Math.round(computedH * 2), 75);
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
-      <ExpoImage
-        source={{ uri: thumbUri }}
+      <Image
+        source={{ uri }}
         style={[
           {
             width: computedW,
             height: computedH,
             borderRadius: 12,
+            resizeMode: "cover",
           },
           style,
         ]}
-        cachePolicy="disk"
-        transition={150}
-        contentFit="cover"
       />
     </TouchableOpacity>
   );
@@ -5491,13 +5238,7 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
       <View style={{ flexDirection: "row", gap: 2, borderRadius: 12, overflow: "hidden", maxWidth: 274 }}>
         {items.map((item) => (
           <TouchableOpacity key={item.id} onPress={() => setImageViewerUrl(item.text)} style={{ width: 136, height: 180 }} activeOpacity={0.85}>
-            <ExpoImage
-              source={{ uri: getThumbnailUrl(item.text, 300, 380, 75) }}
-              style={{ width: "100%", height: "100%" }}
-              cachePolicy="disk"
-              transition={150}
-              contentFit="cover"
-            />
+            <Image source={{ uri: item.text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
           </TouchableOpacity>
         ))}
       </View>
@@ -5508,32 +5249,14 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
     return (
       <View style={{ flexDirection: "row", gap: 2, borderRadius: 12, overflow: "hidden", maxWidth: 274, height: 274 }}>
         <TouchableOpacity onPress={() => setImageViewerUrl(items[0].text)} style={{ width: 136, height: 274 }} activeOpacity={0.85}>
-          <ExpoImage
-            source={{ uri: getThumbnailUrl(items[0].text, 300, 600, 75) }}
-            style={{ width: "100%", height: "100%" }}
-            cachePolicy="disk"
-            transition={150}
-            contentFit="cover"
-          />
+          <Image source={{ uri: items[0].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
         </TouchableOpacity>
         <View style={{ width: 136, height: 274, gap: 2 }}>
           <TouchableOpacity onPress={() => setImageViewerUrl(items[1].text)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
-            <ExpoImage
-              source={{ uri: getThumbnailUrl(items[1].text, 300, 300, 75) }}
-              style={{ width: "100%", height: "100%" }}
-              cachePolicy="disk"
-              transition={150}
-              contentFit="cover"
-            />
+            <Image source={{ uri: items[1].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setImageViewerUrl(items[2].text)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
-            <ExpoImage
-              source={{ uri: getThumbnailUrl(items[2].text, 300, 300, 75) }}
-              style={{ width: "100%", height: "100%" }}
-              cachePolicy="disk"
-              transition={150}
-              contentFit="cover"
-            />
+            <Image source={{ uri: items[2].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
           </TouchableOpacity>
         </View>
       </View>
@@ -5554,13 +5277,7 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
             style={{ width: 136, height: 136, position: "relative" }}
             activeOpacity={0.85}
           >
-            <ExpoImage
-              source={{ uri: getThumbnailUrl(item.text, 300, 300, 75) }}
-              style={{ width: "100%", height: "100%" }}
-              cachePolicy="disk"
-              transition={150}
-              contentFit="cover"
-            />
+            <Image source={{ uri: item.text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
             {isFourth && (
               <View style={{
                 position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
@@ -5706,7 +5423,7 @@ const SnappyCheckmark = React.memo(({ isRead, isAmoled, theme, styles }: any) =>
 
 // --- MessageRow Component for Animations & Gradients ---
 const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, isGroup, isHovered, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
-  if (item.type === "wallpaper_deck" || item.type === "chat_avatar" || item.type === "radar_ping") return null;
+  if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
 
   // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
   const isLiveEntrance = useRef(
@@ -5786,9 +5503,8 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
   const swipeProgress = useSharedValue(0);
   const hapticTriggeredRef = useRef(false);
 
-  const panResponderRef = useRef<any>(null);
-  if (!panResponderRef.current) {
-    panResponderRef.current = PanResponder.create({
+  const panResponder = useRef(
+    PanResponder.create({
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
       },
@@ -5833,9 +5549,8 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         swipeProgress.value = withTiming(0, { duration: 180 });
         hapticTriggeredRef.current = false;
       },
-    });
-  }
-  const panResponder = panResponderRef.current;
+    })
+  ).current;
 
   useEffect(() => {
     if (isLiveEntrance) {
@@ -5877,25 +5592,30 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
       { scaleY: scaleY.value },
     ],
     opacity: opacity.value,
+    transformOrigin: item.isMe ? "bottom right" : "bottom left",
   }));
 
-  const leftBadgeAnimatedStyle = useAnimatedStyle(() => {
-    const isVisible = translateX.value > 0 && swipeProgress.value > 0.05;
+  const swipeCircleCircumference = 2 * Math.PI * 13;
+  const animatedCircleProps = useAnimatedProps(() => {
     return {
-      opacity: isVisible ? interpolate(swipeProgress.value, [0.05, 0.35, 1], [0, 0.75, 1]) : 0,
-      transform: [
-        { scale: interpolate(swipeProgress.value, [0, 0.85, 1], [0.5, 0.95, 1.15]) },
-      ],
+      strokeDashoffset: swipeCircleCircumference * (1 - swipeProgress.value),
     };
   });
 
-  const rightBadgeAnimatedStyle = useAnimatedStyle(() => {
-    const isVisible = translateX.value < 0 && swipeProgress.value > 0.05;
+  const badgeAnimatedStyle = useAnimatedStyle(() => {
+    const isSwipingLeft = translateX.value < 0;
+    const isVisible = swipeProgress.value > 0.05;
     return {
       opacity: isVisible ? interpolate(swipeProgress.value, [0.05, 0.35, 1], [0, 0.75, 1]) : 0,
       transform: [
         { scale: interpolate(swipeProgress.value, [0, 0.85, 1], [0.5, 0.95, 1.15]) },
       ],
+      position: "absolute" as const,
+      top: "50%",
+      marginTop: -18,
+      left: isSwipingLeft ? undefined : 14,
+      right: isSwipingLeft ? 14 : undefined,
+      zIndex: 0,
     };
   });
 
@@ -6063,15 +5783,7 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         );
       }
 
-      return (
-        <ExpoImage
-          source={{ uri: getThumbnailUrl(item.text, 250, 250, 80) }}
-          style={{ width: stickerDim, height: stickerDim, opacity: stickerOpacity }}
-          cachePolicy="disk"
-          transition={150}
-          contentFit="contain"
-        />
-      );
+      return <Image source={{ uri: item.text }} style={{ width: stickerDim, height: stickerDim, opacity: stickerOpacity }} resizeMode="contain" />;
     }
     if (item.type === "image") {
       const imgOpacity = (chatSettings?.screen_dim > 0) ? Math.max(0.7, 1 - (chatSettings.screen_dim * 0.3)) : 1;
@@ -6084,26 +5796,16 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
       return <VideoPlayerBubble videoUrl={item.text} isMe={item.isMe} />;
     }
     const loveTextColor = isLove ? "#ffffff" : bubbleTextColor;
-    const textStr = typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : "");
-    const previewUrl = extractFirstUrl(textStr);
-
-    return (
-      <View style={{ width: "100%" }}>
-        {renderFormattedContent(
-          textStr,
-          {
-            isShimmer,
-            baseStyle: [styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft],
-            textColor: loveTextColor,
-            isMe: item.isMe,
-            fontFamily: activeFont,
-            isLove,
-          }
-        )}
-        {previewUrl && (
-          <LinkPreviewCard url={previewUrl} isMe={item.isMe} />
-        )}
-      </View>
+    return renderFormattedContent(
+      typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : ""),
+      {
+        isShimmer,
+        baseStyle: [styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft],
+        textColor: loveTextColor,
+        isMe: item.isMe,
+        fontFamily: activeFont,
+        isLove,
+      }
     );
   };
 
@@ -6147,12 +5849,17 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
 
   return (
     <View style={{ position: "relative", width: "100%", justifyContent: "center" }}>
-      {/* Instagram-style Circular Reply Indicator (Left - reveals on swiping right) */}
+      {/* Instagram-style Circular Reply Indicator behind the message */}
       <Animated.View
         pointerEvents="none"
         style={[
-          styles.swipeReplyBadgeLeft,
-          leftBadgeAnimatedStyle,
+          {
+            width: 36,
+            height: 36,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+          badgeAnimatedStyle,
         ]}
       >
         <Svg width={36} height={36} viewBox="0 0 36 36">
@@ -6164,14 +5871,17 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
             strokeWidth={2.5}
             fill={isAmoled ? "#141414" : (theme.id === "pink" ? "#fce7f3" : (theme.id === "light" ? "#f0f2f5" : "#222428"))}
           />
-          <Circle
+          <AnimatedCircle
             cx={18}
             cy={18}
             r={13}
             stroke={theme.accent || "#5865F2"}
             strokeWidth={2.5}
+            strokeDasharray={swipeCircleCircumference}
+            animatedProps={animatedCircleProps}
             strokeLinecap="round"
             fill="none"
+            transform="rotate(-90 18 18)"
           />
         </Svg>
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -6181,41 +5891,8 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         </View>
       </Animated.View>
 
-      {/* Instagram-style Circular Reply Indicator (Right - reveals on swiping left) */}
       <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.swipeReplyBadgeRight,
-          rightBadgeAnimatedStyle,
-        ]}
-      >
-        <Svg width={36} height={36} viewBox="0 0 36 36">
-          <Circle
-            cx={18}
-            cy={18}
-            r={13}
-            stroke={isAmoled ? "rgba(255, 255, 255, 0.15)" : (theme.id === "pink" ? "rgba(244, 114, 182, 0.25)" : "rgba(255, 255, 255, 0.20)")}
-            strokeWidth={2.5}
-            fill={isAmoled ? "#141414" : (theme.id === "pink" ? "#fce7f3" : (theme.id === "light" ? "#f0f2f5" : "#222428"))}
-          />
-          <Circle
-            cx={18}
-            cy={18}
-            r={13}
-            stroke={theme.accent || "#5865F2"}
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            fill="none"
-          />
-        </Svg>
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-            <Reply size={15} color={theme.accent || (isAmoled ? "#ffffff" : theme.text)} style={{ transform: [{ scaleX: -1 }] }} />
-          </View>
-        </View>
-      </Animated.View>
-
-      <Animated.View
+        layout={Platform.OS !== "web" ? LinearTransition.springify().damping(15).stiffness(210).mass(0.85) : undefined}
         style={animatedStyle}
         {...(Platform.OS !== "web" || (typeof window !== "undefined" && ("ontouchstart" in window || (navigator as any)?.maxTouchPoints > 0)) ? panResponder.panHandlers : {})}
       >
@@ -6234,15 +5911,7 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
         {!item.isMe && (
           <View style={styles.avatarSlot}>
             {showMeta && (((item.sender_id && chatAvatars?.[item.sender_id]) || item.avatar)
-              ? (
-                <ExpoImage
-                  source={{ uri: getThumbnailUrl((item.sender_id && chatAvatars?.[item.sender_id]) || item.avatar, 90, 90, 80) }}
-                  style={styles.messageAvatar}
-                  cachePolicy="disk"
-                  transition={150}
-                  contentFit="cover"
-                />
-              )
+              ? <Image source={{ uri: (item.sender_id && chatAvatars?.[item.sender_id]) || item.avatar }} style={styles.messageAvatar} />
               : <View style={[styles.messageAvatar, styles.avatarFallback]}><User size={20} color={isAmoled ? "#888888" : (theme?.textMuted || "#b5bac1")} /></View>
             )}
           </View>
@@ -6315,13 +5984,7 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
                     style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2, objectFit: "cover", pointerEvents: "none" }}
                   />
                 ) : (
-                  <ExpoImage
-                    source={{ uri: getThumbnailUrl(item.reply_to_content, 100, 100, 75) }}
-                    style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2 }}
-                    cachePolicy="disk"
-                    transition={150}
-                    contentFit="cover"
-                  />
+                  <Image source={{ uri: item.reply_to_content }} style={{ width: 40, height: 40, borderRadius: 4, marginTop: 2 }} resizeMode="cover" />
                 )
               ) : (
                 <Text style={styles.replyQuoteText} numberOfLines={1}>{item.reply_to_content}</Text>

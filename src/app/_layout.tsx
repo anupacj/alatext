@@ -3,20 +3,12 @@ import { AuthProvider } from '../context/AuthContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
-import { Dimensions, Platform } from 'react-native';
-import { enableScreens } from 'react-native-screens';
-
-// Disable native screen Fragment recycling on Android New Architecture (Fabric)
-// to prevent native SIGSEGV and FragmentTransaction crashes on navigation
-if (Platform.OS === 'android') {
-  enableScreens(false);
-}
+import { Platform } from 'react-native';
 
 import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
 import AlaContextMenu from '../components/AlaContextMenu';
 import GlobalCallManager from '../components/GlobalCallManager';
-import ErrorBoundary from '../components/ErrorBoundary';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,8 +18,6 @@ function RootNavigator() {
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       document.body.style.backgroundColor = theme.background;
-      document.documentElement.style.backgroundColor = theme.background;
-      document.documentElement.style.setProperty('--app-bg', theme.background);
       const root = document.getElementById('root');
       if (root) root.style.backgroundColor = theme.background;
     }
@@ -38,7 +28,7 @@ function RootNavigator() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: theme.background },
-        animation: Platform.OS === 'ios' ? 'slide_from_right' : 'none',
+        animation: 'slide_from_right',
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -46,16 +36,16 @@ function RootNavigator() {
         name="chat"
         options={{
           headerShown: false,
-          animation: Platform.OS === 'ios' ? 'slide_from_right' : 'none',
-          fullScreenGestureEnabled: Platform.OS === 'ios',
+          animation: 'slide_from_right',
+          fullScreenGestureEnabled: true,
         }}
       />
       <Stack.Screen
         name="chat-info"
         options={{
           headerShown: false,
-          animation: Platform.OS === 'ios' ? 'slide_from_right' : 'none',
-          fullScreenGestureEnabled: Platform.OS === 'ios',
+          animation: 'slide_from_right',
+          fullScreenGestureEnabled: true,
         }}
       />
       <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
@@ -92,7 +82,7 @@ export default function Layout() {
           margin: 0 !important;
           padding: 0 !important;
           overflow: hidden !important;
-          background-color: var(--app-bg, #1e1f22);
+          background-color: #000000 !important;
           font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           -webkit-tap-highlight-color: transparent;
         }
@@ -107,7 +97,7 @@ export default function Layout() {
           left: 0 !important;
           right: 0 !important;
           bottom: 0 !important;
-          background-color: var(--app-bg, #1e1f22);
+          background-color: #000000 !important;
         }
         #root > div {
           height: 100% !important;
@@ -119,12 +109,40 @@ export default function Layout() {
         input, button, textarea, select {
           font-family: inherit;
         }
-        :fullscreen {
+        :fullscreen, :-webkit-full-screen, :-moz-full-screen, :-ms-fullscreen {
           height: 100% !important;
           width: 100% !important;
+          background-color: #000000 !important;
+        }
+        :fullscreen body, :-webkit-full-screen body {
+          height: 100% !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+          background-color: #000000 !important;
+        }
+        :fullscreen #root, :-webkit-full-screen #root {
+          height: 100% !important;
+          width: 100% !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          background-color: #000000 !important;
+        }
+        :fullscreen #root > div, :-webkit-full-screen #root > div {
+          height: 100% !important;
+          width: 100% !important;
+          display: flex !important;
+          flex: 1 1 0% !important;
+          flex-direction: column !important;
         }
         ::backdrop {
-          background-color: var(--app-bg, #1e1f22);
+          background-color: #000000;
         }
       `;
       document.head.appendChild(globalStyle);
@@ -158,26 +176,36 @@ export default function Layout() {
       setMeta("theme-color", "#1e1f22");
       setMeta("viewport", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content");
 
-      // 4. Register PWA Service Worker
+      // 4. Register PWA Service Worker with auto-update check
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+          reg.update().catch(() => {});
+          reg.onupdatefound = () => {
+            const installing = reg.installing;
+            if (installing) {
+              installing.onstatechange = () => {
+                if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                  window.location.reload();
+                }
+              };
+            }
+          };
+        }).catch(() => {});
       }
     }
     SplashScreen.hideAsync();
   }, []);
 
   return (
-    <ErrorBoundary screenName="AlaText">
-      <AuthProvider>
-        <ThemeProvider>
-          <AlaPinProvider>
-            <RootNavigator />
-            <AlaPinLockScreen />
-            <AlaContextMenu />
-            <GlobalCallManager />
-          </AlaPinProvider>
-        </ThemeProvider>
-      </AuthProvider>
-    </ErrorBoundary>
+    <AuthProvider>
+      <ThemeProvider>
+        <AlaPinProvider>
+          <RootNavigator />
+          <AlaPinLockScreen />
+          <AlaContextMenu />
+          <GlobalCallManager />
+        </AlaPinProvider>
+      </ThemeProvider>
+    </AuthProvider>
   );
 }

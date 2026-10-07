@@ -6,7 +6,7 @@ export function isFullscreenActive(): boolean {
 }
 
 export function isMobileDevice(): boolean {
-  if (Platform.OS !== "web") return false;
+  if (Platform.OS !== "web") return true;
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
   const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
@@ -15,11 +15,12 @@ export function isMobileDevice(): boolean {
   return isMobileUA || (isTouch && isNarrow);
 }
 
-export function tryEnterFullscreen(onlyOnMobile = false) {
+export function tryEnterFullscreen(forceOnDesktop = false) {
   if (Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined") return;
   if (isFullscreenActive()) return;
 
-  if (onlyOnMobile && !isMobileDevice()) {
+  // STRICT REQUIREMENT: Only enter fullscreen automatically on MOBILE devices. Never on Web PC.
+  if (!forceOnDesktop && !isMobileDevice()) {
     return;
   }
 

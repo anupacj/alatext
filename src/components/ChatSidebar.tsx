@@ -12,7 +12,6 @@ import { useAuth } from "../context/AuthContext";
 import { useAlaPin } from "../context/AlaPinContext";
 import ShinyText from "./ShinyText";
 import { tryEnterFullscreen } from "../lib/fullscreen";
-import { sessionChats, setSessionChats } from "../utils/sessionCache";
 
 interface ChatSidebarProps {
   activeChatId?: string;
@@ -84,10 +83,14 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
 
   const fetchChats = useCallback(async () => {
     if (!user) return;
-    if (sessionChats) {
-      setChats(sessionChats);
-      setLoading(false);
-    }
+    const cacheKey = `user_${user.id}_chats`;
+    try {
+      const cached = await AsyncStorage.getItem(cacheKey);
+      if (cached) {
+        setChats(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch (e) {}
 
     try {
       const { data, error } = await supabase
@@ -109,7 +112,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
 
       if (!data || data.length === 0) {
         setChats([]);
-        setSessionChats([]);
+        AsyncStorage.setItem(cacheKey, JSON.stringify([])).catch(() => {});
         setLoading(false);
         return;
       }
@@ -182,7 +185,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
       formatted.sort((a, b) => b.timestamp - a.timestamp);
       
       setChats(formatted);
-      setSessionChats(formatted);
+      AsyncStorage.setItem(cacheKey, JSON.stringify(formatted)).catch(() => {});
     } catch (e) { console.error("Error fetching chats", e); }
     finally { setLoading(false); }
   }, [user]);

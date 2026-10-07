@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity, Image,
-  Platform, ActivityIndicator, Modal, TextInput,
+  SafeAreaView, Platform, ActivityIndicator, Modal, TextInput,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2, Lock, Trash2 } from "lucide-react-native";
+import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2, Lock } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { useTheme } from "../../context/ThemeContext";
@@ -17,8 +16,7 @@ import ChatSidebar from "../../components/ChatSidebar";
 import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholder";
 import ShinyText from "../../components/ShinyText";
 import { useTabsLoading } from "../../context/TabsLoadingContext";
-import { isFullscreenActive, tryEnterFullscreen, exitFullscreen, isMobileDevice } from "../../lib/fullscreen";
-import { sessionChats, setSessionChats, clearSessionCache } from "../../utils/sessionCache";
+import { isFullscreenActive, tryEnterFullscreen, exitFullscreen } from "../../lib/fullscreen";
 
 export default function Home() {
   const { width } = useWindowDimensions();
@@ -76,29 +74,16 @@ export default function Home() {
     }
   };
 
-  const handleWipeData = async () => {
-    try {
-      clearSessionCache();
-      await AsyncStorage.clear();
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        try { window.localStorage.clear(); } catch (e) {}
-        try { window.sessionStorage.clear(); } catch (e) {}
-        window.location.reload();
-      } else {
-        setChats([]);
-        fetchChats();
-      }
-    } catch (e) {
-      console.warn("Wipe data error:", e);
-    }
-  };
-
   const fetchChats = useCallback(async () => {
     if (!user) return;
-    if (sessionChats) {
-      setChats(sessionChats);
-      setLoading(false);
-    }
+    const cacheKey = `user_${user.id}_chats`;
+    try {
+      const cached = await AsyncStorage.getItem(cacheKey);
+      if (cached) {
+        setChats(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch (e) {}
 
     try {
       const { data, error } = await supabase
@@ -120,7 +105,7 @@ export default function Home() {
 
       if (!data || data.length === 0) {
         setChats([]);
-        setSessionChats([]);
+        AsyncStorage.setItem(cacheKey, JSON.stringify([])).catch(() => {});
         setLoading(false);
         return;
       }
@@ -193,7 +178,7 @@ export default function Home() {
       formatted.sort((a, b) => b.timestamp - a.timestamp);
       
       setChats(formatted);
-      setSessionChats(formatted);
+      AsyncStorage.setItem(cacheKey, JSON.stringify(formatted)).catch(() => {});
     } catch (e) { console.error("Error fetching chats", e); }
     finally { setLoading(false); }
   }, [user]);
@@ -286,23 +271,8 @@ export default function Home() {
   const renderItem = useCallback(({ item }: { item: any }) => (
     <TouchableOpacity style={styles.chatItem} activeOpacity={0.7}
       onPress={() => {
-        try {
-          router.push({
-            pathname: "/chat",
-            params: {
-              id: String(item.id),
-              name: String(item.name || ""),
-              isGroup: item.isGroup ? "true" : "false",
-            },
-          });
-          if (isMobileDevice()) {
-            setTimeout(() => {
-              tryEnterFullscreen(true);
-            }, 50);
-          }
-        } catch (e) {
-          console.warn("Error navigating to chat:", e);
-        }
+        tryEnterFullscreen();
+        router.push({ pathname: "/chat", params: { id: item.id, name: item.name, isGroup: item.isGroup ? "true" : "false" } });
       }}>
       {item.avatar ? (
         <Image source={{ uri: item.avatar }} style={styles.avatar} />
@@ -357,6 +327,7 @@ export default function Home() {
         <View style={{ width: 380, height: "100%" }}>
           <ChatSidebar
             onSelectChat={(chatId, name) => {
+              tryEnterFullscreen();
               router.push({ pathname: "/chat", params: { id: chatId, name } });
             }}
           />
@@ -395,13 +366,6 @@ export default function Home() {
                 )}
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={handleWipeData}
-              accessibilityLabel="Wipe App Data & Cache"
-            >
-              <Trash2 size={18} color="#ef4444" />
-            </TouchableOpacity>
             <TouchableOpacity style={styles.iconButton}><Search size={20} color={theme.textMuted} /></TouchableOpacity>
           </View>
         </View>

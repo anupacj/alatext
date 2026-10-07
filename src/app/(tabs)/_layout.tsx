@@ -30,7 +30,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
             });
 
             if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate({ name: route.name, merge: true } as any);
+              navigation.navigate(route.name);
             }
           };
 
