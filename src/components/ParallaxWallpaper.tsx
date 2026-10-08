@@ -150,16 +150,22 @@ export const ParallaxWallpaper: React.FC<ParallaxWallpaperProps> = React.memo(({
       }).start();
     };
 
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    window.addEventListener("mouseleave", handlePointerLeave, { passive: true });
+    const isDesktopWeb = window.innerWidth >= 768;
+
+    if (!isDesktopWeb) {
+      window.addEventListener("pointermove", handlePointerMove, { passive: true });
+      window.addEventListener("mouseleave", handlePointerLeave, { passive: true });
+    }
 
     if (window.DeviceOrientationEvent) {
       window.addEventListener("deviceorientation", handleDeviceOrientation, { passive: true });
     }
 
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("mouseleave", handlePointerLeave);
+      if (!isDesktopWeb) {
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("mouseleave", handlePointerLeave);
+      }
       if (window.DeviceOrientationEvent) {
         window.removeEventListener("deviceorientation", handleDeviceOrientation);
       }

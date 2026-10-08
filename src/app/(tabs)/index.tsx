@@ -4,7 +4,7 @@ import {
   SafeAreaView, Platform, ActivityIndicator, Modal, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2, Lock } from "lucide-react-native";
+import { User, Search, MessageSquare, Plus, Users, X, Check, Settings, Maximize2, Minimize2, Lock, RotateCcw } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { useTheme } from "../../context/ThemeContext";
@@ -71,6 +71,19 @@ export default function Home() {
       }
     } catch (e) {
       console.error("Fullscreen toggle error:", e);
+    }
+  };
+
+  const handleWipeData = async () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const ok = window.confirm("Wipe all local app data, cache, and reload?");
+      if (!ok) return;
+      try {
+        await AsyncStorage.clear();
+        window.localStorage.clear();
+        window.sessionStorage.clear();
+      } catch (e) {}
+      window.location.reload();
     }
   };
 
@@ -364,6 +377,15 @@ export default function Home() {
                 ) : (
                   <Maximize2 size={18} color={theme.textMuted} />
                 )}
+              </TouchableOpacity>
+            )}
+            {Platform.OS === 'web' && (
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={handleWipeData}
+                accessibilityLabel="Wipe App Data & Cache"
+              >
+                <RotateCcw size={18} color="#f43f5e" />
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.iconButton}><Search size={20} color={theme.textMuted} /></TouchableOpacity>

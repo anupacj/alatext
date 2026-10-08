@@ -233,7 +233,6 @@ export default function ChatScreen() {
   const [isTyping, setIsTyping] = useState(false);
   const [typingUsername, setTypingUsername] = useState<string | null>(null);
   const [ghostText, setGhostText] = useState<string | null>(null);
-  const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
   const [isGlassKeyboardOpen, setIsGlassKeyboardOpen] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -471,7 +470,7 @@ export default function ChatScreen() {
 
   // Refresh radar location (enforcing 20min interval unless force=true)
   const refreshRadarLocation = useCallback(async (force = false) => {
-    if (isGroup || !id || !user) return;
+    if (isGroup || !id || !user || isDesktop) return;
     const now = Date.now();
     const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
 
@@ -484,11 +483,11 @@ export default function ChatScreen() {
     }
 
     const myNewLoc = await getCurrentDeviceLocation();
+    lastRadarBroadcastRef.current = now;
     if (!myNewLoc) return;
 
     setRadarMyLoc(myNewLoc);
     saveMyLocation(myNewLoc);
-    lastRadarBroadcastRef.current = now;
 
     if (typingChannelRef.current) {
       try {
@@ -504,11 +503,11 @@ export default function ChatScreen() {
         });
       } catch (e) {}
     }
-  }, [id, user, isGroup, radarPartnerLoc]);
+  }, [id, user, isGroup, isDesktop, radarPartnerLoc]);
 
-  // Load cached radar locations on mount and set up periodic 20-min sync check
+  // Load cached radar locations on mount and set up periodic 20-min sync check (MOBILE ONLY)
   useEffect(() => {
-    if (!id || isGroup) return;
+    if (!id || isGroup || isDesktop) return;
     const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
 
     getStoredPartnerLocation(chatIdStr).then((loc) => {
@@ -524,10 +523,10 @@ export default function ChatScreen() {
 
     const syncInterval = setInterval(() => {
       refreshRadarLocation(false);
-    }, 60 * 1000);
+    }, RADAR_UPDATE_INTERVAL_MS);
 
     return () => clearInterval(syncInterval);
-  }, [id, isGroup, refreshRadarLocation]);
+  }, [id, isGroup, isDesktop]);
 
   // Load cached couple moods on mount and prune expired moods (>6 hours)
   useEffect(() => {
@@ -1055,6 +1054,8 @@ export default function ChatScreen() {
       handleViewport();
     };
 
+    if (isDesktop) return;
+
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", handleViewport);
       window.visualViewport.addEventListener("scroll", handleViewport);
@@ -1072,8 +1073,9 @@ export default function ChatScreen() {
       window.removeEventListener("resize", handleViewport);
       window.removeEventListener("scroll", handleViewport);
       document.removeEventListener("fullscreenchange", handleFullscreen);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreen);
     };
-  }, []);
+  }, [isDesktop]);
 
   // Close font picker tray when clicking / tapping anywhere outside on Web
   useEffect(() => {
@@ -1374,7 +1376,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (!id || !user) return;
-    setMessages([]); setHasMore(true); setEditingMsgId(null); setReplyingTo(null); setHoveredMsg(null);
+    setMessages([]); setHasMore(true); setEditingMsgId(null); setReplyingTo(null);
     setTargetUser(null); setGroupChatData(null); setIsGroup(false); setGroupMemberCount(0);
     setChatSettings(null); setPinnedMessage(null); setMyNicknameFromPartner(null);
     setLoveGlowActive(false); setFloatingHeartsActive(false);
@@ -2035,10 +2037,12 @@ export default function ChatScreen() {
     }
   }, [messages, id]);
 
-  // Deferred Wallpaper Sync: Check if partner updated wallpaper while we were away/offline
-  // Runs 3 seconds after entering to keep initial entry snappy and avoid network contention on slow connections
+  const lastDeferredSyncRef = useRef<number>(0);
   const runDeferredWallpaperSync = useCallback(async () => {
     if (!id || !user?.id) return;
+    const now = Date.now();
+    if (now - lastDeferredSyncRef.current < 5 * 60 * 1000) return;
+    lastDeferredSyncRef.current = now;
     try {
       const currentDeck = wallpaperDeckRef.current;
       const currentSettings = chatSettingsRef.current;
@@ -2471,7 +2475,6 @@ export default function ChatScreen() {
   const deleteMessage = useCallback(async (msgId: string) => {
     // 1. Optimistically remove from state immediately
     setMessages(prev => prev.filter(m => m.id !== msgId));
-    setHoveredMsg(null);
 
     // 2. Broadcast deletion event immediately to all other participants
     try {
@@ -3034,16 +3037,17 @@ export default function ChatScreen() {
       <MessageRow isAmoled={isAmoled} styles={styles} theme={theme}
         item={item} index={index} messages={messages} targetUser={targetUser} chatSettings={chatSettings}
         isGroup={isGroup}
-        isHovered={hoveredMsg === item.id} setHoveredMsg={setHoveredMsg} setReplyingTo={setReplyingTo}
+        setReplyingTo={setReplyingTo}
         setEditingMsgId={setEditingMsgId} setInputText={setInputText} deleteMessage={deleteMessage}
         handleApplyWallpaper={handleApplyWallpaper} setSettingsVisible={setSettingsVisible} setImageViewerUrl={setImageViewerUrl}
         handlePinMessage={handlePinMessage}
         isHighlighted={highlightedMsgId === item.id}
         onScrollToMessage={scrollToAndHighlightMessage}
         chatAvatars={chatAvatars}
+        isDesktop={isDesktop}
       />
     );
-  }, [messages, hoveredMsg, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage, chatAvatars, isAmoled, styles, theme]);
+  }, [messages, targetUser, chatSettings, isGroup, handleApplyWallpaper, deleteMessage, handlePinMessage, highlightedMsgId, scrollToAndHighlightMessage, chatAvatars, isAmoled, styles, theme, isDesktop]);
 
   const screenRadius = (styles.container as any)?.borderRadius ?? theme.screenRadius ?? 0;
 
@@ -5302,7 +5306,7 @@ const MessageHoverActions = ({
   isMe,
   setReplyingTo,
   handlePinMessage,
-  setHoveredMsg,
+  onCloseHover,
   setEditingMsgId,
   setInputText,
   deleteMessage,
@@ -5339,7 +5343,10 @@ const MessageHoverActions = ({
       ]}
     >
       <Pressable
-        onPress={() => setReplyingTo({ id: item.id, text: item.text, sender: item.sender })}
+        onPress={() => {
+          setReplyingTo({ id: item.id, text: item.text, sender: item.sender });
+          onCloseHover?.();
+        }}
         onHoverIn={() => setHoveredBtn("reply")}
         onHoverOut={() => setHoveredBtn(null)}
         style={({ pressed }) => [
@@ -5352,7 +5359,7 @@ const MessageHoverActions = ({
       </Pressable>
 
       <Pressable
-        onPress={() => { handlePinMessage(item); setHoveredMsg(null); }}
+        onPress={() => { handlePinMessage(item); onCloseHover?.(); }}
         onHoverIn={() => setHoveredBtn("pin")}
         onHoverOut={() => setHoveredBtn(null)}
         style={({ pressed }) => [
@@ -5367,7 +5374,7 @@ const MessageHoverActions = ({
       {isMe && (
         <>
           <Pressable
-            onPress={() => { setEditingMsgId(item.id); setInputText(item.text); setHoveredMsg(null); }}
+            onPress={() => { setEditingMsgId(item.id); setInputText(item.text); onCloseHover?.(); }}
             onHoverIn={() => setHoveredBtn("edit")}
             onHoverOut={() => setHoveredBtn(null)}
             style={({ pressed }) => [
@@ -5422,7 +5429,7 @@ const SnappyCheckmark = React.memo(({ isRead, isAmoled, theme, styles }: any) =>
 });
 
 // --- MessageRow Component for Animations & Gradients ---
-const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, isGroup, isHovered, setHoveredMsg, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
+const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, isGroup, isDesktop, setReplyingTo, setEditingMsgId, setInputText, deleteMessage, handleApplyWallpaper, setSettingsVisible, setImageViewerUrl, handlePinMessage, isAmoled, styles, theme, isHighlighted, onScrollToMessage, chatAvatars }: any) => {
   if (item.type === "wallpaper_deck" || item.type === "chat_avatar") return null;
 
   // Live entrance: only newly sending messages or fresh received messages animate (avoids second bounce on status update/ID swap)
@@ -5465,11 +5472,12 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
     opacity: highlightAnim.value,
   }));
 
+  const [isHovered, setIsHovered] = useState(false);
   const lastPressRef = useRef<number>(0);
   const handlePress = () => {
     const now = Date.now();
     if (now - lastPressRef.current < 300) {
-      setHoveredMsg(isHovered ? null : item.id);
+      setIsHovered(prev => !prev);
     }
     lastPressRef.current = now;
   };
@@ -5480,9 +5488,9 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
     if (Platform.OS !== "web") return;
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     hoverTimeoutRef.current = setTimeout(() => {
-      setHoveredMsg(item.id);
-    }, 140);
-  }, [item.id, setHoveredMsg]);
+      setIsHovered(true);
+    }, 120);
+  }, []);
 
   const handleHoverOut = useCallback(() => {
     if (Platform.OS !== "web") return;
@@ -5490,8 +5498,8 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
     }
-    setHoveredMsg(null);
-  }, [setHoveredMsg]);
+    setIsHovered(false);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -5894,7 +5902,7 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
       <Animated.View
         layout={Platform.OS !== "web" ? LinearTransition.springify().damping(15).stiffness(210).mass(0.85) : undefined}
         style={animatedStyle}
-        {...(Platform.OS !== "web" || (typeof window !== "undefined" && ("ontouchstart" in window || (navigator as any)?.maxTouchPoints > 0)) ? panResponder.panHandlers : {})}
+        {...(!isDesktop && (Platform.OS !== "web" || (typeof window !== "undefined" && ("ontouchstart" in window || (navigator as any)?.maxTouchPoints > 0))) ? panResponder.panHandlers : {})}
       >
       <Pressable
         dataSet={{ msgId: item.id, "msg-id": item.id }}
@@ -6042,7 +6050,7 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
               isMe={item.isMe}
               setReplyingTo={setReplyingTo}
               handlePinMessage={handlePinMessage}
-              setHoveredMsg={setHoveredMsg}
+              onCloseHover={() => setIsHovered(false)}
               setEditingMsgId={setEditingMsgId}
               setInputText={setInputText}
               deleteMessage={deleteMessage}
@@ -6067,7 +6075,6 @@ const areMessageRowsEqual = (prev: any, next: any) => {
   if (prev.item.reply_to_id !== next.item.reply_to_id) return false;
   if (prev.index !== next.index) return false;
 
-  if (prev.isHovered !== next.isHovered) return false;
   if (prev.isHighlighted !== next.isHighlighted) return false;
 
   if (prev.isAmoled !== next.isAmoled) return false;

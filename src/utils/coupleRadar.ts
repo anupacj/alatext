@@ -124,6 +124,12 @@ export async function saveMyLocation(loc: RadarLocation): Promise<void> {
  */
 export function getCurrentDeviceLocation(): Promise<RadarLocation | null> {
   return new Promise((resolve) => {
+    // Desktop Web browser check: Avoid hardware Wi-Fi scanning freezes on desktop PCs
+    if (typeof window !== "undefined" && window.innerWidth >= 768) {
+      resolve(null);
+      return;
+    }
+
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       resolve(null);
       return;
