@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity, Image,
   SafeAreaView, Platform, ActivityIndicator, Modal, TextInput,
@@ -86,6 +86,24 @@ export default function Home() {
       window.location.reload();
     }
   };
+
+  const tapTimesRef = useRef<number[]>([]);
+  const handleLogoTap = () => {
+    const now = Date.now();
+    tapTimesRef.current = tapTimesRef.current.filter((t: number) => now - t < 800);
+    tapTimesRef.current.push(now);
+    if (tapTimesRef.current.length >= 3) {
+      tapTimesRef.current = [];
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent("open_anniversary_milestone"));
+      }
+    }
+  };
+
+  const isPreAnniversary = React.useMemo(() => {
+    const d = new Date();
+    return d.getMonth() === 9 && (d.getDate() >= 11 && d.getDate() <= 13);
+  }, []);
 
   const fetchChats = useCallback(async () => {
     if (!user) return;
@@ -356,10 +374,15 @@ export default function Home() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
+          <TouchableOpacity style={styles.headerLeft} onPress={handleLogoTap} activeOpacity={0.8}>
             <View style={styles.userAvatarMini}><User size={16} color="#fff" /></View>
             <Text style={styles.headerTitle}>AlaThing</Text>
-          </View>
+            {isPreAnniversary && (
+              <Text style={{ fontSize: 13, color: "#fbbf24", marginLeft: 4, textShadowColor: "#fbbf24", textShadowRadius: 6, textShadowOffset: { width: 0, height: 0 } }}>
+                ✦
+              </Text>
+            )}
+          </TouchableOpacity>
           <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
             {isPinEnabled && !!realPin && (
               <TouchableOpacity style={styles.iconButton} onPress={lockNow} accessibilityLabel="Lock App Now">

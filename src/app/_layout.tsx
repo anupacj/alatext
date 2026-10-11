@@ -9,6 +9,7 @@ import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
 import AlaContextMenu from '../components/AlaContextMenu';
 import GlobalCallManager from '../components/GlobalCallManager';
+import AnniversaryMilestoneWeb from '../components/AnniversaryMilestoneWeb';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -204,6 +205,7 @@ export default function Layout() {
           <AlaPinLockScreen />
           <AlaContextMenu />
           <GlobalCallManager />
+          <AnniversaryMilestoneWeb />
         </AlaPinProvider>
       </ThemeProvider>
     </AuthProvider>

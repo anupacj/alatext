@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity, Image,
   ActivityIndicator, Modal, TextInput, Platform,
@@ -93,6 +93,24 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
       window.location.reload();
     }
   };
+
+  const tapTimesRef = useRef<number[]>([]);
+  const handleLogoTap = () => {
+    const now = Date.now();
+    tapTimesRef.current = tapTimesRef.current.filter((t: number) => now - t < 800);
+    tapTimesRef.current.push(now);
+    if (tapTimesRef.current.length >= 3) {
+      tapTimesRef.current = [];
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent("open_anniversary_milestone"));
+      }
+    }
+  };
+
+  const isPreAnniversary = React.useMemo(() => {
+    const d = new Date();
+    return d.getMonth() === 9 && (d.getDate() >= 11 && d.getDate() <= 13);
+  }, []);
 
   const fetchChats = useCallback(async () => {
     if (!user) return;
@@ -340,14 +358,23 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
     <View style={styles.sidebarContainer}>
       {/* DESKTOP HEADER BAR */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerLeft} onPress={() => router.push("/profile")}>
-          {myProfile?.avatar_url ? (
-            <Image source={{ uri: myProfile.avatar_url }} style={styles.userAvatarMiniImg} />
-          ) : (
-            <View style={styles.userAvatarMini}><User size={16} color="#fff" /></View>
-          )}
-          <Text style={styles.headerTitle} numberOfLines={1}>AlaThing</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TouchableOpacity style={styles.headerLeft} onPress={() => router.push("/profile")}>
+            {myProfile?.avatar_url ? (
+              <Image source={{ uri: myProfile.avatar_url }} style={styles.userAvatarMiniImg} />
+            ) : (
+              <View style={styles.userAvatarMini}><User size={16} color="#fff" /></View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogoTap} activeOpacity={0.8} style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={styles.headerTitle} numberOfLines={1}>AlaThing</Text>
+            {isPreAnniversary && (
+              <Text style={{ fontSize: 13, color: "#fbbf24", marginLeft: 4, textShadowColor: "#fbbf24", textShadowRadius: 6, textShadowOffset: { width: 0, height: 0 } }}>
+                ✦
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
           {isPinEnabled && !!realPin && (
