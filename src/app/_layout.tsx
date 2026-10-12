@@ -50,6 +50,14 @@ function RootNavigator() {
         }}
       />
       <Stack.Screen name="auth" options={{ headerShown: false, animation: 'fade' }} />
+      <Stack.Screen
+        name="anv"
+        options={{
+          headerShown: false,
+          animation: 'fade',
+          fullScreenGestureEnabled: true,
+        }}
+      />
     </Stack>
   );
 }

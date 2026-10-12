@@ -90,10 +90,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!initialized) return;
 
-    // Check if the path/url is in the (auth) group
+    // Check if the path/url is in the (auth) group or standalone anniversary page
     const inAuthGroup = segments[0] === 'auth';
+    const isExempt = inAuthGroup || (segments[0] as string) === 'anv';
 
-    if (!session && !inAuthGroup) {
+    if (!session && !isExempt) {
       // Redirect to the login page.
       router.replace('/auth');
     } else if (session && inAuthGroup) {
