@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { uploadAnniversaryVideoToR2 } from "@/lib/r2";
 
 // --- TYPES & DATA CONTRACTS ---
 export interface MemorySlide {
@@ -26,6 +27,8 @@ export interface AnvConfig {
     closing: string;
     signature: string;
   };
+  video1_url?: string; // Transition 1: Dinosaur handing letter to potato
+  video2_url?: string; // Transition 2: Potato holding letter, handing reply back
 }
 
 const STORAGE_CONFIG_KEY = "@anv_custom_config_2026";
@@ -99,6 +102,8 @@ export const DEFAULT_CONFIG: AnvConfig = {
     closing: "Always yours,",
     signature: "With all my heart ♡",
   },
+  video1_url: "",
+  video2_url: "",
 };
 
 // --- WARM ACOUSTIC CHIME & MUSIC BOX AUDIO ENGINE ---
@@ -322,6 +327,11 @@ class CozyAudioEngine {
     osc.start(now);
     osc.stop(now + 2.1);
   }
+
+  // Gentle transition chime
+  playChime() {
+    this.playHeartTap();
+  }
 }
 
 const audio = new CozyAudioEngine();
@@ -404,6 +414,21 @@ export default function AnniversaryScrapbookPage() {
   });
 
   const [soundMuted, setSoundMuted] = useState(false);
+
+  // 6-Step narrative flow phase:
+  // "scrapbook" -> "video1" -> "letter" -> "video2" -> "delivered"
+  const [viewPhase, setViewPhase] = useState<"scrapbook" | "video1" | "letter" | "video2" | "delivered">("scrapbook");
+  const [videoMuted, setVideoMuted] = useState(true); // default muted for mobile autoplay compliance
+  const [isUploadingVideo1, setIsUploadingVideo1] = useState(false);
+  const [isUploadingVideo2, setIsUploadingVideo2] = useState(false);
+  const [video1UploadProgress, setVideo1UploadProgress] = useState(0);
+  const [video2UploadProgress, setVideo2UploadProgress] = useState(0);
+  const [videoUploadNotice, setVideoUploadNotice] = useState<string | null>(null);
+
+  const video1FileInputRef = useRef<HTMLInputElement | null>(null);
+  const video2FileInputRef = useRef<HTMLInputElement | null>(null);
+  const video1PlayerRef = useRef<HTMLVideoElement | null>(null);
+  const video2PlayerRef = useRef<HTMLVideoElement | null>(null);
 
   // She Celebrate Clicks tracking (synced with Supabase)
   const [celebrateCount, setCelebrateCount] = useState<number>(0);
@@ -637,15 +662,16 @@ export default function AnniversaryScrapbookPage() {
     }
   }, []);
 
-  // Slide indexing
-  const totalSteps = 1 + config.memories.length + 1;
+  // Scrapbook slide indexing (0 = Cover, 1..N = Memories)
+  const totalScrapbookSteps = 1 + config.memories.length;
+  const totalSteps = totalScrapbookSteps;
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
   const isCoverSlide = activeSlideIndex === 0;
-  const isFinalSlide = activeSlideIndex === totalSteps - 1;
+  const isFinalSlide = activeSlideIndex === totalScrapbookSteps - 1;
   const currentMemoryIndex = activeSlideIndex - 1;
   const currentMemory: MemorySlide | null =
-    !isCoverSlide && !isFinalSlide && config.memories[currentMemoryIndex]
+    !isCoverSlide && config.memories[currentMemoryIndex]
       ? config.memories[currentMemoryIndex]
       : null;
 
@@ -662,7 +688,7 @@ export default function AnniversaryScrapbookPage() {
   // Discreet photo & letter manager drawer
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [draftConfig, setDraftConfig] = useState<AnvConfig>(config);
-  const [editingTab, setEditingTab] = useState<"photos" | "letter">("photos");
+  const [editingTab, setEditingTab] = useState<"photos" | "letter" | "videos">("photos");
   const [isUploading, setIsUploading] = useState(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
@@ -692,12 +718,19 @@ export default function AnniversaryScrapbookPage() {
 
   // Navigation handlers
   const goToNextSlide = useCallback(() => {
-    if (activeSlideIndex < totalSteps - 1) {
+    if (activeSlideIndex < totalScrapbookSteps - 1) {
       setActiveSlideIndex((prev) => prev + 1);
       setProgress(0);
       audio.playPageTurn();
+    } else {
+      // Reached end of scrapbook memories: Transition to Video 1 (or Letter)
+      if (config.video1_url) {
+        setViewPhase("video1");
+      } else {
+        setViewPhase("letter");
+      }
     }
-  }, [activeSlideIndex, totalSteps]);
+  }, [activeSlideIndex, totalScrapbookSteps, config.video1_url]);
 
   const goToPrevSlide = useCallback(() => {
     if (activeSlideIndex > 0) {
@@ -712,20 +745,20 @@ export default function AnniversaryScrapbookPage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isEditDrawerOpen) return;
       if (e.key === "ArrowRight" || e.key === " ") {
-        goToNextSlide();
+        if (viewPhase === "scrapbook") goToNextSlide();
       } else if (e.key === "ArrowLeft") {
-        goToPrevSlide();
+        if (viewPhase === "scrapbook") goToPrevSlide();
       } else if (e.key === "Escape") {
         router.replace("/");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [goToNextSlide, goToPrevSlide, isEditDrawerOpen, router]);
+  }, [goToNextSlide, goToPrevSlide, isEditDrawerOpen, viewPhase, router]);
 
-  // Gentle auto-advance (8.5 seconds on memories, pauses on hold or final letter slide)
+  // Gentle auto-advance (8.5 seconds on memories, pauses on hold, drawer open, or outside scrapbook)
   useEffect(() => {
-    if (isFinalSlide || isEditDrawerOpen) return;
+    if (viewPhase !== "scrapbook" || isEditDrawerOpen) return;
 
     const SLIDE_DURATION_MS = isCoverSlide ? 6500 : 8500;
     const intervalMs = 50;
@@ -744,7 +777,7 @@ export default function AnniversaryScrapbookPage() {
     }, intervalMs);
 
     return () => clearInterval(timer);
-  }, [activeSlideIndex, isFinalSlide, isCoverSlide, isEditDrawerOpen, goToNextSlide]);
+  }, [activeSlideIndex, viewPhase, isCoverSlide, isEditDrawerOpen, goToNextSlide]);
 
   // Canvas Particles Engine: Supports Ambient Fireflies, Tap Hearts, Wax Shards, and Sakura Petals
   useEffect(() => {
@@ -1128,6 +1161,111 @@ export default function AnniversaryScrapbookPage() {
     await handleSaveConfig(updated);
   };
 
+  // Cloudflare R2 Video Upload handler
+  const handleVideoUpload = async (slot: "video1" | "video2", file: File) => {
+    if (slot === "video1") {
+      setIsUploadingVideo1(true);
+      setVideo1UploadProgress(0);
+    } else {
+      setIsUploadingVideo2(true);
+      setVideo2UploadProgress(0);
+    }
+    setVideoUploadNotice(`Uploading ${slot === "video1" ? "Video 1" : "Video 2"} to Cloudflare R2...`);
+
+    try {
+      const publicUrl = await uploadAnniversaryVideoToR2(slot, file, (pct) => {
+        if (slot === "video1") setVideo1UploadProgress(pct);
+        else setVideo2UploadProgress(pct);
+      });
+
+      const updated = {
+        ...draftConfig,
+        [slot === "video1" ? "video1_url" : "video2_url"]: publicUrl,
+      };
+      setDraftConfig(updated);
+      await handleSaveConfig(updated);
+      setVideoUploadNotice(`✓ ${slot === "video1" ? "Video 1" : "Video 2"} uploaded and saved!`);
+      setTimeout(() => setVideoUploadNotice(null), 4000);
+    } catch (err: any) {
+      console.error("Video upload failed:", err);
+      alert(`Could not upload video: ${err?.message || "Check network or R2 credentials"}`);
+      setVideoUploadNotice(null);
+    } finally {
+      if (slot === "video1") setIsUploadingVideo1(false);
+      else setIsUploadingVideo2(false);
+    }
+  };
+
+  // State 4: Send Reply From Embedded Letter Form
+  const handleSendReplyFromLetter = async () => {
+    if (!replyDraft.body.trim()) {
+      alert("Please write a few words in your letter back ♡");
+      return;
+    }
+    setIsSavingReply(true);
+    try {
+      const paragraphs = replyDraft.body
+        .split(/\n+/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      const newReply: AnniversaryReplyLetter = {
+        id: "reply_" + Date.now(),
+        sender_id: user?.id || "potato",
+        sender_name: user?.user_metadata?.username || "Potato",
+        created_at: new Date().toISOString(),
+        salutation: replyDraft.salutation.trim() || "To my handsome dinosaur ♡",
+        paragraphs: paragraphs.length > 0 ? paragraphs : [replyDraft.body.trim()],
+        closing: replyDraft.closing.trim() || "Forever and always yours,",
+        signature: replyDraft.signature.trim() || "Your Pretty Potato ♡",
+      };
+
+      setReplyLetter(newReply);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(STORAGE_REPLY_KEY, JSON.stringify(newReply));
+      }
+
+      // Silent Supabase save
+      await supabase.from("app_settings").upsert({
+        key: SUPABASE_REPLY_KEY,
+        value: newReply,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (replyChannelRef.current) {
+        replyChannelRef.current.send({
+          type: "broadcast",
+          event: "settings_updated",
+          payload: { anniversaryReplyLetter: newReply },
+        });
+      }
+
+      // State 5: If Video 2 exists, play Video 2 transition; otherwise State 6: Delivered confirmation
+      if (config.video2_url) {
+        setViewPhase("video2");
+      } else {
+        setViewPhase("delivered");
+        spawnCelebrationBurst();
+      }
+    } catch (err) {
+      console.warn("Could not silently save reply letter:", err);
+      if (config.video2_url) {
+        setViewPhase("video2");
+      } else {
+        setViewPhase("delivered");
+      }
+    } finally {
+      setIsSavingReply(false);
+    }
+  };
+
+  // State 5 -> State 6: Video 2 finished playback handler
+  const handleFinishVideo2 = () => {
+    audio.playChime();
+    setViewPhase("delivered");
+    spawnCelebrationBurst();
+  };
+
   // While checking pairings from cloud, display quiet loading screen (prevents any content leak)
   if (isLoadingPairing) {
     return (
@@ -1343,8 +1481,10 @@ export default function AnniversaryScrapbookPage() {
             color: "#ffffff",
             fontSize: 12,
             fontWeight: 600,
-            padding: "8px 16px",
+            padding: "8px 14px",
             display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
             alignItems: "center",
             justifyContent: "space-between",
             boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
@@ -1353,10 +1493,91 @@ export default function AnniversaryScrapbookPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span>👑</span>
             <span>
-              Preview Mode · {isUnlockedGlobally ? "Unlocked & Live for Potato ✨" : `Locks for Potato: ${lockRemaining || "calculating..."}`}
+              Preview · {isUnlockedGlobally ? "Unlocked & Live for Potato ✨" : `Locks: ${lockRemaining || "..."}`}
             </span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+          {/* Quick Flow Jump Buttons for the Sender */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+            <button
+              onClick={() => {
+                setViewPhase("scrapbook");
+                setActiveSlideIndex(0);
+              }}
+              style={{
+                backgroundColor: viewPhase === "scrapbook" ? "#ffffff" : "rgba(0,0,0,0.3)",
+                color: viewPhase === "scrapbook" ? "#e11d48" : "#fff",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 6,
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              📸 Slides
+            </button>
+            <button
+              onClick={() => setViewPhase("video1")}
+              style={{
+                backgroundColor: viewPhase === "video1" ? "#ffffff" : "rgba(0,0,0,0.3)",
+                color: viewPhase === "video1" ? "#e11d48" : "#fff",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 6,
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🎬 Video 1
+            </button>
+            <button
+              onClick={() => setViewPhase("letter")}
+              style={{
+                backgroundColor: viewPhase === "letter" ? "#ffffff" : "rgba(0,0,0,0.3)",
+                color: viewPhase === "letter" ? "#e11d48" : "#fff",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 6,
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              💌 Letter
+            </button>
+            <button
+              onClick={() => setViewPhase("video2")}
+              style={{
+                backgroundColor: viewPhase === "video2" ? "#ffffff" : "rgba(0,0,0,0.3)",
+                color: viewPhase === "video2" ? "#e11d48" : "#fff",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 6,
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🎬 Video 2
+            </button>
+            <button
+              onClick={() => setViewPhase("delivered")}
+              style={{
+                backgroundColor: viewPhase === "delivered" ? "#ffffff" : "rgba(0,0,0,0.3)",
+                color: viewPhase === "delivered" ? "#e11d48" : "#fff",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 6,
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🕊️ Delivered
+            </button>
+
             {!isUnlockedGlobally && (
               <button
                 onClick={async () => {
@@ -1385,15 +1606,16 @@ export default function AnniversaryScrapbookPage() {
                   color: "#e11d48",
                   border: "none",
                   borderRadius: 6,
-                  padding: "4px 10px",
-                  fontSize: 11,
+                  padding: "3px 8px",
+                  fontSize: 10,
                   fontWeight: 700,
                   cursor: "pointer",
                 }}
               >
-                Instant Unlock For Her Now ✨
+                Instant Unlock ✨
               </button>
             )}
+
             <button
               onClick={() => {
                 setDraftConfig(config);
@@ -1404,25 +1626,47 @@ export default function AnniversaryScrapbookPage() {
                 color: "#ffffff",
                 border: "1px solid rgba(255,255,255,0.3)",
                 borderRadius: 6,
-                padding: "4px 10px",
-                fontSize: 11,
+                padding: "3px 8px",
+                fontSize: 10,
                 fontWeight: 600,
                 cursor: "pointer",
               }}
             >
-              Edit Photos / Text
+              ⚙️ Admin Config
             </button>
           </div>
         </div>
       )}
 
-      {/* Hidden File Input */}
+      {/* Hidden File Inputs for Photos & R2 Videos */}
       <input
         type="file"
         ref={fileInputRef}
         accept="image/*"
         style={{ display: "none" }}
         onChange={handleImageFileChange}
+      />
+      <input
+        type="file"
+        ref={video1FileInputRef}
+        accept="video/mp4,video/quicktime,video/webm"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleVideoUpload("video1", file);
+          if (e.target) e.target.value = "";
+        }}
+      />
+      <input
+        type="file"
+        ref={video2FileInputRef}
+        accept="video/mp4,video/quicktime,video/webm"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleVideoUpload("video2", file);
+          if (e.target) e.target.value = "";
+        }}
       />
 
       {/* Embedded Warm Aesthetics & Polaroid Styles */}
@@ -1687,40 +1931,549 @@ export default function AnniversaryScrapbookPage() {
           }
         }}
       >
-        {/* Invisible Tap Zones: Left 25% = Previous, Right 25% = Next */}
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            goToPrevSlide();
-          }}
-          style={{
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: 0,
-            width: "25%",
-            zIndex: 10,
-            cursor: "w-resize",
-          }}
-        />
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            goToNextSlide();
-          }}
-          style={{
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            right: 0,
-            width: "25%",
-            zIndex: 10,
-            cursor: "e-resize",
-          }}
-        />
+        {/* --- STATE 2: VIDEO TRANSITION 1 (Dinosaur handing letter to potato) --- */}
+        {viewPhase === "video1" && (
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              maxWidth: "420px",
+              height: "calc(100vh - 120px)",
+              maxHeight: "750px",
+              aspectRatio: "9 / 16",
+              borderRadius: "24px",
+              overflow: "hidden",
+              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.85)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              backgroundColor: "#000",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              animation: "paperUnfold 0.4s ease-out",
+            }}
+          >
+            {config.video1_url ? (
+              <video
+                ref={video1PlayerRef}
+                src={config.video1_url}
+                autoPlay
+                playsInline
+                muted={videoMuted}
+                onEnded={() => {
+                  audio.playChime();
+                  setViewPhase("letter");
+                }}
+                onError={() => {
+                  console.warn("Video 1 playback error, continuing to letter");
+                  setViewPhase("letter");
+                }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "12px",
+                  padding: "24px",
+                  textAlign: "center",
+                }}
+              >
+                <span style={{ fontSize: "42px" }}>🦕💌🥔</span>
+                <div style={{ fontFamily: "'Caveat', cursive", fontSize: "22px", color: "#fda4af" }}>
+                  No transition video uploaded yet
+                </div>
+                <button
+                  onClick={() => setViewPhase("letter")}
+                  style={{
+                    background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
+                    border: "none",
+                    borderRadius: "999px",
+                    padding: "8px 18px",
+                    color: "#fff",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Continue to Letter 💌 →
+                </button>
+              </div>
+            )}
+
+            {/* Video 1 Top Controls Overlay */}
+            <div
+              style={{
+                position: "absolute",
+                top: 14,
+                left: 14,
+                right: 14,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                zIndex: 20,
+              }}
+            >
+              <button
+                onClick={() => setViewPhase("scrapbook")}
+                style={{
+                  background: "rgba(0, 0, 0, 0.55)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  borderRadius: "999px",
+                  padding: "6px 14px",
+                  color: "rgba(255, 255, 255, 0.9)",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                ‹ Memories
+              </button>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                {config.video1_url && (
+                  <button
+                    onClick={() => {
+                      const nextMuted = !videoMuted;
+                      setVideoMuted(nextMuted);
+                      if (video1PlayerRef.current) {
+                        video1PlayerRef.current.muted = nextMuted;
+                      }
+                    }}
+                    style={{
+                      background: "rgba(0, 0, 0, 0.55)",
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      border: "1px solid rgba(255, 255, 255, 0.2)",
+                      borderRadius: "999px",
+                      padding: "6px 12px",
+                      color: "#fff",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {videoMuted ? "🔇 Unmute" : "🔊 Sound On"}
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setViewPhase("letter")}
+                  style={{
+                    background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
+                    border: "none",
+                    borderRadius: "999px",
+                    padding: "6px 14px",
+                    color: "#fff",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(244, 63, 94, 0.4)",
+                  }}
+                >
+                  Read Letter 💌 →
+                </button>
+              </div>
+            </div>
+
+            {/* Romantic Bottom Caption Pill */}
+            <div
+              style={{
+                position: "absolute",
+                bottom: 18,
+                left: 14,
+                right: 14,
+                background: "rgba(20, 14, 24, 0.78)",
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+                border: "1px solid rgba(254, 215, 170, 0.25)",
+                borderRadius: "16px",
+                padding: "10px 16px",
+                textAlign: "center",
+                zIndex: 20,
+              }}
+            >
+              <div style={{ fontFamily: "'Caveat', cursive", fontSize: "19px", color: "#fda4af", fontWeight: 700 }}>
+                A special letter is on its way to you... 🦕💌🥔
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- STATE 5: VIDEO TRANSITION 2 (Potato holding letter, handing reply back) --- */}
+        {viewPhase === "video2" && (
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              maxWidth: "420px",
+              height: "calc(100vh - 120px)",
+              maxHeight: "750px",
+              aspectRatio: "9 / 16",
+              borderRadius: "24px",
+              overflow: "hidden",
+              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.85)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              backgroundColor: "#000",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              animation: "paperUnfold 0.4s ease-out",
+            }}
+          >
+            {config.video2_url ? (
+              <video
+                ref={video2PlayerRef}
+                src={config.video2_url}
+                autoPlay
+                playsInline
+                muted={videoMuted}
+                onEnded={handleFinishVideo2}
+                onError={() => {
+                  console.warn("Video 2 playback error, continuing to confirmation");
+                  handleFinishVideo2();
+                }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "12px",
+                  padding: "24px",
+                  textAlign: "center",
+                }}
+              >
+                <span style={{ fontSize: "42px" }}>🥔💌🦕</span>
+                <div style={{ fontFamily: "'Caveat', cursive", fontSize: "22px", color: "#fbcfe8" }}>
+                  Delivering your letter...
+                </div>
+                <button
+                  onClick={handleFinishVideo2}
+                  style={{
+                    background: "linear-gradient(135deg, #ec4899 0%, #be185d 100%)",
+                    border: "none",
+                    borderRadius: "999px",
+                    padding: "8px 18px",
+                    color: "#fff",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  View Confirmation ♡ →
+                </button>
+              </div>
+            )}
+
+            {/* Video 2 Top Controls Overlay */}
+            <div
+              style={{
+                position: "absolute",
+                top: 14,
+                left: 14,
+                right: 14,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                zIndex: 20,
+              }}
+            >
+              <div style={{ display: "flex", gap: "8px" }}>
+                {config.video2_url && (
+                  <button
+                    onClick={() => {
+                      const nextMuted = !videoMuted;
+                      setVideoMuted(nextMuted);
+                      if (video2PlayerRef.current) {
+                        video2PlayerRef.current.muted = nextMuted;
+                      }
+                    }}
+                    style={{
+                      background: "rgba(0, 0, 0, 0.55)",
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      border: "1px solid rgba(255, 255, 255, 0.2)",
+                      borderRadius: "999px",
+                      padding: "6px 12px",
+                      color: "#fff",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {videoMuted ? "🔇 Unmute" : "🔊 Sound On"}
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={handleFinishVideo2}
+                style={{
+                  background: "linear-gradient(135deg, #ec4899 0%, #be185d 100%)",
+                  border: "none",
+                  borderRadius: "999px",
+                  padding: "6px 14px",
+                  color: "#fff",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(236, 72, 153, 0.4)",
+                }}
+              >
+                Delivered 💌 →
+              </button>
+            </div>
+
+            {/* Romantic Bottom Caption Pill */}
+            <div
+              style={{
+                position: "absolute",
+                bottom: 18,
+                left: 14,
+                right: 14,
+                background: "rgba(20, 14, 24, 0.78)",
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+                border: "1px solid rgba(254, 215, 170, 0.25)",
+                borderRadius: "16px",
+                padding: "10px 16px",
+                textAlign: "center",
+                zIndex: 20,
+              }}
+            >
+              <div style={{ fontFamily: "'Caveat', cursive", fontSize: "19px", color: "#fbcfe8", fontWeight: 700 }}>
+                Delivering your reply back into his hands... 🥔💌🦕
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- STATE 6: SUCCESS CONFIRMATION SCREEN --- */}
+        {viewPhase === "delivered" && (
+          <div
+            className="cozy-card"
+            style={{
+              position: "relative",
+              width: "100%",
+              maxWidth: "440px",
+              borderRadius: "28px",
+              padding: "36px 22px 28px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+              boxSizing: "border-box",
+              animation: "paperUnfold 0.5s ease-out",
+              boxShadow: "0 25px 65px rgba(0, 0, 0, 0.85)",
+            }}
+          >
+            <div
+              style={{
+                width: "76px",
+                height: "76px",
+                borderRadius: "50%",
+                backgroundColor: "rgba(244, 63, 94, 0.16)",
+                border: "2px solid #fda4af",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "36px",
+                marginBottom: "16px",
+                boxShadow: "0 0 28px rgba(244, 63, 94, 0.45)",
+              }}
+            >
+              💌
+            </div>
+
+            <div style={{ fontFamily: "'Caveat', cursive", fontSize: "20px", color: "#fda4af", marginBottom: "4px" }}>
+              sealed forever ♡
+            </div>
+
+            <h2
+              style={{
+                fontFamily: "'Caveat', cursive",
+                fontSize: "36px",
+                fontWeight: 700,
+                color: "#fff",
+                margin: "0 0 8px",
+                textShadow: "0 2px 14px rgba(244, 63, 94, 0.4)",
+              }}
+            >
+              Letter Delivered ♡
+            </h2>
+
+            <p
+              style={{
+                fontFamily: "'Quicksand', sans-serif",
+                fontSize: "13px",
+                color: "#fbcfe8",
+                lineHeight: "1.6",
+                maxWidth: "340px",
+                margin: "0 0 22px",
+              }}
+            >
+              Your reply letter has been sealed with love and delivered to him. He will cherish your words forever.
+            </p>
+
+            {/* Snippet of her letter */}
+            {replyLetter && (
+              <div
+                className="letter-stationery"
+                style={{
+                  borderRadius: "16px",
+                  padding: "16px 18px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  textAlign: "left",
+                  marginBottom: "22px",
+                  position: "relative",
+                }}
+              >
+                <div className="washi-tape" />
+                <div style={{ fontFamily: "'Caveat', cursive", fontSize: "19px", color: "#9f1239", fontWeight: 700, marginBottom: "4px" }}>
+                  {replyLetter.salutation}
+                </div>
+                <div
+                  style={{
+                    fontFamily: "'Cormorant Garamond', Georgia, serif",
+                    fontSize: "14px",
+                    color: "#2c1a20",
+                    fontStyle: "italic",
+                    lineHeight: "1.6",
+                    maxHeight: "90px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  "{replyLetter.paragraphs[0]}"
+                </div>
+                <div style={{ fontFamily: "'Caveat', cursive", fontSize: "18px", color: "#be123c", marginTop: "8px", textAlign: "right" }}>
+                  — {replyLetter.signature}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
+              <button
+                onClick={() => {
+                  setActiveLetterTab("hers");
+                  setViewPhase("letter");
+                  setIsReplySealBroken(true);
+                }}
+                style={{
+                  background: "linear-gradient(135deg, #ec4899 0%, #be185d 100%)",
+                  border: "none",
+                  borderRadius: "999px",
+                  padding: "12px 24px",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontFamily: "'Quicksand', sans-serif",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 6px 20px rgba(236, 72, 153, 0.4)",
+                }}
+              >
+                Read Both Letters 💌
+              </button>
+
+              <button
+                onClick={() => {
+                  setViewPhase("scrapbook");
+                  setActiveSlideIndex(0);
+                }}
+                style={{
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  borderRadius: "999px",
+                  padding: "11px 24px",
+                  color: "#fda4af",
+                  fontSize: "13px",
+                  fontFamily: "'Quicksand', sans-serif",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Rewind to Scrapbook 📸
+              </button>
+
+              <button
+                onClick={() => router.replace("/")}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: "8px",
+                  color: "rgba(255, 255, 255, 0.5)",
+                  fontSize: "12px",
+                  fontFamily: "'Quicksand', sans-serif",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Return to Chat ♡
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* --- STATE 1: THE SCRAPBOOK (Memories & Slides) --- */}
+        {viewPhase === "scrapbook" && (
+          <>
+            {/* Invisible Tap Zones: Left 25% = Previous, Right 25% = Next */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                goToPrevSlide();
+              }}
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: "25%",
+                zIndex: 10,
+                cursor: "w-resize",
+              }}
+            />
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                goToNextSlide();
+              }}
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                right: 0,
+                width: "25%",
+                zIndex: 10,
+                cursor: "e-resize",
+              }}
+            />
+          </>
+        )}
 
         {/* --- SCENARIO 1: WARM SCRAPBOOK COVER --- */}
-        {isCoverSlide && (
+        {viewPhase === "scrapbook" && isCoverSlide && (
           <div
             className="cozy-card"
             style={{
@@ -1833,7 +2586,7 @@ export default function AnniversaryScrapbookPage() {
         )}
 
         {/* --- SCENARIO 2: PHYSICAL POLAROID PHOTO MEMORY (UNCROPPED & SEAMLESS) --- */}
-        {!isCoverSlide && !isFinalSlide && currentMemory && (
+        {viewPhase === "scrapbook" && !isCoverSlide && currentMemory && (
           <div
             key={currentMemory.id}
             className="polaroid-paper"
@@ -2016,8 +2769,8 @@ export default function AnniversaryScrapbookPage() {
           </div>
         )}
 
-        {/* --- SCENARIO 3: THE WAX SEAL ENVELOPE & WRITTEN LETTER --- */}
-        {isFinalSlide && (
+        {/* --- STATE 3 & 4: THE WAX SEAL ENVELOPE, WRITTEN LETTER & REPLY INTERFACE --- */}
+        {viewPhase === "letter" && (
           <div
             className="cozy-card"
             style={{
@@ -2034,6 +2787,50 @@ export default function AnniversaryScrapbookPage() {
               overflowY: (activeLetterTab === "his" ? isLetterOpened : isReplySealBroken) ? "auto" : "hidden",
             }}
           >
+            {/* Top Navigation Row inside Letter View */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                width: "100%",
+                marginBottom: "12px",
+              }}
+            >
+              <button
+                onClick={() => setViewPhase("scrapbook")}
+                style={{
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  borderRadius: "999px",
+                  padding: "4px 12px",
+                  color: "rgba(255, 255, 255, 0.8)",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                ‹ Memories
+              </button>
+              {config.video1_url && (
+                <button
+                  onClick={() => setViewPhase("video1")}
+                  style={{
+                    background: "rgba(244, 63, 94, 0.15)",
+                    border: "1px solid rgba(244, 63, 94, 0.3)",
+                    borderRadius: "999px",
+                    padding: "4px 10px",
+                    color: "#fda4af",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  🎬 Replay Video 1
+                </button>
+              )}
+            </div>
+
             {/* TABS SWITCHER: When a reply letter exists */}
             {replyLetter && (
               <div
@@ -2334,73 +3131,233 @@ export default function AnniversaryScrapbookPage() {
                       </div>
                     )}
 
-                    {/* OPTIONAL REPLY LETTER CALL-TO-ACTION */}
-                    {!replyLetter ? (
+                    {/* --- STATE 4: THE EMBEDDED REPLY INTERFACE --- */}
+                    <div
+                      style={{
+                        marginTop: "24px",
+                        paddingTop: "20px",
+                        borderTop: "1px dashed rgba(244, 63, 94, 0.35)",
+                        width: "100%",
+                        boxSizing: "border-box",
+                      }}
+                    >
                       <div
                         style={{
-                          marginTop: "20px",
                           display: "flex",
-                          flexDirection: "column",
                           alignItems: "center",
-                          gap: "6px",
+                          justifyContent: "space-between",
+                          marginBottom: "12px",
                         }}
                       >
-                        <button
-                          onClick={handleOpenDraftReplyModal}
-                          style={{
-                            background: "rgba(255, 255, 255, 0.08)",
-                            border: "1px dashed rgba(253, 164, 175, 0.6)",
-                            borderRadius: "999px",
-                            padding: "10px 22px",
-                            color: "#fbcfe8",
-                            fontSize: "13px",
-                            fontFamily: "'Quicksand', sans-serif",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            transition: "all 0.2s ease",
-                            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
-                          }}
-                        >
-                          <span>✍️</span>
-                          <span>Write a letter back to him ♡</span>
-                        </button>
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            color: "rgba(255, 255, 255, 0.5)",
-                            fontFamily: "'Caveat', cursive",
-                          }}
-                        >
-                          optional · sealed in the same wax envelope ✨
-                        </span>
+                        <div>
+                          <div
+                            style={{
+                              fontFamily: "'Caveat', cursive",
+                              fontSize: "24px",
+                              fontWeight: 700,
+                              color: "#9f1239",
+                            }}
+                          >
+                            Write a letter back to him ♡
+                          </div>
+                          <div
+                            style={{
+                              fontFamily: "'Quicksand', sans-serif",
+                              fontSize: "12px",
+                              color: "#6e4b52",
+                            }}
+                          >
+                            Sealed in a wax envelope & delivered to his heart.
+                          </div>
+                        </div>
+                        <span style={{ fontSize: "24px" }}>💌</span>
                       </div>
-                    ) : (
-                      <div style={{ marginTop: "16px" }}>
-                        <button
-                          onClick={() => setActiveLetterTab("hers")}
+
+                      {/* Salutation / Calling */}
+                      <div style={{ marginBottom: "10px" }}>
+                        <label
                           style={{
-                            background: "rgba(244, 63, 94, 0.16)",
-                            border: "1px solid rgba(244, 63, 94, 0.4)",
-                            borderRadius: "999px",
-                            padding: "8px 20px",
-                            color: "#fbcfe8",
-                            fontSize: "12px",
+                            fontSize: "11px",
                             fontFamily: "'Quicksand', sans-serif",
                             fontWeight: 700,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
+                            color: "#785342",
+                            display: "block",
+                            marginBottom: "4px",
                           }}
                         >
-                          <span>💖</span>
-                          <span>{isSender ? "Read Her Reply Letter ✨ →" : "Read Your Letter to Him ♡ →"}</span>
-                        </button>
+                          To:
+                        </label>
+                        <input
+                          type="text"
+                          value={replyDraft.salutation}
+                          onChange={(e) => setReplyDraft({ ...replyDraft, salutation: e.target.value })}
+                          placeholder="To my handsome dinosaur ♡"
+                          style={{
+                            width: "100%",
+                            backgroundColor: "rgba(255, 255, 255, 0.75)",
+                            border: "1px solid rgba(244, 63, 94, 0.3)",
+                            borderRadius: "8px",
+                            padding: "8px 12px",
+                            fontFamily: "'Caveat', cursive",
+                            fontSize: "19px",
+                            color: "#9f1239",
+                            boxSizing: "border-box",
+                            outline: "none",
+                          }}
+                        />
                       </div>
-                    )}
+
+                      {/* Paragraphs Message Body */}
+                      <div style={{ marginBottom: "10px" }}>
+                        <label
+                          style={{
+                            fontSize: "11px",
+                            fontFamily: "'Quicksand', sans-serif",
+                            fontWeight: 700,
+                            color: "#785342",
+                            display: "block",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          Your Letter:
+                        </label>
+                        <textarea
+                          rows={5}
+                          value={replyDraft.body}
+                          onChange={(e) => setReplyDraft({ ...replyDraft, body: e.target.value })}
+                          placeholder="Write in your own words... thank him, share your thoughts, or tell him how much he means to you..."
+                          style={{
+                            width: "100%",
+                            backgroundColor: "rgba(255, 255, 255, 0.75)",
+                            border: "1px solid rgba(244, 63, 94, 0.3)",
+                            borderRadius: "8px",
+                            padding: "10px 12px",
+                            fontFamily: "'Cormorant Garamond', Georgia, serif",
+                            fontSize: "16px",
+                            lineHeight: "1.6",
+                            color: "#2c1a20",
+                            boxSizing: "border-box",
+                            outline: "none",
+                            resize: "vertical",
+                          }}
+                        />
+                      </div>
+
+                      {/* Closing & Signature Row */}
+                      <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
+                        <div style={{ flex: 1 }}>
+                          <label
+                            style={{
+                              fontSize: "11px",
+                              fontFamily: "'Quicksand', sans-serif",
+                              fontWeight: 700,
+                              color: "#785342",
+                              display: "block",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Closing:
+                          </label>
+                          <input
+                            type="text"
+                            value={replyDraft.closing}
+                            onChange={(e) => setReplyDraft({ ...replyDraft, closing: e.target.value })}
+                            placeholder="Forever and always yours,"
+                            style={{
+                              width: "100%",
+                              backgroundColor: "rgba(255, 255, 255, 0.75)",
+                              border: "1px solid rgba(244, 63, 94, 0.3)",
+                              borderRadius: "8px",
+                              padding: "7px 10px",
+                              fontFamily: "'Cormorant Garamond', Georgia, serif",
+                              fontSize: "15px",
+                              fontStyle: "italic",
+                              color: "#785342",
+                              boxSizing: "border-box",
+                              outline: "none",
+                            }}
+                          />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label
+                            style={{
+                              fontSize: "11px",
+                              fontFamily: "'Quicksand', sans-serif",
+                              fontWeight: 700,
+                              color: "#785342",
+                              display: "block",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Signature:
+                          </label>
+                          <input
+                            type="text"
+                            value={replyDraft.signature}
+                            onChange={(e) => setReplyDraft({ ...replyDraft, signature: e.target.value })}
+                            placeholder="Your Pretty Potato ♡"
+                            style={{
+                              width: "100%",
+                              backgroundColor: "rgba(255, 255, 255, 0.75)",
+                              border: "1px solid rgba(244, 63, 94, 0.3)",
+                              borderRadius: "8px",
+                              padding: "7px 10px",
+                              fontFamily: "'Caveat', cursive",
+                              fontSize: "19px",
+                              color: "#be123c",
+                              boxSizing: "border-box",
+                              outline: "none",
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Seal & Send Button */}
+                      <button
+                        onClick={handleSendReplyFromLetter}
+                        disabled={isSavingReply}
+                        style={{
+                          width: "100%",
+                          background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
+                          border: "none",
+                          borderRadius: "999px",
+                          padding: "13px 24px",
+                          color: "#fff",
+                          fontSize: "14px",
+                          fontFamily: "'Quicksand', sans-serif",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          boxShadow: "0 6px 20px rgba(244, 63, 94, 0.45)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "8px",
+                          transition: "transform 0.15s ease",
+                        }}
+                      >
+                        <span>💌</span>
+                        <span>{isSavingReply ? "Sealing & Sending..." : "Seal & Send Reply 💌"}</span>
+                      </button>
+
+                      {replyLetter && (
+                        <div style={{ marginTop: "12px", textAlign: "center" }}>
+                          <button
+                            onClick={() => setActiveLetterTab("hers")}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "#be123c",
+                              fontSize: "12px",
+                              fontFamily: "'Quicksand', sans-serif",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            View your previously sent letter 💖 →
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </>
@@ -2660,68 +3617,71 @@ export default function AnniversaryScrapbookPage() {
         )}
       </div>
 
-      {/* BOTTOM FOOTER NAVIGATION */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 10,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "10px 24px 18px",
-          width: "100%",
-          maxWidth: "460px",
-          margin: "0 auto",
-          boxSizing: "border-box",
-        }}
-      >
-        <button
-          onClick={goToPrevSlide}
-          disabled={activeSlideIndex === 0}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: activeSlideIndex === 0 ? "rgba(255, 255, 255, 0.15)" : "rgba(255, 255, 255, 0.65)",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: activeSlideIndex === 0 ? "default" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "3px",
-          }}
-        >
-          ‹ rewind
-        </button>
-
+      {/* BOTTOM FOOTER NAVIGATION (Only during Scrapbook Slides) */}
+      {viewPhase === "scrapbook" && (
         <div
           style={{
-            fontSize: "13px",
-            color: "rgba(255, 255, 255, 0.4)",
-            fontFamily: "'Caveat', cursive",
-            fontSizeAdjust: "0.55",
-          }}
-        >
-          {activeSlideIndex + 1} of {totalSteps}
-        </div>
-
-        <button
-          onClick={goToNextSlide}
-          disabled={isFinalSlide}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: isFinalSlide ? "rgba(255, 255, 255, 0.15)" : "#fda4af",
-            fontSize: "13px",
-            fontWeight: 700,
-            cursor: isFinalSlide ? "default" : "pointer",
+            position: "relative",
+            zIndex: 10,
             display: "flex",
+            justifyContent: "space-between",
             alignItems: "center",
-            gap: "3px",
+            padding: "10px 24px 18px",
+            width: "100%",
+            maxWidth: "460px",
+            margin: "0 auto",
+            boxSizing: "border-box",
           }}
         >
-          next ›
-        </button>
-      </div>
+          <button
+            onClick={goToPrevSlide}
+            disabled={activeSlideIndex === 0}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: activeSlideIndex === 0 ? "rgba(255, 255, 255, 0.15)" : "rgba(255, 255, 255, 0.65)",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: activeSlideIndex === 0 ? "default" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "3px",
+            }}
+          >
+            ‹ rewind
+          </button>
+
+          <div
+            style={{
+              fontSize: "13px",
+              color: "rgba(255, 255, 255, 0.4)",
+              fontFamily: "'Caveat', cursive",
+              fontSizeAdjust: "0.55",
+            }}
+          >
+            {activeSlideIndex + 1} of {totalScrapbookSteps}
+          </div>
+
+          <button
+            onClick={goToNextSlide}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#fda4af",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "3px",
+            }}
+          >
+            {activeSlideIndex === totalScrapbookSteps - 1
+              ? (config.video1_url ? "watch video 🎬 ›" : "read letter 💌 ›")
+              : "next ›"}
+          </button>
+        </div>
+      )}
 
       {/* --- DRAFT A LETTER BACK MODAL --- */}
       {isDraftingReply && (
@@ -3244,6 +4204,29 @@ export default function AnniversaryScrapbookPage() {
               >
                 💌 Love Letter
               </button>
+              <button
+                onClick={() => setEditingTab("videos")}
+                style={{
+                  background: editingTab === "videos" ? "#f43f5e" : "rgba(255, 255, 255, 0.06)",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "7px 14px",
+                  color: "#fff",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <span>🎬 Videos (R2)</span>
+                {(draftConfig.video1_url || draftConfig.video2_url) && (
+                  <span style={{ fontSize: "9px", backgroundColor: "rgba(255,255,255,0.25)", borderRadius: "999px", padding: "1px 5px" }}>
+                    ✓
+                  </span>
+                )}
+              </button>
             </div>
 
             {/* Tab 1: Photos */}
@@ -3558,6 +4541,478 @@ export default function AnniversaryScrapbookPage() {
                         marginTop: "3px",
                       }}
                     />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Story Videos (Cloudflare R2 Integration) */}
+            {editingTab === "videos" && (
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                  paddingRight: "4px",
+                }}
+              >
+                <div style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)", fontFamily: "'Quicksand', sans-serif" }}>
+                  Upload portrait videos (9:16 aspect ratio). Files upload directly to your Cloudflare R2 bucket with high-speed CDN delivery.
+                </div>
+
+                {videoUploadNotice && (
+                  <div
+                    style={{
+                      background: "rgba(244, 63, 94, 0.15)",
+                      border: "1px solid rgba(244, 63, 94, 0.35)",
+                      borderRadius: "10px",
+                      padding: "8px 12px",
+                      color: "#fda4af",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {videoUploadNotice}
+                  </div>
+                )}
+
+                {/* Video 1 Card */}
+                <div
+                  style={{
+                    background: "rgba(255, 255, 255, 0.03)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: "16px",
+                    padding: "16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontSize: "14px", fontWeight: 700, color: "#fbcfe8" }}>
+                        🎬 Video 1: Dinosaur handing letter to potato
+                      </div>
+                      <div style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.4)", marginTop: "2px" }}>
+                        Plays automatically when she finishes the scrapbook slides, before revealing your love letter.
+                      </div>
+                    </div>
+                    {draftConfig.video1_url ? (
+                      <span
+                        style={{
+                          backgroundColor: "rgba(16, 185, 129, 0.2)",
+                          color: "#34d399",
+                          border: "1px solid rgba(16, 185, 129, 0.4)",
+                          borderRadius: "999px",
+                          padding: "2px 8px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                        }}
+                      >
+                        ✓ Ready
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          backgroundColor: "rgba(255, 255, 255, 0.06)",
+                          color: "rgba(255, 255, 255, 0.4)",
+                          borderRadius: "999px",
+                          padding: "2px 8px",
+                          fontSize: "10px",
+                        }}
+                      >
+                        Not Set
+                      </span>
+                    )}
+                  </div>
+
+                  {draftConfig.video1_url ? (
+                    <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+                      <div
+                        style={{
+                          width: "80px",
+                          height: "142px",
+                          borderRadius: "10px",
+                          overflow: "hidden",
+                          backgroundColor: "#000",
+                          flexShrink: 0,
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                          border: "1px solid rgba(255,255,255,0.1)",
+                        }}
+                      >
+                        <video
+                          src={draftConfig.video1_url}
+                          controls
+                          playsInline
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      </div>
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", wordBreak: "break-all" }}>
+                          {draftConfig.video1_url}
+                        </div>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            onClick={() => video1FileInputRef.current?.click()}
+                            disabled={isUploadingVideo1}
+                            style={{
+                              background: "rgba(255, 255, 255, 0.1)",
+                              border: "1px solid rgba(255, 255, 255, 0.2)",
+                              borderRadius: "8px",
+                              padding: "6px 12px",
+                              color: "#fff",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {isUploadingVideo1 ? `Uploading (${video1UploadProgress}%)...` : "Replace Video"}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const updated = { ...draftConfig, video1_url: "" };
+                              setDraftConfig(updated);
+                              await handleSaveConfig(updated);
+                            }}
+                            style={{
+                              background: "rgba(244, 63, 94, 0.15)",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "6px 10px",
+                              color: "#fda4af",
+                              fontSize: "11px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Remove
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsEditDrawerOpen(false);
+                              setViewPhase("video1");
+                            }}
+                            style={{
+                              background: "rgba(254, 215, 170, 0.15)",
+                              border: "1px solid rgba(254, 215, 170, 0.3)",
+                              borderRadius: "8px",
+                              padding: "6px 10px",
+                              color: "#fed7aa",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Test Play ▷
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <button
+                        onClick={() => video1FileInputRef.current?.click()}
+                        disabled={isUploadingVideo1}
+                        style={{
+                          background: "rgba(244, 63, 94, 0.12)",
+                          border: "1px dashed rgba(244, 63, 94, 0.4)",
+                          borderRadius: "12px",
+                          padding: "16px",
+                          color: "#fbcfe8",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          textAlign: "center",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <span>📹</span>
+                        <span>
+                          {isUploadingVideo1
+                            ? `Uploading to R2... (${video1UploadProgress}%)`
+                            : "Choose Video 1 (Dino → Potato) to Upload"}
+                        </span>
+                      </button>
+                      {isUploadingVideo1 && (
+                        <div style={{ width: "100%", height: "4px", backgroundColor: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
+                          <div style={{ width: `${video1UploadProgress}%`, height: "100%", backgroundColor: "#f43f5e", transition: "width 0.2s" }} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Video 2 Card */}
+                <div
+                  style={{
+                    background: "rgba(255, 255, 255, 0.03)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: "16px",
+                    padding: "16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontSize: "14px", fontWeight: 700, color: "#fbcfe8" }}>
+                        🎬 Video 2: Potato holding letter, handing reply back
+                      </div>
+                      <div style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.4)", marginTop: "2px" }}>
+                        Plays immediately when she clicks "Seal & Send Reply", before showing her confirmation.
+                      </div>
+                    </div>
+                    {draftConfig.video2_url ? (
+                      <span
+                        style={{
+                          backgroundColor: "rgba(16, 185, 129, 0.2)",
+                          color: "#34d399",
+                          border: "1px solid rgba(16, 185, 129, 0.4)",
+                          borderRadius: "999px",
+                          padding: "2px 8px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                        }}
+                      >
+                        ✓ Ready
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          backgroundColor: "rgba(255, 255, 255, 0.06)",
+                          color: "rgba(255, 255, 255, 0.4)",
+                          borderRadius: "999px",
+                          padding: "2px 8px",
+                          fontSize: "10px",
+                        }}
+                      >
+                        Not Set
+                      </span>
+                    )}
+                  </div>
+
+                  {draftConfig.video2_url ? (
+                    <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+                      <div
+                        style={{
+                          width: "80px",
+                          height: "142px",
+                          borderRadius: "10px",
+                          overflow: "hidden",
+                          backgroundColor: "#000",
+                          flexShrink: 0,
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                          border: "1px solid rgba(255,255,255,0.1)",
+                        }}
+                      >
+                        <video
+                          src={draftConfig.video2_url}
+                          controls
+                          playsInline
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      </div>
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", wordBreak: "break-all" }}>
+                          {draftConfig.video2_url}
+                        </div>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            onClick={() => video2FileInputRef.current?.click()}
+                            disabled={isUploadingVideo2}
+                            style={{
+                              background: "rgba(255, 255, 255, 0.1)",
+                              border: "1px solid rgba(255, 255, 255, 0.2)",
+                              borderRadius: "8px",
+                              padding: "6px 12px",
+                              color: "#fff",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {isUploadingVideo2 ? `Uploading (${video2UploadProgress}%)...` : "Replace Video"}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const updated = { ...draftConfig, video2_url: "" };
+                              setDraftConfig(updated);
+                              await handleSaveConfig(updated);
+                            }}
+                            style={{
+                              background: "rgba(244, 63, 94, 0.15)",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "6px 10px",
+                              color: "#fda4af",
+                              fontSize: "11px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Remove
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsEditDrawerOpen(false);
+                              setViewPhase("video2");
+                            }}
+                            style={{
+                              background: "rgba(254, 215, 170, 0.15)",
+                              border: "1px solid rgba(254, 215, 170, 0.3)",
+                              borderRadius: "8px",
+                              padding: "6px 10px",
+                              color: "#fed7aa",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Test Play ▷
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <button
+                        onClick={() => video2FileInputRef.current?.click()}
+                        disabled={isUploadingVideo2}
+                        style={{
+                          background: "rgba(244, 63, 94, 0.12)",
+                          border: "1px dashed rgba(244, 63, 94, 0.4)",
+                          borderRadius: "12px",
+                          padding: "16px",
+                          color: "#fbcfe8",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          textAlign: "center",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <span>📹</span>
+                        <span>
+                          {isUploadingVideo2
+                            ? `Uploading to R2... (${video2UploadProgress}%)`
+                            : "Choose Video 2 (Potato → Dino) to Upload"}
+                        </span>
+                      </button>
+                      {isUploadingVideo2 && (
+                        <div style={{ width: "100%", height: "4px", backgroundColor: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
+                          <div style={{ width: `${video2UploadProgress}%`, height: "100%", backgroundColor: "#f43f5e", transition: "width 0.2s" }} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Testing Station */}
+                <div
+                  style={{
+                    background: "rgba(254, 215, 170, 0.05)",
+                    border: "1px solid rgba(254, 215, 170, 0.15)",
+                    borderRadius: "14px",
+                    padding: "12px 14px",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", color: "#fed7aa", fontWeight: 700, marginBottom: "8px" }}>
+                    🧪 TEST THE COMPLETE EXPERIENCE FLOW:
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    <button
+                      onClick={() => {
+                        setIsEditDrawerOpen(false);
+                        setViewPhase("scrapbook");
+                        setActiveSlideIndex(0);
+                      }}
+                      style={{
+                        background: "rgba(255, 255, 255, 0.08)",
+                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                        borderRadius: "6px",
+                        padding: "5px 10px",
+                        color: "#fff",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      1. Scrapbook Start
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditDrawerOpen(false);
+                        setViewPhase("video1");
+                      }}
+                      style={{
+                        background: draftConfig.video1_url ? "rgba(244, 63, 94, 0.2)" : "rgba(255, 255, 255, 0.04)",
+                        border: "1px solid " + (draftConfig.video1_url ? "#fda4af" : "rgba(255, 255, 255, 0.08)"),
+                        borderRadius: "6px",
+                        padding: "5px 10px",
+                        color: draftConfig.video1_url ? "#fda4af" : "rgba(255, 255, 255, 0.3)",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      2. Video 1 (Dino → Potato)
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditDrawerOpen(false);
+                        setViewPhase("letter");
+                      }}
+                      style={{
+                        background: "rgba(255, 255, 255, 0.08)",
+                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                        borderRadius: "6px",
+                        padding: "5px 10px",
+                        color: "#fff",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      3. Letter & Reply Form
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditDrawerOpen(false);
+                        setViewPhase("video2");
+                      }}
+                      style={{
+                        background: draftConfig.video2_url ? "rgba(236, 72, 153, 0.2)" : "rgba(255, 255, 255, 0.04)",
+                        border: "1px solid " + (draftConfig.video2_url ? "#fbcfe8" : "rgba(255, 255, 255, 0.08)"),
+                        borderRadius: "6px",
+                        padding: "5px 10px",
+                        color: draftConfig.video2_url ? "#fbcfe8" : "rgba(255, 255, 255, 0.3)",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      4. Video 2 (Potato → Dino)
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditDrawerOpen(false);
+                        setViewPhase("delivered");
+                      }}
+                      style={{
+                        background: "rgba(255, 255, 255, 0.08)",
+                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                        borderRadius: "6px",
+                        padding: "5px 10px",
+                        color: "#fff",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      5. Delivered State
+                    </button>
                   </div>
                 </div>
               </div>

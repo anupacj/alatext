@@ -160,3 +160,12 @@ export const uploadBlobToR2 = async (
   if (onProgress) onProgress(100);
   return `${R2_PUBLIC_URL}/${fileName}`;
 };
+
+export const uploadAnniversaryVideoToR2 = async (
+  slot: "video1" | "video2",
+  blob: Blob,
+  onProgress?: (percent: number) => void
+): Promise<string> => {
+  return uploadBlobToR2(`anniversary/videos/${slot}-${Date.now()}`, blob, onProgress);
+};
+
