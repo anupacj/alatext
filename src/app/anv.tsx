@@ -5,10 +5,10 @@ import { supabase } from "@/lib/supabase";
 // --- TYPES & DATA CONTRACTS ---
 export interface MemorySlide {
   id: string;
-  tag: string;           // e.g. "october 13 · day one ♡"
-  title: string;         // e.g. "Where it all started"
-  dateLocation?: string; // e.g. "our first conversation"
-  caption: string;       // e.g. "I went back and read our first conversation..."
+  tag: string;           // Bottom note / sticker e.g. "stolen minutes ♡"
+  title: string;         // e.g. "when we first met"
+  dateLocation?: string; // e.g. "11 out of 10 day"
+  caption: string;       // e.g. "I was really happy on that day,,,,,hehehehehe....."
   imageUrl: string;      // Base64 WebP or public image URL
   accentColor: string;
 }
@@ -29,6 +29,7 @@ export interface AnvConfig {
 
 const STORAGE_CONFIG_KEY = "@anv_custom_config_2026";
 const SUPABASE_SETTINGS_KEY = "anniversary_config";
+const SUPABASE_STATS_KEY = "anniversary_stats";
 
 export const DEFAULT_CONFIG: AnvConfig = {
   coupleNames: "Pretty Potato & You",
@@ -90,6 +91,7 @@ export const DEFAULT_CONFIG: AnvConfig = {
 class CozyAudioEngine {
   private ctx: AudioContext | null = null;
   public soundEnabled: boolean = true;
+  private chimeStep: number = 0;
 
   private getContext(): AudioContext | null {
     if (typeof window === "undefined" || !this.soundEnabled) return null;
@@ -103,6 +105,7 @@ class CozyAudioEngine {
     return this.ctx;
   }
 
+  // Soft page turn / gentle kalimba pluck
   playPageTurn() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -123,6 +126,30 @@ class CozyAudioEngine {
     osc.stop(now + 0.16);
   }
 
+  // Soft tactile tap heart chime
+  playHeartTap() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    const heartNotes = [659.25, 783.99, 987.77, 1046.5, 1318.51];
+    const freq = heartNotes[Math.floor(Math.random() * heartNotes.length)];
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, now);
+
+    gain.gain.setValueAtTime(0.03, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.22);
+  }
+
+  // Realistic wax seal crack + sweet warm harmonic chime
   playWaxSealBreak() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -160,26 +187,28 @@ class CozyAudioEngine {
     });
   }
 
-  playLoveFanfare() {
+  // Ascending harp arpeggio note with each successive celebration tap
+  playLoveFanfareStep() {
     const ctx = this.getContext();
     if (!ctx) return;
     const now = ctx.currentTime;
-    const chords = [523.25, 659.25, 783.99, 1046.5, 1318.51];
-    chords.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+    const melody = [523.25, 587.33, 659.25, 783.99, 880.0, 987.77, 1046.5, 1174.66, 1318.51];
+    const freq = melody[this.chimeStep % melody.length];
+    this.chimeStep++;
 
-      gain.gain.setValueAtTime(0, now + idx * 0.06);
-      gain.gain.linearRampToValueAtTime(0.06, now + idx * 0.06 + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.06 + 2.4);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, now);
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + idx * 0.06);
-      osc.stop(now + idx * 0.06 + 2.5);
-    });
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.linearRampToValueAtTime(0.09, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.0);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 2.1);
   }
 }
 
@@ -231,6 +260,21 @@ function compressImageFile(file: File): Promise<string> {
   });
 }
 
+// Format relative time helper
+function formatTimeAgo(isoString: string): string {
+  try {
+    const diffMs = Date.now() - new Date(isoString).getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffHours / 24)}d ago`;
+  } catch {
+    return "";
+  }
+}
+
 // --- MAIN ANNIVERSARY SCRAPBOOK & LOVE LETTER PAGE ---
 export default function AnniversaryScrapbookPage() {
   const router = useRouter();
@@ -248,19 +292,25 @@ export default function AnniversaryScrapbookPage() {
 
   const [soundMuted, setSoundMuted] = useState(false);
 
-  // Sync with Supabase cloud so her phone gets his uploaded photos immediately
+  // She Celebrate Clicks tracking (synced with Supabase)
+  const [celebrateCount, setCelebrateCount] = useState<number>(0);
+  const [lastCelebratedAt, setLastCelebratedAt] = useState<string | null>(null);
+  const [buttonSpringAnim, setButtonSpringAnim] = useState(false);
+
+  // Sync with Supabase cloud on mount
   useEffect(() => {
     let isMounted = true;
-    async function loadCloudConfig() {
+    async function loadCloudData() {
       try {
-        const { data, error } = await supabase
+        // 1. Fetch anniversary config
+        const { data: configData } = await supabase
           .from("app_settings")
           .select("value")
           .eq("key", SUPABASE_SETTINGS_KEY)
           .maybeSingle();
 
-        if (!error && data && data.value && isMounted) {
-          const cloudConfig = data.value as AnvConfig;
+        if (configData && configData.value && isMounted) {
+          const cloudConfig = configData.value as AnvConfig;
           if (cloudConfig.letter && cloudConfig.memories) {
             setConfig(cloudConfig);
             if (typeof window !== "undefined") {
@@ -268,17 +318,33 @@ export default function AnniversaryScrapbookPage() {
             }
           }
         }
+
+        // 2. Fetch celebrate stats (how many times she tapped Celebrate!)
+        const { data: statsData } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", SUPABASE_STATS_KEY)
+          .maybeSingle();
+
+        if (statsData && statsData.value && isMounted) {
+          if (typeof statsData.value.celebrate_clicks === "number") {
+            setCelebrateCount(statsData.value.celebrate_clicks);
+          }
+          if (statsData.value.last_clicked_at) {
+            setLastCelebratedAt(statsData.value.last_clicked_at);
+          }
+        }
       } catch (err) {
-        console.warn("Could not fetch anniversary config from cloud:", err);
+        console.warn("Could not fetch data from cloud:", err);
       }
     }
-    loadCloudConfig();
+    loadCloudData();
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Dynamically load warm, cozy Google Fonts: Caveat (handwriting), Quicksand (soft rounded), Cormorant Garamond (serif)
+  // Dynamically load warm, cozy Google Fonts: Caveat, Quicksand, Cormorant Garamond
   useEffect(() => {
     if (typeof document !== "undefined") {
       const fontId = "anv-google-fonts";
@@ -314,7 +380,6 @@ export default function AnniversaryScrapbookPage() {
   // Wax Seal & Love Letter reveal states
   const [isSealBroken, setIsSealBroken] = useState(false);
   const [isLetterOpened, setIsLetterOpened] = useState(false);
-  const [celebrationFired, setCelebrationFired] = useState(false);
 
   // Discreet photo & letter manager drawer
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
@@ -327,7 +392,7 @@ export default function AnniversaryScrapbookPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadTargetMemoryIdRef = useRef<string | null>(null);
 
-  // Background Canvas: Warm candlelit stardust & romantic rose petals
+  // Background Canvas: Warm candlelit fireflies, floating hearts, and sakura petals
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const particlesRef = useRef<any[]>([]);
 
@@ -402,7 +467,7 @@ export default function AnniversaryScrapbookPage() {
     return () => clearInterval(timer);
   }, [activeSlideIndex, isFinalSlide, isCoverSlide, isEditDrawerOpen, goToNextSlide]);
 
-  // Warm floating candle fireflies & stardust
+  // Canvas Particles Engine: Supports Ambient Fireflies, Tap Hearts, Wax Shards, and Sakura Petals
   useEffect(() => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -419,10 +484,12 @@ export default function AnniversaryScrapbookPage() {
     };
     window.addEventListener("resize", handleResize);
 
+    // Initial ambient fireflies
     particlesRef.current = [];
     const warmPalette = ["#fde68a", "#fbcfe8", "#fed7aa", "#fef08a", "#ffd1dc"];
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 35; i++) {
       particlesRef.current.push({
+        type: "firefly",
         x: Math.random() * width,
         y: Math.random() * height,
         vx: (Math.random() - 0.5) * 0.25,
@@ -445,9 +512,9 @@ export default function AnniversaryScrapbookPage() {
 
         if (p.decay > 0) {
           p.alpha -= p.decay;
-          p.vy += 0.05;
+          p.vy += p.gravity || 0.05;
           p.vx *= 0.985;
-        } else {
+        } else if (p.type === "firefly") {
           p.pulse += 0.02;
           const currentAlpha = Math.max(0.08, p.alpha + Math.sin(p.pulse) * 0.12);
 
@@ -471,12 +538,28 @@ export default function AnniversaryScrapbookPage() {
         ctx.save();
         ctx.globalAlpha = Math.max(0, p.alpha);
         ctx.translate(p.x, p.y);
-        ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.arc(0, 0, p.size, 0, Math.PI * 2);
-        ctx.fill();
+
+        if (p.type === "heart") {
+          ctx.fillStyle = p.color;
+          ctx.font = `${p.size * 5}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("♥", 0, 0);
+        } else if (p.type === "petal") {
+          ctx.fillStyle = p.color;
+          ctx.rotate((p.rotation || 0) * (Math.PI / 180));
+          ctx.beginPath();
+          ctx.ellipse(0, 0, p.size * 2, p.size, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = p.color;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
         ctx.restore();
       });
 
@@ -492,27 +575,78 @@ export default function AnniversaryScrapbookPage() {
     };
   }, []);
 
-  // Heartfelt celebration trigger: rose petals & warm sparkle hearts
-  const spawnCelebrationBurst = () => {
-    audio.playLoveFanfare();
-    setCelebrationFired(true);
+  // ANIMATION 1: Interactive Tap-Anywhere Micro Heart Burst
+  const spawnTapHeart = (clientX: number, clientY: number) => {
+    audio.playHeartTap();
+    const heartColors = ["#f43f5e", "#fda4af", "#f472b6", "#fbbf24", "#fff"];
 
+    for (let i = 0; i < 4; i++) {
+      const angle = (Math.random() - 0.5) * Math.PI;
+      const speed = 1.8 + Math.random() * 3.5;
+      particlesRef.current.push({
+        type: "heart",
+        x: clientX + (Math.random() - 0.5) * 16,
+        y: clientY + (Math.random() - 0.5) * 16,
+        vx: Math.cos(angle) * speed * 0.7,
+        vy: -speed - 1.2,
+        size: 2.5 + Math.random() * 2,
+        alpha: 1,
+        color: heartColors[Math.floor(Math.random() * heartColors.length)],
+        decay: 0.02 + Math.random() * 0.015,
+        gravity: 0.02,
+      });
+    }
+  };
+
+  // ANIMATION 2: Wax Seal Shards Burst
+  const spawnWaxSealCrackEffect = () => {
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
-    const romanticColors = ["#f43f5e", "#fda4af", "#fbbf24", "#fff", "#f472b6", "#fed7aa"];
 
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 18; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 3.2 + Math.random() * 9.5;
+      const speed = 2.5 + Math.random() * 7;
       particlesRef.current.push({
+        type: "wax",
         x: cx,
         y: cy,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 3.2,
-        size: 3.5 + Math.random() * 4,
+        vy: Math.sin(angle) * speed - 1.5,
+        size: 3 + Math.random() * 4,
+        alpha: 1,
+        color: i % 2 === 0 ? "#be123c" : "#fbbf24",
+        decay: 0.018 + Math.random() * 0.018,
+        gravity: 0.12,
+      });
+    }
+  };
+
+  // ANIMATION 3: The Grand Celebration Heart & Petal Fountain
+  const spawnCelebrationBurst = () => {
+    audio.playLoveFanfareStep();
+    setButtonSpringAnim(true);
+    setTimeout(() => setButtonSpringAnim(false), 350);
+
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight * 0.72;
+    const romanticColors = ["#f43f5e", "#fda4af", "#fbbf24", "#fff", "#f472b6", "#fed7aa", "#fbcfe8"];
+
+    for (let i = 0; i < 65; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.5;
+      const speed = 4 + Math.random() * 11;
+      const isHeart = Math.random() > 0.45;
+      particlesRef.current.push({
+        type: isHeart ? "heart" : "petal",
+        x: cx + (Math.random() - 0.5) * 50,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2.5,
+        size: 3 + Math.random() * 3.5,
+        rotation: Math.random() * 360,
         alpha: 1,
         color: romanticColors[Math.floor(Math.random() * romanticColors.length)],
-        decay: 0.012 + Math.random() * 0.015,
+        decay: 0.01 + Math.random() * 0.014,
+        gravity: 0.06,
       });
     }
   };
@@ -521,12 +655,35 @@ export default function AnniversaryScrapbookPage() {
   const handleBreakSeal = () => {
     if (isSealBroken) return;
     audio.playWaxSealBreak();
+    spawnWaxSealCrackEffect();
     setIsSealBroken(true);
 
     setTimeout(() => {
       setIsLetterOpened(true);
       spawnCelebrationBurst();
     }, 650);
+  };
+
+  // Celebrate Button Click Handler (Updates Supabase so he sees her tap count!)
+  const handleCelebrateClick = async () => {
+    spawnCelebrationBurst();
+    const newCount = celebrateCount + 1;
+    const nowIso = new Date().toISOString();
+    setCelebrateCount(newCount);
+    setLastCelebratedAt(nowIso);
+
+    try {
+      await supabase.from("app_settings").upsert({
+        key: SUPABASE_STATS_KEY,
+        value: {
+          celebrate_clicks: newCount,
+          last_clicked_at: nowIso,
+        },
+        updated_at: nowIso,
+      });
+    } catch (e) {
+      console.warn("Could not save celebrate tap:", e);
+    }
   };
 
   // Cloud & Local Storage Save
@@ -613,6 +770,13 @@ export default function AnniversaryScrapbookPage() {
 
   return (
     <div
+      onClick={(e) => {
+        // Spawn floating tap hearts anywhere user clicks (except buttons/inputs)
+        const target = e.target as HTMLElement;
+        if (target.tagName !== "BUTTON" && target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+          spawnTapHeart(e.clientX, e.clientY);
+        }
+      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -649,6 +813,12 @@ export default function AnniversaryScrapbookPage() {
         @keyframes paperUnfold {
           from { transform: translateY(30px) scale(0.94); opacity: 0; }
           to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        @keyframes buttonSquish {
+          0% { transform: scale(1); }
+          40% { transform: scale(0.92); }
+          75% { transform: scale(1.08); }
+          100% { transform: scale(1); }
         }
         .cozy-card {
           background: rgba(26, 19, 27, 0.88);
@@ -688,6 +858,9 @@ export default function AnniversaryScrapbookPage() {
           color: #2b1d16;
           box-shadow: inset 0 0 35px rgba(217, 119, 6, 0.06), 0 15px 40px rgba(0, 0, 0, 0.5);
           border: 1px solid rgba(217, 119, 6, 0.15);
+        }
+        .celebrate-btn-bounce {
+          animation: buttonSquish 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
       `}</style>
 
@@ -832,11 +1005,26 @@ export default function AnniversaryScrapbookPage() {
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                gap: "4px",
+                gap: "5px",
               }}
               title="Edit photos or letter"
             >
               <span>✏️</span> memories
+              {celebrateCount > 0 && (
+                <span
+                  style={{
+                    backgroundColor: "#f43f5e",
+                    color: "#fff",
+                    borderRadius: "999px",
+                    padding: "1px 6px",
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    marginLeft: "2px",
+                  }}
+                >
+                  {celebrateCount} 💕
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -1053,7 +1241,7 @@ export default function AnniversaryScrapbookPage() {
             >
               {currentMemory.imageUrl ? (
                 <>
-                  {/* Layer 1: Ambient Background Color Fill (Uses same photo to seamlessly fill any gaps - no weird black boxes) */}
+                  {/* Layer 1: Ambient Background Color Fill (No weird black boxes) */}
                   <img
                     src={currentMemory.imageUrl}
                     alt=""
@@ -1184,6 +1372,7 @@ export default function AnniversaryScrapbookPage() {
                 "{currentMemory.caption}"
               </p>
 
+              {/* Footer Note / Editable Tag */}
               <div
                 style={{
                   display: "flex",
@@ -1195,7 +1384,7 @@ export default function AnniversaryScrapbookPage() {
                   fontWeight: 600,
                 }}
               >
-                <span>{currentMemory.tag}</span>
+                <span>{currentMemory.tag || "♡"}</span>
                 <span>swipe to turn ˘͈ᵕ˘͈</span>
               </div>
             </div>
@@ -1413,9 +1602,10 @@ export default function AnniversaryScrapbookPage() {
                   </div>
                 </div>
 
-                {/* Sweet Celebration Button */}
+                {/* Sweet Interactive Celebration Button */}
                 <button
-                  onClick={spawnCelebrationBurst}
+                  onClick={handleCelebrateClick}
+                  className={buttonSpringAnim ? "celebrate-btn-bounce" : ""}
                   style={{
                     marginTop: "22px",
                     background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
@@ -1431,15 +1621,32 @@ export default function AnniversaryScrapbookPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
+                    transition: "transform 0.15s ease",
                   }}
                 >
                   <span>🌸</span>
                   <span>
-                    {celebrationFired
+                    {celebrateCount === 0
+                      ? "A year of loving you 💕"
+                      : celebrateCount === 1
                       ? "I love you so much ♡"
-                      : "A year of loving you 💕"}
+                      : `Sending love to you... 💕 (×${celebrateCount})`}
                   </span>
                 </button>
+
+                {celebrateCount > 0 && (
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      fontSize: "12px",
+                      color: "#fda4af",
+                      fontFamily: "'Caveat', cursive",
+                      fontSizeAdjust: "0.55",
+                    }}
+                  >
+                    {celebrateCount === 1 ? "1 love reaction sent ♡" : `${celebrateCount} love reactions sent to him! 💕`}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1566,6 +1773,38 @@ export default function AnniversaryScrapbookPage() {
               </button>
             </div>
 
+            {/* LIVE STATS BANNER: How many times she celebrated */}
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(244, 63, 94, 0.16) 0%, rgba(225, 29, 72, 0.08) 100%)",
+                border: "1px solid rgba(244, 63, 94, 0.3)",
+                borderRadius: "14px",
+                padding: "10px 14px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "11px", color: "#fda4af", fontWeight: 700, letterSpacing: "0.5px" }}>
+                  💌 HER LOVE REACTION TRACKER:
+                </div>
+                <div style={{ fontSize: "17px", fontWeight: 700, color: "#fff", fontFamily: "'Caveat', cursive" }}>
+                  {celebrateCount > 0
+                    ? `She tapped Celebrate ${celebrateCount} time${celebrateCount > 1 ? "s" : ""}! 💕`
+                    : "She hasn't opened & tapped Celebrate yet..."}
+                </div>
+              </div>
+              {lastCelebratedAt && (
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: "10px", color: "rgba(255, 255, 255, 0.4)" }}>Last tapped:</div>
+                  <div style={{ fontSize: "12px", color: "#fed7aa", fontWeight: 600 }}>
+                    {formatTimeAgo(lastCelebratedAt)}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Tab Switcher */}
             <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "10px" }}>
               <button
@@ -1666,12 +1905,12 @@ export default function AnniversaryScrapbookPage() {
                       </button>
                     </div>
 
-                    {/* Captions */}
+                    {/* Captions and Tag */}
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <input
                           type="text"
-                          placeholder="Title"
+                          placeholder="Title (e.g. when we first met)"
                           value={mem.title}
                           onChange={(e) => {
                             const newMems = [...draftConfig.memories];
@@ -1703,28 +1942,53 @@ export default function AnniversaryScrapbookPage() {
                         </button>
                       </div>
 
-                      <input
-                        type="text"
-                        placeholder="Date / Note (e.g. october 13)"
-                        value={mem.dateLocation || ""}
-                        onChange={(e) => {
-                          const newMems = [...draftConfig.memories];
-                          newMems[index].dateLocation = e.target.value;
-                          setDraftConfig({ ...draftConfig, memories: newMems });
-                        }}
-                        style={{
-                          background: "#0c0810",
-                          border: "1px solid rgba(255, 255, 255, 0.1)",
-                          borderRadius: "6px",
-                          padding: "4px 8px",
-                          color: "#fbcfe8",
-                          fontSize: "11px",
-                        }}
-                      />
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <input
+                          type="text"
+                          placeholder="Date / Top Note (e.g. 11 out of 10 day)"
+                          value={mem.dateLocation || ""}
+                          onChange={(e) => {
+                            const newMems = [...draftConfig.memories];
+                            newMems[index].dateLocation = e.target.value;
+                            setDraftConfig({ ...draftConfig, memories: newMems });
+                          }}
+                          style={{
+                            flex: 1,
+                            background: "#0c0810",
+                            border: "1px solid rgba(255, 255, 255, 0.1)",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            color: "#fed7aa",
+                            fontSize: "11px",
+                          }}
+                        />
+
+                        {/* EDITABLE TAG / BOTTOM NOTE (Previously uneditable "stolen minutes ♡") */}
+                        <input
+                          type="text"
+                          placeholder="Bottom Tag (e.g. stolen minutes ♡ or empty)"
+                          value={mem.tag || ""}
+                          onChange={(e) => {
+                            const newMems = [...draftConfig.memories];
+                            newMems[index].tag = e.target.value;
+                            setDraftConfig({ ...draftConfig, memories: newMems });
+                          }}
+                          style={{
+                            flex: 1,
+                            background: "#0c0810",
+                            border: "1px solid rgba(255, 255, 255, 0.1)",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            color: "#fda4af",
+                            fontSize: "11px",
+                          }}
+                          title="This is the bottom sticker label (like 'stolen minutes ♡'). You can change or delete it."
+                        />
+                      </div>
 
                       <textarea
                         rows={2}
-                        placeholder="Caption..."
+                        placeholder="Caption (e.g. I was really happy on that day...)"
                         value={mem.caption}
                         onChange={(e) => {
                           const newMems = [...draftConfig.memories];
