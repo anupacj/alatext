@@ -11,7 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText, Lock } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
@@ -255,6 +255,8 @@ export default function ChatScreen() {
   const [anniversaryPairing, setAnniversaryPairing] = useState<any>(null);
   const [anniversaryCountdown, setAnniversaryCountdown] = useState<string>("");
   const [isAnniversaryUnlocked, setIsAnniversaryUnlocked] = useState(false);
+  const [pillLockedNotice, setPillLockedNotice] = useState<string | null>(null);
+  const pillNoticeTimeoutRef = useRef<any>(null);
   const isTargetOnline = targetUser && targetUser.updated_at 
     ? Date.now() - new Date(targetUser.updated_at).getTime() < 45 * 1000 
     : false;
@@ -3718,20 +3720,39 @@ export default function ChatScreen() {
               style={[
                 styles.anniversaryCountdownPill,
                 isAnniversaryUnlocked && styles.anniversaryUnlockedPill,
+                !isAnniversaryUnlocked && { borderColor: "rgba(244, 63, 94, 0.45)", backgroundColor: "rgba(244, 63, 94, 0.12)" },
               ]}
-              onPress={() => router.push("/anv" as any)}
-              activeOpacity={0.8}
+              onPress={() => {
+                if (isAnniversaryUnlocked) {
+                  router.push("/anv" as any);
+                } else {
+                  if (pillNoticeTimeoutRef.current) clearTimeout(pillNoticeTimeoutRef.current);
+                  setPillLockedNotice("🔒 Locked! Check back when countdown ends");
+                  pillNoticeTimeoutRef.current = setTimeout(() => {
+                    setPillLockedNotice(null);
+                  }, 2200);
+                }
+              }}
+              activeOpacity={isAnniversaryUnlocked ? 0.8 : 0.9}
             >
-              <Heart
-                size={12}
-                color="#f43f5e"
-                fill="#f43f5e"
-                style={{ marginRight: 6 }}
-              />
+              {isAnniversaryUnlocked ? (
+                <Heart
+                  size={12}
+                  color="#f43f5e"
+                  fill="#f43f5e"
+                  style={{ marginRight: 6 }}
+                />
+              ) : (
+                <Lock
+                  size={12}
+                  color="#fda4af"
+                  style={{ marginRight: 6 }}
+                />
+              )}
               <Text style={styles.anniversaryPillText}>
-                {isAnniversaryUnlocked
+                {pillLockedNotice || (isAnniversaryUnlocked
                   ? `${anniversaryPairing.pill_label || "Anniversary Surprise 💌"} · Tap to open ✨`
-                  : `Unlocks in ${anniversaryCountdown || "..."} ⏳`}
+                  : `Unlocks in ${anniversaryCountdown || "..."} ⏳`)}
               </Text>
               <Sparkles size={11} color="#fda4af" style={{ marginLeft: 6 }} />
             </TouchableOpacity>

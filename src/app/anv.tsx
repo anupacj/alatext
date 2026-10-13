@@ -301,6 +301,7 @@ export default function AnniversaryScrapbookPage() {
 
   // Pairing lock & countdown state
   const [pairing, setPairing] = useState<any>(null);
+  const [isLoadingPairing, setIsLoadingPairing] = useState(true);
   const [lockRemaining, setLockRemaining] = useState<string>("");
   const [isEditParam, setIsEditParam] = useState(false);
 
@@ -350,15 +351,22 @@ export default function AnniversaryScrapbookPage() {
           .maybeSingle();
 
         if (pairingsData?.value && Array.isArray(pairingsData.value) && isMounted) {
-          const match = pairingsData.value.find(
-            (p: any) => p.active !== false && (p.recipient_id === user?.id || p.sender_id === user?.id)
-          );
+          let match = user
+            ? pairingsData.value.find(
+                (p: any) => p.active !== false && (p.recipient_id === user?.id || p.sender_id === user?.id)
+              )
+            : null;
+          if (!match) {
+            match = pairingsData.value.find((p: any) => p.active !== false);
+          }
           if (match) {
             setPairing(match);
           }
         }
       } catch (err) {
         console.warn("Could not fetch data from cloud:", err);
+      } finally {
+        if (isMounted) setIsLoadingPairing(false);
       }
     }
     loadCloudData();
@@ -369,10 +377,9 @@ export default function AnniversaryScrapbookPage() {
 
   // Check if locked for current user
   const isSender = Boolean(user && pairing && user.id === pairing.sender_id);
-  const isRecipient = Boolean(user && pairing && user.id === pairing.recipient_id);
   const isExpired = Boolean(pairing && new Date(pairing.unlock_at).getTime() <= Date.now());
   const isUnlockedGlobally = Boolean(pairing && (pairing.is_unlocked || isExpired));
-  const isLockedForRecipient = Boolean(!isEditParam && isRecipient && !isUnlockedGlobally);
+  const isLocked = Boolean(pairing && !isUnlockedGlobally && !isEditParam);
 
   // Lock countdown timer
   useEffect(() => {
@@ -824,8 +831,32 @@ export default function AnniversaryScrapbookPage() {
     await handleSaveConfig(updated);
   };
 
-  // If locked for recipient (before scheduled unlock time and not in ?edit=true mode)
-  if (isLockedForRecipient) {
+  // While checking pairings from cloud, display quiet loading screen (prevents any content leak)
+  if (isLoadingPairing) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "#110d13",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fda4af",
+          fontFamily: "'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif",
+          zIndex: 999999,
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>💌</div>
+          <div style={{ fontSize: 14, letterSpacing: 1 }}>Opening scrapbook...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // If locked (before scheduled unlock time and not in ?edit=true mode)
+  if (isLocked) {
     return (
       <div
         style={{
@@ -847,7 +878,7 @@ export default function AnniversaryScrapbookPage() {
       >
         <div
           style={{
-            maxWidth: 400,
+            maxWidth: 420,
             width: "100%",
             backgroundColor: "rgba(255, 255, 255, 0.04)",
             border: "1px solid rgba(244, 63, 94, 0.3)",
@@ -896,10 +927,66 @@ export default function AnniversaryScrapbookPage() {
             Take a deep breath and check back in your chat soon ✨
           </p>
 
+          {/* Admin Sender Controls on Locked Screen */}
+          {isSender && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", marginTop: 8 }}>
+              <button
+                onClick={() => setIsEditParam(true)}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 12,
+                  backgroundColor: "rgba(244, 63, 94, 0.2)",
+                  border: "1px solid rgba(244, 63, 94, 0.4)",
+                  color: "#fda4af",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                👑 Admin: Enter Preview & Edit Mode
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const { data: pData } = await supabase
+                      .from("app_settings")
+                      .select("value")
+                      .eq("key", "anniversary_pairings")
+                      .maybeSingle();
+                    if (pData?.value && Array.isArray(pData.value)) {
+                      const updated = pData.value.map((p: any) =>
+                        p.id === pairing.id ? { ...p, is_unlocked: true } : p
+                      );
+                      await supabase
+                        .from("app_settings")
+                        .upsert({ key: "anniversary_pairings", value: updated });
+                      setPairing((prev: any) => (prev ? { ...prev, is_unlocked: true } : prev));
+                      alert("✓ Unlocked! Potato can now open it in her chat!");
+                    }
+                  } catch (e: any) {
+                    alert("Error: " + e.message);
+                  }
+                }}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 12,
+                  backgroundColor: "#e11d48",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Instant Unlock for Her Now ✨
+              </button>
+            </div>
+          )}
+
           <button
             onClick={() => router.replace("/chat" as any)}
             style={{
-              marginTop: 10,
+              marginTop: 6,
               padding: "10px 22px",
               borderRadius: 12,
               backgroundColor: "rgba(255, 255, 255, 0.08)",
