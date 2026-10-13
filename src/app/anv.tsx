@@ -1619,6 +1619,30 @@ export default function AnniversaryScrapbookPage() {
             <button
               onClick={() => {
                 setDraftConfig(config);
+                setEditingTab("videos");
+                setIsEditDrawerOpen(true);
+              }}
+              style={{
+                backgroundColor: "#ffffff",
+                color: "#e11d48",
+                border: "none",
+                borderRadius: 6,
+                padding: "3px 9px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <span>📹</span>
+              <span>Upload Videos (R2)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setDraftConfig(config);
                 setIsEditDrawerOpen(true);
               }}
               style={{
@@ -1982,29 +2006,63 @@ export default function AnniversaryScrapbookPage() {
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: "12px",
-                  padding: "24px",
+                  gap: "14px",
+                  padding: "24px 20px",
                   textAlign: "center",
+                  width: "100%",
+                  boxSizing: "border-box",
                 }}
               >
-                <span style={{ fontSize: "42px" }}>🦕💌🥔</span>
-                <div style={{ fontFamily: "'Caveat', cursive", fontSize: "22px", color: "#fda4af" }}>
-                  No transition video uploaded yet
+                <span style={{ fontSize: "44px" }}>🦕💌🥔</span>
+                <div style={{ fontFamily: "'Caveat', cursive", fontSize: "24px", color: "#fda4af", fontWeight: 700 }}>
+                  Video 1: Dino handing letter to potato
                 </div>
+                <div style={{ fontFamily: "'Quicksand', sans-serif", fontSize: "12px", color: "rgba(255, 255, 255, 0.65)", maxWidth: "280px" }}>
+                  Upload a 9:16 portrait video. It will play smoothly right here before your love letter is revealed.
+                </div>
+
+                {/* Direct Upload Button to R2 */}
                 <button
-                  onClick={() => setViewPhase("letter")}
+                  onClick={() => video1FileInputRef.current?.click()}
+                  disabled={isUploadingVideo1}
                   style={{
                     background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
                     border: "none",
                     borderRadius: "999px",
-                    padding: "8px 18px",
+                    padding: "13px 26px",
                     color: "#fff",
-                    fontSize: "12px",
+                    fontSize: "14px",
+                    fontFamily: "'Quicksand', sans-serif",
                     fontWeight: 700,
                     cursor: "pointer",
+                    boxShadow: "0 6px 20px rgba(244, 63, 94, 0.45)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
                   }}
                 >
-                  Continue to Letter 💌 →
+                  <span>📹</span>
+                  <span>{isUploadingVideo1 ? `Uploading (${video1UploadProgress}%)...` : "Upload Video 1 to R2"}</span>
+                </button>
+
+                {isUploadingVideo1 && (
+                  <div style={{ width: "220px", height: "4px", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "999px", overflow: "hidden" }}>
+                    <div style={{ width: `${video1UploadProgress}%`, height: "100%", backgroundColor: "#f43f5e", transition: "width 0.2s" }} />
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setViewPhase("letter")}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "rgba(255, 255, 255, 0.5)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    marginTop: "6px",
+                  }}
+                >
+                  Skip to Letter 💌 →
                 </button>
               </div>
             )}
@@ -2041,6 +2099,30 @@ export default function AnniversaryScrapbookPage() {
               </button>
 
               <div style={{ display: "flex", gap: "8px" }}>
+                {/* Upload / Replace button on video */}
+                <button
+                  onClick={() => video1FileInputRef.current?.click()}
+                  disabled={isUploadingVideo1}
+                  style={{
+                    background: "rgba(0, 0, 0, 0.55)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    border: "1px solid rgba(254, 215, 170, 0.35)",
+                    borderRadius: "999px",
+                    padding: "6px 12px",
+                    color: "#fed7aa",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <span>📹</span>
+                  <span>{isUploadingVideo1 ? `${video1UploadProgress}%` : (config.video1_url ? "Change Video" : "Upload Video")}</span>
+                </button>
+
                 {config.video1_url && (
                   <button
                     onClick={() => {
@@ -2158,29 +2240,63 @@ export default function AnniversaryScrapbookPage() {
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: "12px",
-                  padding: "24px",
+                  gap: "14px",
+                  padding: "24px 20px",
                   textAlign: "center",
+                  width: "100%",
+                  boxSizing: "border-box",
                 }}
               >
-                <span style={{ fontSize: "42px" }}>🥔💌🦕</span>
-                <div style={{ fontFamily: "'Caveat', cursive", fontSize: "22px", color: "#fbcfe8" }}>
-                  Delivering your letter...
+                <span style={{ fontSize: "44px" }}>🥔💌🦕</span>
+                <div style={{ fontFamily: "'Caveat', cursive", fontSize: "24px", color: "#fbcfe8", fontWeight: 700 }}>
+                  Video 2: Potato handing reply back
                 </div>
+                <div style={{ fontFamily: "'Quicksand', sans-serif", fontSize: "12px", color: "rgba(255, 255, 255, 0.65)", maxWidth: "280px" }}>
+                  Upload a 9:16 portrait video. It will play immediately when she clicks "Seal & Send Reply".
+                </div>
+
+                {/* Direct Upload Button to R2 */}
                 <button
-                  onClick={handleFinishVideo2}
+                  onClick={() => video2FileInputRef.current?.click()}
+                  disabled={isUploadingVideo2}
                   style={{
                     background: "linear-gradient(135deg, #ec4899 0%, #be185d 100%)",
                     border: "none",
                     borderRadius: "999px",
-                    padding: "8px 18px",
+                    padding: "13px 26px",
                     color: "#fff",
-                    fontSize: "12px",
+                    fontSize: "14px",
+                    fontFamily: "'Quicksand', sans-serif",
                     fontWeight: 700,
                     cursor: "pointer",
+                    boxShadow: "0 6px 20px rgba(236, 72, 153, 0.45)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
                   }}
                 >
-                  View Confirmation ♡ →
+                  <span>📹</span>
+                  <span>{isUploadingVideo2 ? `Uploading (${video2UploadProgress}%)...` : "Upload Video 2 to R2"}</span>
+                </button>
+
+                {isUploadingVideo2 && (
+                  <div style={{ width: "220px", height: "4px", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "999px", overflow: "hidden" }}>
+                    <div style={{ width: `${video2UploadProgress}%`, height: "100%", backgroundColor: "#ec4899", transition: "width 0.2s" }} />
+                  </div>
+                )}
+
+                <button
+                  onClick={handleFinishVideo2}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "rgba(255, 255, 255, 0.5)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    marginTop: "6px",
+                  }}
+                >
+                  Skip to Confirmation ♡ →
                 </button>
               </div>
             )}
@@ -2199,6 +2315,30 @@ export default function AnniversaryScrapbookPage() {
               }}
             >
               <div style={{ display: "flex", gap: "8px" }}>
+                {/* Upload / Replace button on video */}
+                <button
+                  onClick={() => video2FileInputRef.current?.click()}
+                  disabled={isUploadingVideo2}
+                  style={{
+                    background: "rgba(0, 0, 0, 0.55)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    border: "1px solid rgba(254, 215, 170, 0.35)",
+                    borderRadius: "999px",
+                    padding: "6px 12px",
+                    color: "#fed7aa",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <span>📹</span>
+                  <span>{isUploadingVideo2 ? `${video2UploadProgress}%` : (config.video2_url ? "Change Video" : "Upload Video")}</span>
+                </button>
+
                 {config.video2_url && (
                   <button
                     onClick={() => {
