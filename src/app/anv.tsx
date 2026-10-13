@@ -1,24 +1,25 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
+import { supabase } from "@/lib/supabase";
 
-// --- TYPES & DEFAULT CONFIGURATION ---
-export interface AnvSlide {
+// --- TYPES & DATA CONTRACTS ---
+export interface MemorySlide {
   id: string;
-  badge: string;
-  title: string;
-  metricValue: string;
-  metricLabel: string;
-  metricValue2?: string;
-  metricLabel2?: string;
-  story: string;
+  tag: string;           // e.g. "MOMENT I", "FIRST DATE", "SUMMER 2026"
+  title: string;         // e.g. "The First Spark"
+  dateLocation?: string; // e.g. "📍 The Corner Table"
+  caption: string;       // e.g. "I still remember how time seemed to stop..."
+  imageUrl: string;      // Base64 WebP or public image URL
   accentColor: string;
 }
 
 export interface AnvConfig {
   coupleNames: string;
   anniversaryDate: string;
-  slides: AnvSlide[];
+  introTitle: string;
+  introSubtitle: string;
+  memories: MemorySlide[];
   letter: {
     salutation: string;
     paragraphs: string[];
@@ -28,72 +29,56 @@ export interface AnvConfig {
 }
 
 const STORAGE_CONFIG_KEY = "@anv_custom_config_2026";
+const SUPABASE_SETTINGS_KEY = "anniversary_config";
 
 export const DEFAULT_CONFIG: AnvConfig = {
   coupleNames: "Us",
   anniversaryDate: "October 13, 2026",
-  slides: [
+  introTitle: "365 Days of Us",
+  introSubtitle: "A private collection of our favorite moments, stolen minutes, and memories from our first year together.",
+  memories: [
     {
-      id: "prelude",
-      badge: "OUR 1-YEAR STORY",
-      title: "The 365-Day Journey",
-      metricValue: "365",
-      metricLabel: "Days Together",
-      metricValue2: "Year 1",
-      metricLabel2: "Milestone",
-      story: "A private rewind of every commute, stolen minute, inside joke, and secret late-night text that brought us here.",
+      id: "mem-1",
+      tag: "CHAPTER I",
+      title: "Where It All Started",
+      dateLocation: "🗓️ Day 1 · October 13",
+      caption: "Looking back at where our story officially began. I still catch myself smiling at how effortless and magical talking to you felt from the very first moment.",
+      imageUrl: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=1000&q=80",
       accentColor: "#fb7185",
     },
     {
-      id: "commute",
-      badge: "MILESTONE I",
-      title: "The Commute Champion",
-      metricValue: "1.5",
-      metricLabel: "Hour Bus Rides",
-      metricValue2: "100s",
-      metricLabel2: "Kilometers Traveled",
-      story: "Packed buses, heavy rain, or sheer exhaustion—nothing ever mattered compared to the feeling of finally seeing your face at the stop.",
-      accentColor: "#38bdf8",
-    },
-    {
-      id: "stealth",
-      badge: "MILESTONE II",
-      title: "Stealth Mode: Level 100",
-      metricValue: "10,000+",
-      metricLabel: "Encrypted Messages",
-      metricValue2: "2:00 AM",
-      metricLabel2: "Usual Bedtime",
-      story: "Our quiet sanctuary on our private app. Whispering in secret codes, typing indicators that made hearts race, and conversations that never ran dry.",
+      id: "mem-2",
+      tag: "CHAPTER II",
+      title: "Stolen Minutes",
+      dateLocation: "☕ Our Favorite Spot",
+      caption: "Running across the city just to steal a quick date together. Packed buses, silly jokes, and wishing the minutes wouldn't tick by so fast.",
+      imageUrl: "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=1000&q=80",
       accentColor: "#c084fc",
     },
     {
-      id: "heists",
-      badge: "MILESTONE III",
-      title: "The 35-Minute Heists",
-      metricValue: "35",
-      metricLabel: "Minute Quick Dates",
-      metricValue2: "∞",
-      metricLabel2: "Stolen Smiles",
-      story: "Rushing across the city for a quick 35-minute coffee date. Sitting at that corner table, sharing food, making memories that defied the ticking clock.",
-      accentColor: "#fbbf24",
+      id: "mem-3",
+      tag: "CHAPTER III",
+      title: "Late Night Conversations",
+      dateLocation: "🌙 2:00 AM Whispers",
+      caption: "Our quiet sanctuary on our private app. Typing indicators that made hearts race and deep conversations that carried us until the early morning hours.",
+      imageUrl: "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1000&q=80",
+      accentColor: "#38bdf8",
     },
     {
-      id: "odometer",
-      badge: "THE TIME SCALE",
-      title: "One Whole Year",
-      metricValue: "365",
-      metricLabel: "Days Complete",
-      metricValue2: "31.5M",
-      metricLabel2: "Seconds Of Love",
-      story: "8,760 hours. 525,600 minutes. 365 days of choosing you, laughing with you, and building a world that only the two of us understand.",
-      accentColor: "#f43f5e",
+      id: "mem-4",
+      tag: "CHAPTER IV",
+      title: "My Safe Place",
+      dateLocation: "🤍 Everywhere With You",
+      caption: "In a noisy, crowded world, being with you feels like coming home. Thank you for your warmth, your sweetness, and for loving me the way you do.",
+      imageUrl: "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?auto=format&fit=crop&w=1000&q=80",
+      accentColor: "#fbbf24",
     },
   ],
   letter: {
     salutation: "To My Favorite Person,",
     paragraphs: [
       "365 days ago, our story officially began. Looking back at everything we've shared, I still catch myself smiling at how effortless and magical being with you feels.",
-      "From running for buses just to steal 35 minutes together, to texting until the early morning hours, you've made every ordinary day feel like an adventure.",
+      "From running for buses just to steal quick moments together, to texting until the early morning hours, you've made every ordinary day feel like an adventure.",
       "Thank you for your warmth, your kindness, your silly jokes, and for loving me the way you do. You are my safe place and my favorite home.",
       "Here is to 365 days behind us, and a lifetime of stolen moments ahead. Happy One Year Anniversary, my love! 💕",
     ],
@@ -165,46 +150,94 @@ class AnvAudioEngine {
 
     osc.type = "sine";
     osc.frequency.setValueAtTime(880, now);
-    osc.frequency.exponentialRampToValueAtTime(440, now + 0.03);
+    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.04);
 
     gain.gain.setValueAtTime(0.02, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.05);
+    osc.stop(now + 0.06);
   }
 
   playCelebrationFanfare() {
     const ctx = this.getContext();
     if (!ctx) return;
     const now = ctx.currentTime;
-    const notes = [523.25, 659.25, 783.99, 987.77, 1046.5, 1318.51, 1567.98];
-    notes.forEach((freq, i) => {
+    const chords = [523.25, 659.25, 783.99, 1046.5, 1318.51];
+    chords.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + i * 0.05);
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, now + idx * 0.05);
 
-      gain.gain.setValueAtTime(0.06, now + i * 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.05 + 1.6);
+      gain.gain.setValueAtTime(0, now + idx * 0.05);
+      gain.gain.linearRampToValueAtTime(0.07, now + idx * 0.05 + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.05 + 2.5);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(now + i * 0.05);
-      osc.stop(now + i * 0.05 + 1.8);
+      osc.start(now + idx * 0.05);
+      osc.stop(now + idx * 0.05 + 2.6);
     });
   }
 }
 
 const audio = new AnvAudioEngine();
 
-// --- MAIN WRAPPED PAGE COMPONENT ---
-export default function AnniversaryWrappedPage() {
+// --- CLIENT-SIDE IMAGE COMPRESSION (max 1100px, WebP/JPEG, ~75KB) ---
+function compressImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1100;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Try WebP first (great compression), fallback to JPEG
+        let dataUrl = canvas.toDataURL("image/webp", 0.78);
+        if (!dataUrl.startsWith("data:image/webp")) {
+          dataUrl = canvas.toDataURL("image/jpeg", 0.78);
+        }
+        resolve(dataUrl);
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// --- MAIN ANNIVERSARY MEMORY SCRAPBOOK & WRAPPED PAGE ---
+export default function AnniversaryPage() {
   const router = useRouter();
 
-  // Load custom config from localStorage if present
+  // 1. Initial State: Load from localStorage first, then sync with Supabase cloud
   const [config, setConfig] = useState<AnvConfig>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -215,11 +248,54 @@ export default function AnniversaryWrappedPage() {
     return DEFAULT_CONFIG;
   });
 
-  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
-  const totalSteps = config.slides.length + 1; // 5 story slides + 1 final letter slide
-  const isFinalSlide = activeSlideIndex === config.slides.length;
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<"synced" | "syncing" | "offline">("synced");
 
-  // Story progression timer & pause on hold
+  // Fetch config from Supabase app_settings so her phone gets his uploaded photos!
+  useEffect(() => {
+    let isMounted = true;
+    async function loadCloudConfig() {
+      try {
+        const { data, error } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", SUPABASE_SETTINGS_KEY)
+          .maybeSingle();
+
+        if (!error && data && data.value && isMounted) {
+          const cloudConfig = data.value as AnvConfig;
+          if (cloudConfig.memories && Array.isArray(cloudConfig.memories)) {
+            setConfig(cloudConfig);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(cloudConfig));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch anniversary config from cloud:", err);
+      }
+    }
+    loadCloudConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Slide indexing:
+  // Slide 0: Cover / Intro Milestone Card ("365 Days of Us")
+  // Slides 1 to N: Couple Photo Memories
+  // Final Slide (N + 1): The 3D Wax Seal Envelope & Love Letter
+  const totalSteps = 1 + config.memories.length + 1;
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+
+  const isCoverSlide = activeSlideIndex === 0;
+  const isFinalSlide = activeSlideIndex === totalSteps - 1;
+  const currentMemoryIndex = activeSlideIndex - 1;
+  const currentMemory: MemorySlide | null =
+    !isCoverSlide && !isFinalSlide && config.memories[currentMemoryIndex]
+      ? config.memories[currentMemoryIndex]
+      : null;
+
+  // Story progression timer & pause on touch/hold
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const isPausedRef = useRef(isPaused);
@@ -230,54 +306,37 @@ export default function AnniversaryWrappedPage() {
   const [isLetterOpened, setIsLetterOpened] = useState(false);
   const [celebrationFired, setCelebrationFired] = useState(false);
 
-  // Edit Drawer State
+  // Quick Photo Uploader Drawer & Visual Admin Editor
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
-  const [draftConfigJson, setDraftConfigJson] = useState("");
+  const [draftConfig, setDraftConfig] = useState<AnvConfig>(config);
+  const [editingTab, setEditingTab] = useState<"photos" | "letter" | "raw">("photos");
+  const [isUploading, setIsUploading] = useState(false);
+  const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
-  // Canvas Particle System
+  // Hidden file input for on-the-fly photo upload
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadTargetMemoryIdRef = useRef<string | null>(null);
+
+  // Background Canvas Particle System
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const particlesRef = useRef<any[]>([]);
-
-  // Rolling odometer state
-  const [odometerValue, setOdometerValue] = useState(0);
 
   // Touch swipe tracking
   const touchStartXRef = useRef<number>(0);
   const touchStartYRef = useRef<number>(0);
 
-  // 1. Check if ?edit=true is in the query params
+  // Check URL query ?edit=true
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("edit") === "true") {
-        setDraftConfigJson(JSON.stringify(config, null, 2));
+        setDraftConfig(config);
         setIsEditDrawerOpen(true);
       }
     }
-  }, []);
+  }, [config]);
 
-  // 2. Animate Odometer on Slide Change
-  useEffect(() => {
-    const currentSlide = config.slides[activeSlideIndex];
-    if (currentSlide && !isNaN(Number(currentSlide.metricValue))) {
-      const target = Number(currentSlide.metricValue);
-      const start = performance.now();
-      const duration = 1200;
-      const animate = (time: number) => {
-        const elapsed = time - start;
-        const p = Math.min(1, elapsed / duration);
-        const ease = 1 - Math.pow(1 - p, 3);
-        setOdometerValue(Math.floor(ease * target));
-        if (p < 1) requestAnimationFrame(animate);
-        else setOdometerValue(target);
-      };
-      requestAnimationFrame(animate);
-    } else {
-      setOdometerValue(0);
-    }
-  }, [activeSlideIndex, config.slides]);
-
-  // 3. Navigation Controls
+  // Navigation handlers
   const goToNextSlide = useCallback(() => {
     if (activeSlideIndex < totalSteps - 1) {
       setActiveSlideIndex((prev) => prev + 1);
@@ -310,11 +369,12 @@ export default function AnniversaryWrappedPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goToNextSlide, goToPrevSlide, isEditDrawerOpen, router]);
 
-  // 4. Auto-advance Progress Bar (Story mode, stops on final letter slide)
+  // Auto-advance progress timer (Instagram story mode; pauses on hover or on final letter slide)
   useEffect(() => {
     if (isFinalSlide || isEditDrawerOpen) return;
 
-    const SLIDE_DURATION_MS = 6500;
+    // Give photo slides 8 seconds to view peacefully
+    const SLIDE_DURATION_MS = isCoverSlide ? 6000 : 8000;
     const intervalMs = 50;
     const stepIncrement = (intervalMs / SLIDE_DURATION_MS) * 100;
 
@@ -331,9 +391,9 @@ export default function AnniversaryWrappedPage() {
     }, intervalMs);
 
     return () => clearInterval(timer);
-  }, [activeSlideIndex, isFinalSlide, isEditDrawerOpen, goToNextSlide]);
+  }, [activeSlideIndex, isFinalSlide, isCoverSlide, isEditDrawerOpen, goToNextSlide]);
 
-  // 5. Canvas Particles Engine (Ambient Dust + Celebration Confetti)
+  // Canvas Particles Engine (Romantic Ambient Twinkles + Celebration Confetti)
   useEffect(() => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -350,7 +410,7 @@ export default function AnniversaryWrappedPage() {
     };
     window.addEventListener("resize", handleResize);
 
-    // Initial ambient star particles
+    // Ambient floating stardust
     particlesRef.current = [];
     const colors = ["#fda4af", "#f43f5e", "#fde047", "#fbbf24", "#e0e7ff", "#c084fc"];
     for (let i = 0; i < 45; i++) {
@@ -358,11 +418,10 @@ export default function AnniversaryWrappedPage() {
         x: Math.random() * width,
         y: Math.random() * height,
         vx: (Math.random() - 0.5) * 0.3,
-        vy: -0.2 - Math.random() * 0.45,
+        vy: -0.15 - Math.random() * 0.35,
         size: 1.5 + Math.random() * 2.5,
-        alpha: 0.2 + Math.random() * 0.6,
+        alpha: 0.2 + Math.random() * 0.5,
         color: colors[Math.floor(Math.random() * colors.length)],
-        rotation: Math.random() * 360,
         decay: 0,
       });
     }
@@ -377,10 +436,9 @@ export default function AnniversaryWrappedPage() {
 
         if (p.decay > 0) {
           p.alpha -= p.decay;
-          p.vy += 0.08; // gravity for burst
-          p.vx *= 0.985; // air resistance
+          p.vy += 0.08;
+          p.vx *= 0.985;
         } else {
-          // Loop ambient
           if (p.y < -10) p.y = height + 10;
           if (p.x < -10) p.x = width + 10;
           if (p.x > width + 10) p.x = -10;
@@ -391,16 +449,14 @@ export default function AnniversaryWrappedPage() {
         ctx.translate(p.x, p.y);
         ctx.fillStyle = p.color;
         ctx.shadowColor = p.color;
-        ctx.shadowBlur = p.decay > 0 ? 10 : 4;
+        ctx.shadowBlur = p.decay > 0 ? 10 : 3;
         ctx.beginPath();
         ctx.arc(0, 0, p.size, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       });
 
-      // Filter dead confetti
       particlesRef.current = particlesRef.current.filter((p) => p.decay === 0 || p.alpha > 0);
-
       animId = requestAnimationFrame(render);
     };
 
@@ -412,7 +468,7 @@ export default function AnniversaryWrappedPage() {
     };
   }, []);
 
-  // 6. Confetti Burst Helper
+  // Confetti Burst Trigger
   const spawnCelebrationBurst = () => {
     audio.playCelebrationFanfare();
     setCelebrationFired(true);
@@ -437,7 +493,7 @@ export default function AnniversaryWrappedPage() {
     }
   };
 
-  // 7. Wax Seal Break & Letter Unfold Action
+  // Wax Seal Break & Love Letter Open
   const handleBreakSeal = () => {
     if (isSealBroken) return;
     audio.playSealBreak();
@@ -449,89 +505,176 @@ export default function AnniversaryWrappedPage() {
     }, 650);
   };
 
-  // 8. Save / Reset Config in Edit Drawer
-  const handleSaveDraftConfig = () => {
+  // Save to Cloud & Local Storage
+  const handleSaveConfig = async (newConfig: AnvConfig) => {
+    setConfig(newConfig);
+    setDraftConfig(newConfig);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(newConfig));
+    }
+
+    setCloudSyncStatus("syncing");
     try {
-      const parsed = JSON.parse(draftConfigJson);
-      setConfig(parsed);
-      window.localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(parsed));
-      setIsEditDrawerOpen(false);
-      setActiveSlideIndex(0);
-      setProgress(0);
-      alert("Anniversary story config saved successfully! ✨");
-    } catch (e: any) {
-      alert("Invalid JSON format: " + e.message);
+      const { error } = await supabase.from("app_settings").upsert({
+        key: SUPABASE_SETTINGS_KEY,
+        value: newConfig,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        console.error("Cloud save failed:", error);
+        setCloudSyncStatus("offline");
+      } else {
+        setCloudSyncStatus("synced");
+        setSaveSuccessNotice(true);
+        setTimeout(() => setSaveSuccessNotice(false), 3500);
+      }
+    } catch (e) {
+      console.error("Cloud sync exception:", e);
+      setCloudSyncStatus("offline");
     }
   };
 
-  const handleResetDefaultConfig = () => {
-    if (window.confirm("Reset all slides to the default anniversary story?")) {
-      setConfig(DEFAULT_CONFIG);
-      window.localStorage.removeItem(STORAGE_CONFIG_KEY);
-      setDraftConfigJson(JSON.stringify(DEFAULT_CONFIG, null, 2));
-      setIsEditDrawerOpen(false);
-      setActiveSlideIndex(0);
-      setProgress(0);
+  // Handle Photo File Pick & Compression
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const targetMemoryId = uploadTargetMemoryIdRef.current;
+    setIsUploading(true);
+    try {
+      const compressedDataUrl = await compressImageFile(file);
+
+      if (targetMemoryId) {
+        // Update specific memory
+        const updatedMemories = draftConfig.memories.map((m) =>
+          m.id === targetMemoryId ? { ...m, imageUrl: compressedDataUrl } : m
+        );
+        const updatedConfig = { ...draftConfig, memories: updatedMemories };
+        setDraftConfig(updatedConfig);
+        await handleSaveConfig(updatedConfig);
+      } else {
+        // Add new memory with this photo
+        const newMemory: MemorySlide = {
+          id: `mem-${Date.now()}`,
+          tag: `MEMORY ${draftConfig.memories.length + 1}`,
+          title: "A Special Moment",
+          dateLocation: "🗓️ October 2026",
+          caption: "A favorite memory with you.",
+          imageUrl: compressedDataUrl,
+          accentColor: "#fb7185",
+        };
+        const updatedConfig = {
+          ...draftConfig,
+          memories: [...draftConfig.memories, newMemory],
+        };
+        setDraftConfig(updatedConfig);
+        await handleSaveConfig(updatedConfig);
+      }
+    } catch (err) {
+      alert("Failed to process photo. Please try a different image.");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const currentStorySlide = config.slides[activeSlideIndex];
+  // Quick trigger to pick photo for current slide
+  const triggerPhotoUpload = (memoryId?: string) => {
+    uploadTargetMemoryIdRef.current = memoryId || null;
+    fileInputRef.current?.click();
+  };
+
+  // Delete memory
+  const handleDeleteMemory = async (id: string) => {
+    if (draftConfig.memories.length <= 1) {
+      alert("You need at least one memory slide!");
+      return;
+    }
+    const filtered = draftConfig.memories.filter((m) => m.id !== id);
+    const updated = { ...draftConfig, memories: filtered };
+    setDraftConfig(updated);
+    await handleSaveConfig(updated);
+  };
 
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "#08060b",
-        color: "#ffffff",
-        overflow: "hidden",
-        fontFamily: "'Josefin Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-        userSelect: "none",
-        zIndex: 999999,
+        backgroundColor: "#07050a",
+        color: "#fff",
+        fontFamily:
+          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "space-between",
+        overflow: "hidden",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        zIndex: 999999,
       }}
     >
+      {/* Hidden File Input for Image Upload */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleImageFileChange}
+      />
+
+      {/* Embedded Aesthetics & Keyframe Animations */}
       <style>{`
-        @keyframes anvFadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes anvSlideUp { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        @keyframes sealGlow {
-          0%, 100% { box-shadow: 0 0 20px rgba(225, 29, 72, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.2); }
-          50% { box-shadow: 0 0 40px rgba(225, 29, 72, 0.8), inset 0 0 16px rgba(255, 255, 255, 0.4); }
+        @keyframes anvSlideUp {
+          from { transform: translateY(24px) scale(0.97); opacity: 0; }
+          to { transform: translateY(0) scale(1); opacity: 1; }
         }
-        @keyframes envelopeOpen {
-          from { transform: rotateX(0deg); }
-          to { transform: rotateX(180deg); }
+        @keyframes anvFadeIn {
+          from { opacity: 0; transform: scale(0.98); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes sealGlow {
+          0%, 100% { box-shadow: 0 0 20px rgba(225, 29, 72, 0.45), inset 0 0 10px rgba(255, 255, 255, 0.25); }
+          50% { box-shadow: 0 0 45px rgba(225, 29, 72, 0.85), inset 0 0 16px rgba(255, 255, 255, 0.45); }
         }
         @keyframes letterSlideOut {
           from { transform: translateY(40px) scale(0.92); opacity: 0; }
           to { transform: translateY(0) scale(1); opacity: 1; }
         }
         .anv-glass-card {
-          background: rgba(22, 17, 30, 0.78);
+          background: rgba(18, 14, 25, 0.78);
           border: 1px solid rgba(255, 255, 255, 0.12);
           backdrop-filter: blur(28px);
           -webkit-backdrop-filter: blur(28px);
-          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), inset 0 0 30px rgba(244, 63, 94, 0.08);
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(244, 63, 94, 0.08);
+        }
+        .polaroid-frame {
+          background: #191422;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          box-shadow: 0 20px 45px rgba(0, 0, 0, 0.65), 0 0 25px rgba(244, 63, 94, 0.12);
+          transition: transform 0.3s ease;
         }
       `}</style>
 
       {/* Background HTML5 Canvas */}
-      <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }} />
+      <canvas
+        ref={canvasRef}
+        style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}
+      />
 
-      {/* Radial Twilight Nebula Glow */}
+      {/* Twilight Ambient Gradient */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: "radial-gradient(ellipse at 50% 40%, rgba(88, 28, 135, 0.25) 0%, rgba(225, 29, 72, 0.15) 45%, rgba(8, 6, 11, 0.98) 85%)",
+          background:
+            "radial-gradient(ellipse at 50% 30%, rgba(88, 28, 135, 0.28) 0%, rgba(225, 29, 72, 0.14) 50%, rgba(7, 5, 10, 0.98) 85%)",
           pointerEvents: "none",
           zIndex: 0,
         }}
       />
 
-      {/* TOP BAR: Instagram-style Story Progress Bars & Header Actions */}
+      {/* TOP BAR: Instagram-style Story Bars & Header Controls */}
       <div
         style={{
           position: "relative",
@@ -546,7 +689,7 @@ export default function AnniversaryWrappedPage() {
           boxSizing: "border-box",
         }}
       >
-        {/* Progress Bar Segmented Line */}
+        {/* Story Progress Segmented Bars */}
         <div style={{ display: "flex", gap: "5px", width: "100%" }}>
           {Array.from({ length: totalSteps }).map((_, idx) => {
             const isCompleted = idx < activeSlideIndex;
@@ -583,8 +726,15 @@ export default function AnniversaryWrappedPage() {
           })}
         </div>
 
-        {/* Top Controls: Return to Chat & Admin Customize Toggle */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+        {/* Header Action Buttons */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            width: "100%",
+          }}
+        >
           <button
             onClick={() => router.replace("/")}
             style={{
@@ -606,9 +756,15 @@ export default function AnniversaryWrappedPage() {
           </button>
 
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {saveSuccessNotice && (
+              <span style={{ fontSize: "11px", color: "#34d399", fontWeight: 700 }}>
+                ✓ Synced to Cloud!
+              </span>
+            )}
+
             <button
               onClick={() => {
-                setDraftConfigJson(JSON.stringify(config, null, 2));
+                setDraftConfig(config);
                 setIsEditDrawerOpen(true);
               }}
               style={{
@@ -624,15 +780,15 @@ export default function AnniversaryWrappedPage() {
                 alignItems: "center",
                 gap: "5px",
               }}
-              title="Edit Slide Text & Letter"
+              title="Add photos, edit captions & letter"
             >
-              <span>✎</span> Customize Story
+              <span>📷</span> Manage Photos & Letter
             </button>
           </div>
         </div>
       </div>
 
-      {/* MAIN STORY CONTENT AREA */}
+      {/* MAIN STORY CONTENT CONTAINER */}
       <div
         style={{
           position: "relative",
@@ -641,7 +797,7 @@ export default function AnniversaryWrappedPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "10px 20px 24px",
+          padding: "8px 16px 20px",
           width: "100%",
           maxWidth: "540px",
           margin: "0 auto",
@@ -696,154 +852,282 @@ export default function AnniversaryWrappedPage() {
           }}
         />
 
-        {/* --- SCENARIO A: STORY SLIDES (0 to 4) --- */}
-        {!isFinalSlide && currentStorySlide && (
+        {/* --- SCENARIO 1: COVER SLIDE ("365 Days of Us") --- */}
+        {isCoverSlide && (
           <div
-            key={currentStorySlide.id}
             className="anv-glass-card"
             style={{
               position: "relative",
               width: "100%",
               borderRadius: "32px",
-              padding: "36px 28px",
+              padding: "44px 28px",
               textAlign: "center",
               animation: "anvSlideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1)",
               boxSizing: "border-box",
             }}
           >
-            {/* Slide Category Badge */}
+            {/* Romantic Anniversary Badge */}
             <div
               style={{
                 display: "inline-block",
-                padding: "6px 14px",
+                padding: "6px 16px",
                 borderRadius: "999px",
-                background: "rgba(255, 255, 255, 0.08)",
-                border: `1px solid ${currentStorySlide.accentColor}66`,
-                color: currentStorySlide.accentColor,
-                fontSize: "11px",
+                background: "rgba(244, 63, 94, 0.12)",
+                border: "1px solid rgba(244, 63, 94, 0.35)",
+                color: "#fda4af",
+                fontSize: "12px",
                 fontWeight: 800,
-                letterSpacing: "1.8px",
-                marginBottom: "16px",
+                letterSpacing: "2px",
+                marginBottom: "20px",
               }}
             >
-              {currentStorySlide.badge}
+              ✦ ONE YEAR MILESTONE ✦
             </div>
 
-            {/* Slide Title */}
+            {/* Title */}
             <h1
               style={{
-                fontSize: "30px",
-                fontWeight: 800,
-                margin: "0 0 22px",
-                lineHeight: "1.25",
-                background: `linear-gradient(135deg, #fff 40%, ${currentStorySlide.accentColor} 100%)`,
+                fontSize: "36px",
+                fontWeight: 900,
+                margin: "0 0 12px",
+                lineHeight: "1.2",
+                background: "linear-gradient(135deg, #fff 40%, #fb7185 100%)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}
             >
-              {currentStorySlide.title}
+              {config.introTitle}
             </h1>
 
-            {/* Big Impact Metric Cards */}
+            {/* Glowing 365 Days Marker */}
             <div
               style={{
-                display: "flex",
-                gap: "12px",
-                justifyContent: "center",
-                margin: "18px 0 24px",
+                fontSize: "56px",
+                fontWeight: 900,
+                color: "#f43f5e",
+                lineHeight: "1",
+                margin: "18px 0 10px",
+                textShadow: "0 0 35px rgba(244, 63, 94, 0.6)",
               }}
             >
-              <div
-                style={{
-                  flex: 1,
-                  background: "rgba(0, 0, 0, 0.38)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  borderRadius: "20px",
-                  padding: "16px 12px",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "38px",
-                    fontWeight: 900,
-                    color: currentStorySlide.accentColor,
-                    lineHeight: "1",
-                    marginBottom: "6px",
-                  }}
-                >
-                  {!isNaN(Number(currentStorySlide.metricValue))
-                    ? odometerValue
-                    : currentStorySlide.metricValue}
-                </div>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "rgba(255, 255, 255, 0.65)",
-                    fontWeight: 600,
-                    letterSpacing: "0.5px",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {currentStorySlide.metricLabel}
-                </div>
-              </div>
-
-              {currentStorySlide.metricValue2 && (
-                <div
-                  style={{
-                    flex: 1,
-                    background: "rgba(0, 0, 0, 0.38)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderRadius: "20px",
-                    padding: "16px 12px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "38px",
-                      fontWeight: 900,
-                      color: "#fbbf24",
-                      lineHeight: "1",
-                      marginBottom: "6px",
-                    }}
-                  >
-                    {currentStorySlide.metricValue2}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      color: "rgba(255, 255, 255, 0.65)",
-                      fontWeight: 600,
-                      letterSpacing: "0.5px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {currentStorySlide.metricLabel2}
-                  </div>
-                </div>
-              )}
+              365
             </div>
 
-            {/* Narrative Story Passage */}
+            <div
+              style={{
+                fontSize: "13px",
+                color: "#fbbf24",
+                fontWeight: 700,
+                letterSpacing: "1.5px",
+                textTransform: "uppercase",
+                marginBottom: "22px",
+              }}
+            >
+              Days of Love & Laughter
+            </div>
+
+            {/* Subtitle / Intro Narrative */}
             <p
               style={{
                 fontSize: "15px",
                 lineHeight: "1.7",
-                color: "rgba(255, 255, 255, 0.9)",
-                margin: "0 0 16px",
-                padding: "0 8px",
+                color: "rgba(255, 255, 255, 0.85)",
+                margin: "0 0 32px",
+                padding: "0 10px",
               }}
             >
-              {currentStorySlide.story}
+              {config.introSubtitle}
             </p>
 
-            <div style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.35)", marginTop: "12px" }}>
-              Tap right to continue · Tap left to rewind
+            {/* Start Button */}
+            <button
+              onClick={goToNextSlide}
+              style={{
+                background: "linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)",
+                border: "none",
+                borderRadius: "999px",
+                padding: "14px 34px",
+                color: "#fff",
+                fontSize: "14px",
+                fontWeight: 800,
+                letterSpacing: "0.5px",
+                cursor: "pointer",
+                boxShadow: "0 10px 28px rgba(244, 63, 94, 0.5)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <span>View Our Memories</span>
+              <span>→</span>
+            </button>
+          </div>
+        )}
+
+        {/* --- SCENARIO 2: PHOTO MEMORY POLAROID SLIDES --- */}
+        {!isCoverSlide && !isFinalSlide && currentMemory && (
+          <div
+            key={currentMemory.id}
+            className="polaroid-frame"
+            style={{
+              position: "relative",
+              width: "100%",
+              maxHeight: "82vh",
+              borderRadius: "28px",
+              padding: "18px 18px 22px",
+              textAlign: "center",
+              animation: "anvSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Top Tag & Location Badge */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "0 6px 12px",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  letterSpacing: "1.6px",
+                  color: currentMemory.accentColor,
+                  textTransform: "uppercase",
+                }}
+              >
+                {currentMemory.tag}
+              </span>
+
+              {currentMemory.dateLocation && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "rgba(255, 255, 255, 0.65)",
+                    background: "rgba(255, 255, 255, 0.08)",
+                    padding: "3px 10px",
+                    borderRadius: "999px",
+                  }}
+                >
+                  {currentMemory.dateLocation}
+                </span>
+              )}
+            </div>
+
+            {/* Featured Photo Container */}
+            <div
+              style={{
+                position: "relative",
+                width: "100%",
+                height: "300px",
+                maxHeight: "42vh",
+                borderRadius: "20px",
+                overflow: "hidden",
+                backgroundColor: "#0d0a14",
+                boxShadow: "inset 0 0 20px rgba(0, 0, 0, 0.6)",
+              }}
+            >
+              {currentMemory.imageUrl ? (
+                <img
+                  src={currentMemory.imageUrl}
+                  alt={currentMemory.title}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px",
+                    color: "rgba(255, 255, 255, 0.4)",
+                  }}
+                >
+                  <span style={{ fontSize: "32px" }}>📷</span>
+                  <span style={{ fontSize: "13px" }}>No photo uploaded yet</span>
+                </div>
+              )}
+
+              {/* Discrete Replace Photo Button directly on Card */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  triggerPhotoUpload(currentMemory.id);
+                }}
+                style={{
+                  position: "absolute",
+                  bottom: "10px",
+                  right: "10px",
+                  background: "rgba(0, 0, 0, 0.68)",
+                  border: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderRadius: "999px",
+                  padding: "5px 12px",
+                  color: "#fff",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  backdropFilter: "blur(10px)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <span>📷</span> Change Photo
+              </button>
+            </div>
+
+            {/* Title & Caption */}
+            <div style={{ padding: "16px 8px 6px" }}>
+              <h2
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 800,
+                  margin: "0 0 8px",
+                  color: "#fff",
+                }}
+              >
+                {currentMemory.title}
+              </h2>
+
+              <p
+                style={{
+                  fontSize: "14px",
+                  lineHeight: "1.65",
+                  color: "rgba(255, 255, 255, 0.88)",
+                  margin: "0 0 10px",
+                  fontStyle: "italic",
+                }}
+              >
+                "{currentMemory.caption}"
+              </p>
+
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "rgba(255, 255, 255, 0.35)",
+                  marginTop: "6px",
+                }}
+              >
+                Tap right to continue · Tap left to rewind
+              </div>
             </div>
           </div>
         )}
 
-        {/* --- SCENARIO B: GRAND FINALE (Slide 5: Wax Seal & Letter) --- */}
+        {/* --- SCENARIO 3: GRAND FINALE (Slide N: Wax Seal & Handwritten Letter) --- */}
         {isFinalSlide && (
           <div
             className="anv-glass-card"
@@ -884,14 +1168,28 @@ export default function AnniversaryWrappedPage() {
                   ✦ THE GRAND FINALE ✦
                 </div>
 
-                <h2 style={{ fontSize: "28px", fontWeight: 800, margin: "0 0 8px", textAlign: "center" }}>
+                <h2
+                  style={{
+                    fontSize: "28px",
+                    fontWeight: 800,
+                    margin: "0 0 8px",
+                    textAlign: "center",
+                  }}
+                >
                   A Letter for You
                 </h2>
-                <p style={{ fontSize: "14px", color: "rgba(255, 255, 255, 0.65)", margin: "0 0 30px", textAlign: "center" }}>
+                <p
+                  style={{
+                    fontSize: "14px",
+                    color: "rgba(255, 255, 255, 0.65)",
+                    margin: "0 0 30px",
+                    textAlign: "center",
+                  }}
+                >
                   Sealed with one year of memories. Tap the wax seal to break it open.
                 </p>
 
-                {/* Aesthetic 3D Envelope Container */}
+                {/* 3D Envelope Container */}
                 <div
                   style={{
                     position: "relative",
@@ -908,7 +1206,7 @@ export default function AnniversaryWrappedPage() {
                   }}
                   onClick={handleBreakSeal}
                 >
-                  {/* Envelope Triangular Top Flap */}
+                  {/* Envelope Triangular Flap */}
                   <div
                     style={{
                       position: "absolute",
@@ -945,7 +1243,9 @@ export default function AnniversaryWrappedPage() {
                       boxShadow: "0 8px 24px rgba(190, 18, 60, 0.6)",
                     }}
                   >
-                    <div style={{ fontSize: "28px", color: "#ffe4e6", fontWeight: "900" }}>❦</div>
+                    <div style={{ fontSize: "28px", color: "#ffe4e6", fontWeight: "900" }}>
+                      ❦
+                    </div>
                   </div>
                 </div>
 
@@ -962,7 +1262,7 @@ export default function AnniversaryWrappedPage() {
                 </div>
               </div>
             ) : (
-              /* Unfolded Handwritten Love Letter Reading Mode */
+              /* Unfolded Handwritten Love Letter */
               <div
                 style={{
                   width: "100%",
@@ -1017,7 +1317,13 @@ export default function AnniversaryWrappedPage() {
 
                   {/* Closing & Signature */}
                   <div style={{ marginTop: "24px", textAlign: "right" }}>
-                    <div style={{ fontSize: "16px", fontStyle: "italic", color: "rgba(255, 255, 255, 0.7)" }}>
+                    <div
+                      style={{
+                        fontSize: "16px",
+                        fontStyle: "italic",
+                        color: "rgba(255, 255, 255, 0.7)",
+                      }}
+                    >
                       {config.letter.closing}
                     </div>
                     <div
@@ -1033,12 +1339,13 @@ export default function AnniversaryWrappedPage() {
                   </div>
                 </div>
 
-                {/* Interactive Celebration Fireworks Trigger */}
+                {/* Celebration Fanfare & Fireworks Button */}
                 <button
                   onClick={spawnCelebrationBurst}
                   style={{
                     marginTop: "26px",
-                    background: "linear-gradient(135deg, #f43f5e 0%, #e11d48 50%, #fbbf24 100%)",
+                    background:
+                      "linear-gradient(135deg, #f43f5e 0%, #e11d48 50%, #fbbf24 100%)",
                     border: "none",
                     borderRadius: "999px",
                     padding: "14px 34px",
@@ -1054,7 +1361,11 @@ export default function AnniversaryWrappedPage() {
                   }}
                 >
                   <span>🎉</span>
-                  <span>{celebrationFired ? "Ignite More Fireworks ✨" : "Celebrate Our First Year 💕"}</span>
+                  <span>
+                    {celebrationFired
+                      ? "Ignite More Fireworks ✨"
+                      : "Celebrate Our First Year 💕"}
+                  </span>
                 </button>
               </div>
             )}
@@ -1062,7 +1373,7 @@ export default function AnniversaryWrappedPage() {
         )}
       </div>
 
-      {/* BOTTOM FOOTER NAVIGATION BUTTONS */}
+      {/* BOTTOM FOOTER NAVIGATION */}
       <div
         style={{
           position: "relative",
@@ -1118,49 +1429,56 @@ export default function AnniversaryWrappedPage() {
         </button>
       </div>
 
-      {/* --- EDIT / CUSTOMIZE SLIDE DRAWER --- */}
+      {/* --- PHOTO & MEMORIES ADMIN DRAWER --- */}
       {isEditDrawerOpen && (
         <div
           style={{
             position: "fixed",
             inset: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.8)",
-            backdropFilter: "blur(16px)",
+            backgroundColor: "rgba(0, 0, 0, 0.85)",
+            backdropFilter: "blur(20px)",
             zIndex: 9999999,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            padding: "20px",
+            padding: "16px",
             boxSizing: "border-box",
           }}
         >
           <div
             style={{
-              backgroundColor: "#161220",
+              backgroundColor: "#151020",
               border: "1px solid rgba(255, 255, 255, 0.15)",
               borderRadius: "24px",
               padding: "24px",
               width: "100%",
-              maxWidth: "640px",
-              maxHeight: "85vh",
+              maxWidth: "680px",
+              maxHeight: "90vh",
               display: "flex",
               flexDirection: "column",
               gap: "16px",
               color: "#fff",
               boxSizing: "border-box",
+              overflow: "hidden",
             }}
           >
+            {/* Modal Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#fbbf24" }}>
-                ✎ Customize Story JSON
-              </h3>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "19px", color: "#fbbf24" }}>
+                  📷 Memories & Love Letter
+                </h3>
+                <span style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.55)" }}>
+                  Upload couple photos, edit captions & sync directly to her device.
+                </span>
+              </div>
               <button
                 onClick={() => setIsEditDrawerOpen(false)}
                 style={{
                   background: "transparent",
                   border: "none",
                   color: "rgba(255, 255, 255, 0.6)",
-                  fontSize: "20px",
+                  fontSize: "22px",
                   cursor: "pointer",
                 }}
               >
@@ -1168,40 +1486,452 @@ export default function AnniversaryWrappedPage() {
               </button>
             </div>
 
-            <p style={{ margin: 0, fontSize: "13px", color: "rgba(255, 255, 255, 0.65)" }}>
-              Edit the titles, numbers, bus ride descriptions, or letter paragraphs below. Changes are saved to your browser's local storage.
-            </p>
-
-            <textarea
-              value={draftConfigJson}
-              onChange={(e) => setDraftConfigJson(e.target.value)}
-              style={{
-                flex: 1,
-                minHeight: "340px",
-                backgroundColor: "#0d0a14",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "12px",
-                padding: "14px",
-                color: "#a5f3fc",
-                fontFamily: "monospace",
-                fontSize: "12px",
-                lineHeight: "1.5",
-                resize: "none",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {/* Tab Switcher */}
+            <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid rgba(255, 255, 255, 0.1)", paddingBottom: "10px" }}>
               <button
-                onClick={handleResetDefaultConfig}
+                onClick={() => setEditingTab("photos")}
+                style={{
+                  background: editingTab === "photos" ? "#f43f5e" : "rgba(255, 255, 255, 0.08)",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                📷 Photo Memories ({draftConfig.memories.length})
+              </button>
+              <button
+                onClick={() => setEditingTab("letter")}
+                style={{
+                  background: editingTab === "letter" ? "#f43f5e" : "rgba(255, 255, 255, 0.08)",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                💌 Love Letter
+              </button>
+              <button
+                onClick={() => setEditingTab("raw")}
+                style={{
+                  background: editingTab === "raw" ? "#f43f5e" : "rgba(255, 255, 255, 0.08)",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                ⚙️ Raw JSON
+              </button>
+            </div>
+
+            {/* Tab 1: Photo Memories Visual Manager */}
+            {editingTab === "photos" && (
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                  paddingRight: "6px",
+                }}
+              >
+                {/* Intro Settings */}
+                <div
+                  style={{
+                    background: "rgba(255, 255, 255, 0.04)",
+                    borderRadius: "12px",
+                    padding: "12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
+                    Cover Slide Title:
+                  </label>
+                  <input
+                    type="text"
+                    value={draftConfig.introTitle}
+                    onChange={(e) =>
+                      setDraftConfig({ ...draftConfig, introTitle: e.target.value })
+                    }
+                    style={{
+                      background: "#0d0a14",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      color: "#fff",
+                      fontSize: "14px",
+                    }}
+                  />
+                </div>
+
+                {/* List of Memories */}
+                {draftConfig.memories.map((mem, index) => (
+                  <div
+                    key={mem.id}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.04)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "16px",
+                      padding: "16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "12px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 800, color: mem.accentColor }}>
+                        Slide #{index + 1}: {mem.tag}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteMemory(mem.id)}
+                        style={{
+                          background: "rgba(244, 63, 94, 0.15)",
+                          border: "none",
+                          color: "#f43f5e",
+                          borderRadius: "6px",
+                          padding: "4px 10px",
+                          fontSize: "12px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+                      {/* Photo Thumbnail + Upload Button */}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+                        <div
+                          style={{
+                            width: "90px",
+                            height: "90px",
+                            borderRadius: "12px",
+                            overflow: "hidden",
+                            backgroundColor: "#000",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
+                          }}
+                        >
+                          {mem.imageUrl ? (
+                            <img
+                              src={mem.imageUrl}
+                              alt="thumb"
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "20px",
+                                color: "#666",
+                              }}
+                            >
+                              📷
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => triggerPhotoUpload(mem.id)}
+                          disabled={isUploading}
+                          style={{
+                            background: "rgba(255, 255, 255, 0.12)",
+                            border: "1px solid rgba(255, 255, 255, 0.25)",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            color: "#fff",
+                            fontSize: "11px",
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {isUploading ? "Uploading..." : "Upload Photo"}
+                        </button>
+                      </div>
+
+                      {/* Title & Caption Inputs */}
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <input
+                          type="text"
+                          placeholder="Memory Title (e.g. That Rainy Tuesday)"
+                          value={mem.title}
+                          onChange={(e) => {
+                            const newMems = [...draftConfig.memories];
+                            newMems[index].title = e.target.value;
+                            setDraftConfig({ ...draftConfig, memories: newMems });
+                          }}
+                          style={{
+                            background: "#0d0a14",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            borderRadius: "8px",
+                            padding: "6px 10px",
+                            color: "#fff",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                          }}
+                        />
+
+                        <input
+                          type="text"
+                          placeholder="Date or Location (e.g. 📍 Central Park · Oct 2025)"
+                          value={mem.dateLocation || ""}
+                          onChange={(e) => {
+                            const newMems = [...draftConfig.memories];
+                            newMems[index].dateLocation = e.target.value;
+                            setDraftConfig({ ...draftConfig, memories: newMems });
+                          }}
+                          style={{
+                            background: "#0d0a14",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            borderRadius: "8px",
+                            padding: "6px 10px",
+                            color: "#fda4af",
+                            fontSize: "12px",
+                          }}
+                        />
+
+                        <textarea
+                          placeholder="Personal note or caption..."
+                          value={mem.caption}
+                          onChange={(e) => {
+                            const newMems = [...draftConfig.memories];
+                            newMems[index].caption = e.target.value;
+                            setDraftConfig({ ...draftConfig, memories: newMems });
+                          }}
+                          rows={2}
+                          style={{
+                            background: "#0d0a14",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            borderRadius: "8px",
+                            padding: "6px 10px",
+                            color: "#fff",
+                            fontSize: "13px",
+                            resize: "vertical",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Add New Memory Button */}
+                <button
+                  onClick={() => triggerPhotoUpload()}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.08)",
+                    border: "1px dashed rgba(255, 255, 255, 0.25)",
+                    borderRadius: "14px",
+                    padding: "14px",
+                    color: "#fbbf24",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <span>+</span> Upload & Add New Memory Photo
+                </button>
+              </div>
+            )}
+
+            {/* Tab 2: Love Letter Manager */}
+            {editingTab === "letter" && (
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "14px",
+                  paddingRight: "6px",
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
+                    Salutation / Opening:
+                  </label>
+                  <input
+                    type="text"
+                    value={draftConfig.letter.salutation}
+                    onChange={(e) =>
+                      setDraftConfig({
+                        ...draftConfig,
+                        letter: { ...draftConfig.letter, salutation: e.target.value },
+                      })
+                    }
+                    style={{
+                      width: "100%",
+                      background: "#0d0a14",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      color: "#fff",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                      marginTop: "4px",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
+                    Letter Paragraphs (separate paragraphs with an empty line):
+                  </label>
+                  <textarea
+                    rows={8}
+                    value={draftConfig.letter.paragraphs.join("\n\n")}
+                    onChange={(e) => {
+                      const paragraphs = e.target.value
+                        .split(/\n\s*\n/)
+                        .map((p) => p.trim())
+                        .filter(Boolean);
+                      setDraftConfig({
+                        ...draftConfig,
+                        letter: { ...draftConfig.letter, paragraphs },
+                      });
+                    }}
+                    style={{
+                      width: "100%",
+                      background: "#0d0a14",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      borderRadius: "8px",
+                      padding: "10px 12px",
+                      color: "#fef3c7",
+                      fontSize: "14px",
+                      lineHeight: "1.6",
+                      boxSizing: "border-box",
+                      marginTop: "4px",
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
+                      Closing (e.g. Forever Yours):
+                    </label>
+                    <input
+                      type="text"
+                      value={draftConfig.letter.closing}
+                      onChange={(e) =>
+                        setDraftConfig({
+                          ...draftConfig,
+                          letter: { ...draftConfig.letter, closing: e.target.value },
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        background: "#0d0a14",
+                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                        borderRadius: "8px",
+                        padding: "8px 12px",
+                        color: "#fff",
+                        fontSize: "14px",
+                        boxSizing: "border-box",
+                        marginTop: "4px",
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
+                      Signature (e.g. Your Name):
+                    </label>
+                    <input
+                      type="text"
+                      value={draftConfig.letter.signature}
+                      onChange={(e) =>
+                        setDraftConfig({
+                          ...draftConfig,
+                          letter: { ...draftConfig.letter, signature: e.target.value },
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        background: "#0d0a14",
+                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                        borderRadius: "8px",
+                        padding: "8px 12px",
+                        color: "#fff",
+                        fontSize: "14px",
+                        boxSizing: "border-box",
+                        marginTop: "4px",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Raw JSON */}
+            {editingTab === "raw" && (
+              <textarea
+                value={JSON.stringify(draftConfig, null, 2)}
+                onChange={(e) => {
+                  try {
+                    setDraftConfig(JSON.parse(e.target.value));
+                  } catch {}
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: "#0d0a14",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: "12px",
+                  padding: "14px",
+                  color: "#a5f3fc",
+                  fontFamily: "monospace",
+                  fontSize: "12px",
+                  lineHeight: "1.5",
+                  resize: "none",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            )}
+
+            {/* Drawer Footer Actions */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+                paddingTop: "14px",
+              }}
+            >
+              <button
+                onClick={() => {
+                  setDraftConfig(DEFAULT_CONFIG);
+                  handleSaveConfig(DEFAULT_CONFIG);
+                }}
                 style={{
                   background: "rgba(244, 63, 94, 0.15)",
                   border: "1px solid rgba(244, 63, 94, 0.3)",
                   borderRadius: "8px",
-                  padding: "8px 16px",
+                  padding: "8px 14px",
                   color: "#f43f5e",
-                  fontSize: "13px",
+                  fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
@@ -1209,7 +1939,7 @@ export default function AnniversaryWrappedPage() {
                 Reset to Defaults
               </button>
 
-              <div style={{ display: "flex", gap: "10px" }}>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 <button
                   onClick={() => setIsEditDrawerOpen(false)}
                   style={{
@@ -1223,22 +1953,26 @@ export default function AnniversaryWrappedPage() {
                     cursor: "pointer",
                   }}
                 >
-                  Cancel
+                  Close
                 </button>
                 <button
-                  onClick={handleSaveDraftConfig}
+                  onClick={async () => {
+                    await handleSaveConfig(draftConfig);
+                    setIsEditDrawerOpen(false);
+                  }}
                   style={{
-                    background: "#10b981",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                     border: "none",
                     borderRadius: "8px",
-                    padding: "8px 20px",
+                    padding: "9px 22px",
                     color: "#fff",
                     fontSize: "13px",
-                    fontWeight: 700,
+                    fontWeight: 800,
                     cursor: "pointer",
+                    boxShadow: "0 6px 18px rgba(16, 185, 129, 0.4)",
                   }}
                 >
-                  Save & Apply ✨
+                  Save & Sync to Cloud ✨
                 </button>
               </div>
             </div>
