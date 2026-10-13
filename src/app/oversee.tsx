@@ -88,6 +88,8 @@ export default function OverseerScreen() {
     celebrate_clicks: 0,
     last_clicked_at: null,
   });
+  const [anniversaryReplyLetter, setAnniversaryReplyLetter] = useState<any>(null);
+  const [showReplyLetterModal, setShowReplyLetterModal] = useState(false);
   const [showAddPairing, setShowAddPairing] = useState(false);
   const [newSenderId, setNewSenderId] = useState("");
   const [newRecipientId, setNewRecipientId] = useState("");
@@ -106,6 +108,11 @@ export default function OverseerScreen() {
 
   useEffect(() => {
     const channel = supabase.channel("app_settings_sync");
+    channel.on("broadcast", { event: "settings_updated" }, (payload: any) => {
+      if (payload?.payload?.anniversaryReplyLetter !== undefined) {
+        setAnniversaryReplyLetter(payload.payload.anniversaryReplyLetter);
+      }
+    });
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED") {
         syncChannelRef.current = channel;
@@ -231,6 +238,19 @@ export default function OverseerScreen() {
       if (statsData?.value) {
         setAnniversaryStats(statsData.value);
       }
+
+      // 6. Fetch anniversary_reply_letter
+      const { data: replyData } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "anniversary_reply_letter")
+        .maybeSingle();
+
+      if (replyData?.value) {
+        setAnniversaryReplyLetter(replyData.value);
+      } else {
+        setAnniversaryReplyLetter(null);
+      }
     } catch (e: any) {
       console.error("Overseer error:", e);
       showToast(`⚠️ ${e.message || "Failed to load"}`);
@@ -238,6 +258,20 @@ export default function OverseerScreen() {
       setLoading(false);
     }
   }, [user, router]);
+
+  const handleClearReplyLetter = async () => {
+    try {
+      await supabase
+        .from("app_settings")
+        .delete()
+        .eq("key", "anniversary_reply_letter");
+      setAnniversaryReplyLetter(null);
+      broadcastSettingsUpdate({ anniversaryReplyLetter: null });
+      showToast("✓ Reply letter reset!");
+    } catch (e: any) {
+      showToast(`⚠️ Error: ${e.message}`);
+    }
+  };
 
   useEffect(() => {
     fetchOverseerData();
@@ -707,6 +741,73 @@ export default function OverseerScreen() {
             )}
           </View>
 
+          {/* Her Response Letter Status Card */}
+          <View
+            style={[
+              styles.anvStatsBanner,
+              {
+                marginTop: 10,
+                borderColor: anniversaryReplyLetter ? "rgba(244, 63, 94, 0.45)" : "rgba(255, 255, 255, 0.08)",
+                backgroundColor: anniversaryReplyLetter ? "rgba(244, 63, 94, 0.08)" : "rgba(255, 255, 255, 0.03)",
+              },
+            ]}
+          >
+            <View style={styles.anvStatsLeft}>
+              <View
+                style={[
+                  styles.anvStatsIconCircle,
+                  { backgroundColor: anniversaryReplyLetter ? "rgba(244, 63, 94, 0.2)" : "rgba(255, 255, 255, 0.05)" },
+                ]}
+              >
+                <Heart
+                  size={18}
+                  color={anniversaryReplyLetter ? "#f43f5e" : "#888"}
+                  fill={anniversaryReplyLetter ? "#f43f5e" : "transparent"}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={styles.anvStatsTitle}>
+                    {anniversaryReplyLetter ? "Her Response Letter Received! 💕" : "No Reply Letter Yet ⏳"}
+                  </Text>
+                  {anniversaryReplyLetter && (
+                    <View style={{ backgroundColor: "#f43f5e", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ color: "#fff", fontSize: 10, fontWeight: "bold" }}>NEW</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.anvStatsSubtitle}>
+                  {anniversaryReplyLetter
+                    ? `From: "${anniversaryReplyLetter.signature}" · Calling: "${anniversaryReplyLetter.salutation}"`
+                    : "She has not drafted a reply letter yet. She can write back after reading yours on Slide 5."}
+                </Text>
+              </View>
+            </View>
+            {anniversaryReplyLetter ? (
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#f43f5e",
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                  onPress={() => setShowReplyLetterModal(true)}
+                >
+                  <Text style={{ color: "#fff", fontSize: 12, fontWeight: "bold" }}>Read Letter 💌</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.anvStatsResetBtn, { borderColor: "rgba(255, 255, 255, 0.2)" }]}
+                  onPress={handleClearReplyLetter}
+                >
+                  <Text style={styles.anvStatsResetText}>Reset</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
+
           {/* Pairings List */}
           {anniversaryPairings.length === 0 ? (
             <View style={styles.anvEmptyState}>
@@ -1103,6 +1204,102 @@ export default function OverseerScreen() {
         </View>
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* HER REPLY LETTER PREVIEW MODAL */}
+      {showReplyLetterModal && anniversaryReplyLetter && (
+        <Modal
+          visible={showReplyLetterModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowReplyLetterModal(false)}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.85)",
+              justifyContent: "center",
+              alignItems: "center",
+              padding: 20,
+            }}
+          >
+            <View
+              style={{
+                width: "100%",
+                maxWidth: 480,
+                maxHeight: "85%",
+                backgroundColor: "#fff2f5",
+                borderRadius: 22,
+                padding: 24,
+                borderWidth: 1,
+                borderColor: "rgba(244, 63, 94, 0.3)",
+              }}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <Text style={{ fontSize: 12, color: "#9f1239", fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  💌 Her Response Letter
+                </Text>
+                <TouchableOpacity onPress={() => setShowReplyLetterModal(false)} style={{ padding: 4 }}>
+                  <X size={20} color="#9f1239" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 420 }}>
+                <Text style={{ fontSize: 24, fontWeight: "bold", color: "#9f1239", marginBottom: 14 }}>
+                  {anniversaryReplyLetter.salutation}
+                </Text>
+
+                {Array.isArray(anniversaryReplyLetter.paragraphs) ? (
+                  anniversaryReplyLetter.paragraphs.map((p: string, idx: number) => (
+                    <Text
+                      key={idx}
+                      style={{
+                        fontSize: 16,
+                        lineHeight: 25,
+                        color: "#2c1a20",
+                        marginBottom: 12,
+                      }}
+                    >
+                      {p}
+                    </Text>
+                  ))
+                ) : (
+                  <Text style={{ fontSize: 16, lineHeight: 25, color: "#2c1a20", marginBottom: 12 }}>
+                    {anniversaryReplyLetter.paragraphs || ""}
+                  </Text>
+                )}
+
+                <View style={{ marginTop: 16, alignItems: "flex-end" }}>
+                  <Text style={{ fontSize: 15, fontStyle: "italic", color: "#785342" }}>
+                    {anniversaryReplyLetter.closing}
+                  </Text>
+                  <Text style={{ fontSize: 22, fontWeight: "bold", color: "#be123c", marginTop: 2 }}>
+                    {anniversaryReplyLetter.signature}
+                  </Text>
+                </View>
+
+                {anniversaryReplyLetter.created_at && (
+                  <Text style={{ fontSize: 11, color: "#9c8e85", marginTop: 14, textAlign: "center" }}>
+                    Sent on {formatActiveDate(anniversaryReplyLetter.created_at)}
+                  </Text>
+                )}
+              </ScrollView>
+
+              <TouchableOpacity
+                onPress={() => setShowReplyLetterModal(false)}
+                style={{
+                  marginTop: 18,
+                  backgroundColor: "#f43f5e",
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 14 }}>Close Letter</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* DETAILED USER PROFILE & PERMISSIONS MODAL */}
       {inspectedUser && (

@@ -255,6 +255,7 @@ export default function ChatScreen() {
   const [anniversaryPairing, setAnniversaryPairing] = useState<any>(null);
   const [anniversaryCountdown, setAnniversaryCountdown] = useState<string>("");
   const [isAnniversaryUnlocked, setIsAnniversaryUnlocked] = useState(false);
+  const [hasReplyLetter, setHasReplyLetter] = useState(false);
   const [pillLockedNotice, setPillLockedNotice] = useState<string | null>(null);
   const pillNoticeTimeoutRef = useRef<any>(null);
   const isTargetOnline = targetUser && targetUser.updated_at 
@@ -1418,8 +1419,19 @@ export default function ChatScreen() {
       setAnniversaryPairing(match);
       const isUnlocked = match.is_unlocked || new Date(match.unlock_at).getTime() <= Date.now();
       setIsAnniversaryUnlocked(isUnlocked);
+
+      // Check if recipient has drafted a reply letter
+      try {
+        const { data: replyData } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", "anniversary_reply_letter")
+          .maybeSingle();
+        setHasReplyLetter(Boolean(replyData?.value?.salutation));
+      } catch {}
     } else {
       setAnniversaryPairing(null);
+      setHasReplyLetter(false);
     }
   }, [user?.id, targetUser?.id, isGroup]);
 
@@ -3750,9 +3762,12 @@ export default function ChatScreen() {
                 />
               )}
               <Text style={styles.anniversaryPillText}>
-                {pillLockedNotice || (isAnniversaryUnlocked
-                  ? `${anniversaryPairing.pill_label || "Anniversary Surprise 💌"} · Tap to open ✨`
-                  : `Unlocks in ${anniversaryCountdown || "..."} ⏳`)}
+                {pillLockedNotice ||
+                  (isAnniversaryUnlocked
+                    ? hasReplyLetter && anniversaryPairing.sender_id === user?.id
+                      ? "She wrote back! 💌 · Tap to read her letter 💖"
+                      : `${anniversaryPairing.pill_label || "Anniversary Surprise 💌"} · Tap to open ✨`
+                    : `Unlocks in ${anniversaryCountdown || "..."} ⏳`)}
               </Text>
               <Sparkles size={11} color="#fda4af" style={{ marginLeft: 6 }} />
             </TouchableOpacity>

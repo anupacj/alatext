@@ -31,6 +31,19 @@ export interface AnvConfig {
 const STORAGE_CONFIG_KEY = "@anv_custom_config_2026";
 const SUPABASE_SETTINGS_KEY = "anniversary_config";
 const SUPABASE_STATS_KEY = "anniversary_stats";
+const SUPABASE_REPLY_KEY = "anniversary_reply_letter";
+const STORAGE_REPLY_KEY = "@anv_reply_letter_2026";
+
+export interface AnniversaryReplyLetter {
+  id: string;
+  sender_id?: string;
+  sender_name?: string;
+  created_at: string;
+  salutation: string;
+  paragraphs: string[];
+  closing: string;
+  signature: string;
+}
 
 export const DEFAULT_CONFIG: AnvConfig = {
   coupleNames: "Pretty Potato & You",
@@ -305,6 +318,30 @@ export default function AnniversaryScrapbookPage() {
   const [lockRemaining, setLockRemaining] = useState<string>("");
   const [isEditParam, setIsEditParam] = useState(false);
 
+  // Recipient Reply Letter state
+  const [replyLetter, setReplyLetter] = useState<AnniversaryReplyLetter | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.localStorage.getItem(STORAGE_REPLY_KEY);
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return null;
+  });
+  const [activeLetterTab, setActiveLetterTab] = useState<"his" | "hers">("his");
+  const [isDraftingReply, setIsDraftingReply] = useState(false);
+  const [replyDraft, setReplyDraft] = useState({
+    salutation: "To my handsome dinosaur ♡",
+    body: "Happy 1 year my love! Thank you for always being there for me, listening to me, and loving me with all your heart. You make every day feel like home.",
+    closing: "Forever and always yours,",
+    signature: "Your Pretty Potato ♡",
+  });
+  const [showReplyDraftPreview, setShowReplyDraftPreview] = useState(false);
+  const [isReplySealBroken, setIsReplySealBroken] = useState(false);
+  const [isSavingReply, setIsSavingReply] = useState(false);
+  const [replyCelebrateCount, setReplyCelebrateCount] = useState(0);
+  const replyChannelRef = useRef<any>(null);
+
   // Sync with Supabase cloud on mount
   useEffect(() => {
     let isMounted = true;
@@ -343,7 +380,24 @@ export default function AnniversaryScrapbookPage() {
           }
         }
 
-        // 3. Fetch anniversary pairings to check countdown lock
+        // 3. Fetch anniversary reply letter (if recipient has responded)
+        const { data: replyData } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", SUPABASE_REPLY_KEY)
+          .maybeSingle();
+
+        if (replyData && replyData.value && isMounted) {
+          const cloudReply = replyData.value as AnniversaryReplyLetter;
+          if (cloudReply.salutation && cloudReply.paragraphs) {
+            setReplyLetter(cloudReply);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(STORAGE_REPLY_KEY, JSON.stringify(cloudReply));
+            }
+          }
+        }
+
+        // 4. Fetch anniversary pairings to check countdown lock
         const { data: pairingsData } = await supabase
           .from("app_settings")
           .select("value")
@@ -372,6 +426,40 @@ export default function AnniversaryScrapbookPage() {
     loadCloudData();
     return () => {
       isMounted = false;
+    };
+  }, [user]);
+
+  // Realtime broadcast listener for instant sync
+  useEffect(() => {
+    const channel = supabase.channel("app_settings_sync");
+    channel.on("broadcast", { event: "settings_updated" }, (payload: any) => {
+      if (payload?.payload?.anniversaryReplyLetter !== undefined) {
+        const newReply = payload.payload.anniversaryReplyLetter;
+        setReplyLetter(newReply);
+        if (newReply && typeof window !== "undefined") {
+          window.localStorage.setItem(STORAGE_REPLY_KEY, JSON.stringify(newReply));
+        } else if (!newReply && typeof window !== "undefined") {
+          window.localStorage.removeItem(STORAGE_REPLY_KEY);
+        }
+      }
+      if (payload?.payload?.anniversaryPairings) {
+        const pairings = payload.payload.anniversaryPairings;
+        let match = user
+          ? pairings.find((p: any) => p.active !== false && (p.recipient_id === user?.id || p.sender_id === user?.id))
+          : null;
+        if (!match) match = pairings.find((p: any) => p.active !== false);
+        if (match) setPairing(match);
+      }
+    });
+
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        replyChannelRef.current = channel;
+      }
+    });
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, [user]);
 
@@ -747,6 +835,87 @@ export default function AnniversaryScrapbookPage() {
     } catch (e) {
       console.warn("Could not save celebrate tap:", e);
     }
+  };
+
+  // Reply Letter Wax Seal Break action
+  const handleBreakReplySeal = () => {
+    if (isReplySealBroken) return;
+    audio.playWaxSealBreak();
+    spawnWaxSealCrackEffect();
+    setIsReplySealBroken(true);
+    setTimeout(() => {
+      spawnCelebrationBurst();
+    }, 650);
+  };
+
+  // Open Reply Drafting Modal
+  const handleOpenDraftReplyModal = () => {
+    if (replyLetter) {
+      setReplyDraft({
+        salutation: replyLetter.salutation || "To my handsome dinosaur ♡",
+        body: replyLetter.paragraphs ? replyLetter.paragraphs.join("\n\n") : "",
+        closing: replyLetter.closing || "Forever and always yours,",
+        signature: replyLetter.signature || "Your Pretty Potato ♡",
+      });
+    }
+    setIsDraftingReply(true);
+  };
+
+  // Save & Seal Reply Letter
+  const handleSaveReplyLetter = async () => {
+    if (!replyDraft.body.trim()) return;
+    setIsSavingReply(true);
+    try {
+      const paragraphs = replyDraft.body
+        .split(/\n+/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      const newReply: AnniversaryReplyLetter = {
+        id: "reply_" + Date.now(),
+        sender_id: user?.id || "potato",
+        sender_name: user?.user_metadata?.username || "Potato",
+        created_at: new Date().toISOString(),
+        salutation: replyDraft.salutation.trim() || "To my favorite person ♡",
+        paragraphs: paragraphs.length > 0 ? paragraphs : [replyDraft.body.trim()],
+        closing: replyDraft.closing.trim() || "Forever and always yours,",
+        signature: replyDraft.signature.trim() || "Your Pretty Potato ♡",
+      };
+
+      setReplyLetter(newReply);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(STORAGE_REPLY_KEY, JSON.stringify(newReply));
+      }
+
+      await supabase.from("app_settings").upsert({
+        key: SUPABASE_REPLY_KEY,
+        value: newReply,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (replyChannelRef.current) {
+        replyChannelRef.current.send({
+          type: "broadcast",
+          event: "settings_updated",
+          payload: { anniversaryReplyLetter: newReply },
+        });
+      }
+
+      setIsDraftingReply(false);
+      setActiveLetterTab("hers");
+      setIsReplySealBroken(true);
+      spawnCelebrationBurst();
+    } catch (err) {
+      console.warn("Could not save reply letter:", err);
+    } finally {
+      setIsSavingReply(false);
+    }
+  };
+
+  // Reply Celebrate reaction
+  const handleReplyCelebrateClick = () => {
+    spawnCelebrationBurst();
+    setReplyCelebrateCount((prev) => prev + 1);
   };
 
   // Cloud & Local Storage Save
@@ -1171,17 +1340,17 @@ export default function AnniversaryScrapbookPage() {
           transform: translateX(-50%);
           width: 85px;
           height: 22px;
-          background: rgba(254, 240, 215, 0.7);
-          box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-          border-left: 2px dashed rgba(217, 119, 6, 0.25);
-          border-right: 2px dashed rgba(217, 119, 6, 0.25);
+          background: rgba(255, 226, 235, 0.82);
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          border-left: 2px dashed rgba(244, 63, 94, 0.28);
+          border-right: 2px dashed rgba(244, 63, 94, 0.28);
           z-index: 5;
         }
         .letter-stationery {
-          background: #fffdf9;
-          color: #2b1d16;
-          box-shadow: inset 0 0 35px rgba(217, 119, 6, 0.06), 0 15px 40px rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(217, 119, 6, 0.15);
+          background: linear-gradient(180deg, #fff2f5 0%, #ffeaf0 100%);
+          color: #2c1a20;
+          box-shadow: inset 0 0 45px rgba(244, 63, 94, 0.08), 0 15px 45px rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(244, 63, 94, 0.22);
         }
         .celebrate-btn-bounce {
           animation: buttonSquish 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -1724,254 +1893,636 @@ export default function AnniversaryScrapbookPage() {
               width: "100%",
               maxHeight: "82vh",
               borderRadius: "28px",
-              padding: "28px 20px",
+              padding: "24px 18px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               animation: "paperUnfold 0.45s ease-out",
               boxSizing: "border-box",
-              overflowY: isLetterOpened ? "auto" : "hidden",
+              overflowY: (activeLetterTab === "his" ? isLetterOpened : isReplySealBroken) ? "auto" : "hidden",
             }}
           >
-            {!isLetterOpened ? (
-              /* Velvet Wine Envelope & Crimson Wax Seal Stamp */
+            {/* TABS SWITCHER: When a reply letter exists */}
+            {replyLetter && (
               <div
                 style={{
                   display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
+                  gap: "8px",
+                  marginBottom: "16px",
+                  justifyContent: "center",
                   width: "100%",
-                  padding: "16px 0",
+                  flexShrink: 0,
                 }}
               >
-                <div
+                <button
+                  onClick={() => setActiveLetterTab("his")}
                   style={{
-                    fontFamily: "'Caveat', cursive",
-                    fontSize: "22px",
-                    color: "#fbcfe8",
-                    marginBottom: "6px",
-                  }}
-                >
-                  sealed just for you ♡
-                </div>
-
-                <h2
-                  style={{
-                    fontFamily: "'Caveat', cursive",
-                    fontSize: "34px",
-                    fontWeight: 700,
-                    margin: "0 0 6px",
-                    textAlign: "center",
+                    background:
+                      activeLetterTab === "his"
+                        ? "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)"
+                        : "rgba(255, 255, 255, 0.08)",
+                    border: "1px solid " + (activeLetterTab === "his" ? "#fda4af" : "rgba(255, 255, 255, 0.15)"),
+                    borderRadius: "999px",
+                    padding: "7px 16px",
                     color: "#fff",
-                    textShadow: "0 2px 14px rgba(244, 63, 94, 0.45)",
-                  }}
-                >
-                  To my Pretty Potato ♡
-                </h2>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    fontFamily: "'Quicksand', sans-serif",
-                    color: "rgba(255, 255, 255, 0.7)",
-                    margin: "0 0 24px",
-                    textAlign: "center",
-                  }}
-                >
-                  Tap the wax seal to break it open.
-                </p>
-
-                {/* Tactile 3D Envelope */}
-                <div
-                  style={{
-                    position: "relative",
-                    width: "250px",
-                    height: "165px",
-                    backgroundColor: "#2e0f19",
-                    borderRadius: "14px",
-                    border: "1px solid rgba(251, 191, 36, 0.3)",
-                    boxShadow: "0 18px 45px rgba(0, 0, 0, 0.75)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    fontSize: "12px",
+                    fontWeight: 700,
                     cursor: "pointer",
+                    boxShadow: activeLetterTab === "his" ? "0 4px 14px rgba(244, 63, 94, 0.35)" : "none",
+                    transition: "all 0.2s ease",
                   }}
-                  onClick={handleBreakSeal}
                 >
-                  {/* Flap */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: "82px",
-                      background: "linear-gradient(180deg, #421624 0%, #2e0f19 100%)",
-                      clipPath: "polygon(0 0, 100% 0, 50% 100%)",
-                      transformOrigin: "top",
-                      transition: "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
-                      transform: isSealBroken ? "rotateX(180deg)" : "rotateX(0deg)",
-                      zIndex: 3,
-                    }}
-                  />
-
-                  {/* Crimson Wax Seal Stamp */}
-                  <div
-                    style={{
-                      position: "relative",
-                      zIndex: 10,
-                      width: "66px",
-                      height: "66px",
-                      borderRadius: "50%",
-                      backgroundColor: "#be123c",
-                      border: "3px solid #fda4af",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      animation: "sealCandleGlow 3s infinite",
-                      transform: isSealBroken ? "scale(1.2) rotate(15deg)" : "scale(1)",
-                      opacity: isSealBroken ? 0 : 1,
-                      transition: "transform 0.4s ease, opacity 0.4s ease",
-                      boxShadow: "0 8px 24px rgba(190, 18, 60, 0.65)",
-                    }}
-                  >
-                    <div style={{ fontSize: "26px", color: "#ffe4e6" }}>❦</div>
-                  </div>
-                </div>
-
-                <div
+                  💌 His Letter
+                </button>
+                <button
+                  onClick={() => setActiveLetterTab("hers")}
                   style={{
-                    marginTop: "22px",
-                    fontSize: "13px",
-                    color: "#fbcfe8",
-                    fontFamily: "'Caveat', cursive",
-                    fontSizeAdjust: "0.55",
+                    background:
+                      activeLetterTab === "hers"
+                        ? "linear-gradient(135deg, #ec4899 0%, #be185d 100%)"
+                        : "rgba(255, 255, 255, 0.08)",
+                    border: "1px solid " + (activeLetterTab === "hers" ? "#fbcfe8" : "rgba(255, 255, 255, 0.15)"),
+                    borderRadius: "999px",
+                    padding: "7px 16px",
+                    color: "#fff",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: activeLetterTab === "hers" ? "0 4px 14px rgba(236, 72, 153, 0.35)" : "none",
+                    transition: "all 0.2s ease",
                   }}
                 >
-                  tap the wax seal to read your letter ✨
-                </div>
+                  💖 {isSender ? "Her Letter Back ✨" : "Your Letter to Him ♡"}
+                </button>
               </div>
-            ) : (
-              /* Unfolded Handwritten Love Letter */
-              <div
-                style={{
-                  width: "100%",
-                  animation: "paperUnfold 0.5s ease-out",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                }}
-              >
-                <div
-                  className="letter-stationery"
-                  style={{
-                    borderRadius: "18px",
-                    padding: "26px 20px",
-                    width: "100%",
-                    boxSizing: "border-box",
-                    textAlign: "left",
-                  }}
-                >
-                  {/* Salutation */}
-                  <h3
+            )}
+
+            {/* VIEW A: HIS LETTER */}
+            {activeLetterTab === "his" && (
+              <>
+                {!isLetterOpened ? (
+                  /* Velvet Wine Envelope & Crimson Wax Seal Stamp */
+                  <div
                     style={{
-                      fontFamily: "'Caveat', cursive",
-                      fontSize: "26px",
-                      fontWeight: 700,
-                      color: "#9f1239",
-                      margin: "0 0 16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      width: "100%",
+                      padding: "16px 0",
                     }}
                   >
-                    {config.letter.salutation}
-                  </h3>
-
-                  {/* Letter Paragraphs (His Exact Words) */}
-                  {config.letter.paragraphs.map((p, i) => (
-                    <p
-                      key={i}
-                      style={{
-                        fontFamily: "'Cormorant Garamond', Georgia, serif",
-                        fontSize: "17px",
-                        lineHeight: "1.75",
-                        margin: "0 0 14px",
-                        color: "#2c1c14",
-                        letterSpacing: "0.15px",
-                      }}
-                    >
-                      {p}
-                    </p>
-                  ))}
-
-                  {/* Closing & Signature */}
-                  <div style={{ marginTop: "20px", textAlign: "right" }}>
-                    <div
-                      style={{
-                        fontFamily: "'Cormorant Garamond', Georgia, serif",
-                        fontSize: "16px",
-                        fontStyle: "italic",
-                        color: "#785342",
-                      }}
-                    >
-                      {config.letter.closing}
-                    </div>
                     <div
                       style={{
                         fontFamily: "'Caveat', cursive",
-                        fontSize: "27px",
-                        color: "#be123c",
-                        marginTop: "2px",
+                        fontSize: "22px",
+                        color: "#fbcfe8",
+                        marginBottom: "6px",
                       }}
                     >
-                      {config.letter.signature}
+                      sealed just for you ♡
+                    </div>
+
+                    <h2
+                      style={{
+                        fontFamily: "'Caveat', cursive",
+                        fontSize: "34px",
+                        fontWeight: 700,
+                        margin: "0 0 6px",
+                        textAlign: "center",
+                        color: "#fff",
+                        textShadow: "0 2px 14px rgba(244, 63, 94, 0.45)",
+                      }}
+                    >
+                      To my Pretty Potato ♡
+                    </h2>
+                    <p
+                      style={{
+                        fontSize: "13px",
+                        fontFamily: "'Quicksand', sans-serif",
+                        color: "rgba(255, 255, 255, 0.7)",
+                        margin: "0 0 24px",
+                        textAlign: "center",
+                      }}
+                    >
+                      Tap the wax seal to break it open.
+                    </p>
+
+                    {/* Tactile 3D Envelope */}
+                    <div
+                      style={{
+                        position: "relative",
+                        width: "250px",
+                        height: "165px",
+                        backgroundColor: "#2e0f19",
+                        borderRadius: "14px",
+                        border: "1px solid rgba(251, 191, 36, 0.3)",
+                        boxShadow: "0 18px 45px rgba(0, 0, 0, 0.75)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                      }}
+                      onClick={handleBreakSeal}
+                    >
+                      {/* Flap */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: "82px",
+                          background: "linear-gradient(180deg, #421624 0%, #2e0f19 100%)",
+                          clipPath: "polygon(0 0, 100% 0, 50% 100%)",
+                          transformOrigin: "top",
+                          transition: "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
+                          transform: isSealBroken ? "rotateX(180deg)" : "rotateX(0deg)",
+                          zIndex: 3,
+                        }}
+                      />
+
+                      {/* Crimson Wax Seal Stamp */}
+                      <div
+                        style={{
+                          position: "relative",
+                          zIndex: 10,
+                          width: "66px",
+                          height: "66px",
+                          borderRadius: "50%",
+                          backgroundColor: "#be123c",
+                          border: "3px solid #fda4af",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          animation: "sealCandleGlow 3s infinite",
+                          transform: isSealBroken ? "scale(1.2) rotate(15deg)" : "scale(1)",
+                          opacity: isSealBroken ? 0 : 1,
+                          transition: "transform 0.4s ease, opacity 0.4s ease",
+                          boxShadow: "0 8px 24px rgba(190, 18, 60, 0.65)",
+                        }}
+                      >
+                        <div style={{ fontSize: "26px", color: "#ffe4e6" }}>❦</div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: "22px",
+                        fontSize: "13px",
+                        color: "#fbcfe8",
+                        fontFamily: "'Caveat', cursive",
+                        fontSizeAdjust: "0.55",
+                      }}
+                    >
+                      tap the wax seal to read your letter ✨
                     </div>
                   </div>
-                </div>
-
-                {/* Sweet Interactive Celebration Button */}
-                <button
-                  onClick={handleCelebrateClick}
-                  className={buttonSpringAnim ? "celebrate-btn-bounce" : ""}
-                  style={{
-                    marginTop: "22px",
-                    background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
-                    border: "none",
-                    borderRadius: "999px",
-                    padding: "13px 30px",
-                    color: "#fff",
-                    fontSize: "14px",
-                    fontFamily: "'Quicksand', sans-serif",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    boxShadow: "0 8px 24px rgba(244, 63, 94, 0.45)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    transition: "transform 0.15s ease",
-                  }}
-                >
-                  <span>🌸</span>
-                  <span>
-                    {celebrateCount === 0
-                      ? "A year of loving you 💕"
-                      : celebrateCount === 1
-                      ? "I love you so much ♡"
-                      : `Sending love to you... 💕 (×${celebrateCount})`}
-                  </span>
-                </button>
-
-                {celebrateCount > 0 && (
+                ) : (
+                  /* Unfolded Handwritten Love Letter on Soft Pastel Pink Stationery */
                   <div
                     style={{
-                      marginTop: "8px",
-                      fontSize: "12px",
-                      color: "#fda4af",
-                      fontFamily: "'Caveat', cursive",
-                      fontSizeAdjust: "0.55",
+                      width: "100%",
+                      animation: "paperUnfold 0.5s ease-out",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
                     }}
                   >
-                    {celebrateCount === 1 ? "1 love reaction sent ♡" : `${celebrateCount} love reactions sent to him! 💕`}
+                    <div
+                      className="letter-stationery"
+                      style={{
+                        borderRadius: "18px",
+                        padding: "26px 20px",
+                        width: "100%",
+                        boxSizing: "border-box",
+                        textAlign: "left",
+                        position: "relative",
+                      }}
+                    >
+                      <div className="washi-tape" />
+
+                      {/* Salutation */}
+                      <h3
+                        style={{
+                          fontFamily: "'Caveat', cursive",
+                          fontSize: "26px",
+                          fontWeight: 700,
+                          color: "#9f1239",
+                          margin: "0 0 16px",
+                        }}
+                      >
+                        {config.letter.salutation}
+                      </h3>
+
+                      {/* Letter Paragraphs */}
+                      {config.letter.paragraphs.map((p, i) => (
+                        <p
+                          key={i}
+                          style={{
+                            fontFamily: "'Cormorant Garamond', Georgia, serif",
+                            fontSize: "17px",
+                            lineHeight: "1.75",
+                            margin: "0 0 14px",
+                            color: "#2c1a20",
+                            letterSpacing: "0.15px",
+                          }}
+                        >
+                          {p}
+                        </p>
+                      ))}
+
+                      {/* Closing & Signature */}
+                      <div style={{ marginTop: "20px", textAlign: "right" }}>
+                        <div
+                          style={{
+                            fontFamily: "'Cormorant Garamond', Georgia, serif",
+                            fontSize: "16px",
+                            fontStyle: "italic",
+                            color: "#785342",
+                          }}
+                        >
+                          {config.letter.closing}
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: "'Caveat', cursive",
+                            fontSize: "27px",
+                            color: "#be123c",
+                            marginTop: "2px",
+                          }}
+                        >
+                          {config.letter.signature}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sweet Interactive Celebration Button */}
+                    <button
+                      onClick={handleCelebrateClick}
+                      className={buttonSpringAnim ? "celebrate-btn-bounce" : ""}
+                      style={{
+                        marginTop: "22px",
+                        background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
+                        border: "none",
+                        borderRadius: "999px",
+                        padding: "13px 30px",
+                        color: "#fff",
+                        fontSize: "14px",
+                        fontFamily: "'Quicksand', sans-serif",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: "0 8px 24px rgba(244, 63, 94, 0.45)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        transition: "transform 0.15s ease",
+                      }}
+                    >
+                      <span>🌸</span>
+                      <span>
+                        {celebrateCount === 0
+                          ? "A year of loving you 💕"
+                          : celebrateCount === 1
+                          ? "I love you so much ♡"
+                          : `Sending love to you... 💕 (×${celebrateCount})`}
+                      </span>
+                    </button>
+
+                    {celebrateCount > 0 && (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          fontSize: "12px",
+                          color: "#fda4af",
+                          fontFamily: "'Caveat', cursive",
+                          fontSizeAdjust: "0.55",
+                        }}
+                      >
+                        {celebrateCount === 1 ? "1 love reaction sent ♡" : `${celebrateCount} love reactions sent to him! 💕`}
+                      </div>
+                    )}
+
+                    {/* OPTIONAL REPLY LETTER CALL-TO-ACTION */}
+                    {!replyLetter ? (
+                      <div
+                        style={{
+                          marginTop: "20px",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <button
+                          onClick={handleOpenDraftReplyModal}
+                          style={{
+                            background: "rgba(255, 255, 255, 0.08)",
+                            border: "1px dashed rgba(253, 164, 175, 0.6)",
+                            borderRadius: "999px",
+                            padding: "10px 22px",
+                            color: "#fbcfe8",
+                            fontSize: "13px",
+                            fontFamily: "'Quicksand', sans-serif",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            transition: "all 0.2s ease",
+                            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+                          }}
+                        >
+                          <span>✍️</span>
+                          <span>Write a letter back to him ♡</span>
+                        </button>
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            color: "rgba(255, 255, 255, 0.5)",
+                            fontFamily: "'Caveat', cursive",
+                          }}
+                        >
+                          optional · sealed in the same wax envelope ✨
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: "16px" }}>
+                        <button
+                          onClick={() => setActiveLetterTab("hers")}
+                          style={{
+                            background: "rgba(244, 63, 94, 0.16)",
+                            border: "1px solid rgba(244, 63, 94, 0.4)",
+                            borderRadius: "999px",
+                            padding: "8px 20px",
+                            color: "#fbcfe8",
+                            fontSize: "12px",
+                            fontFamily: "'Quicksand', sans-serif",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <span>💖</span>
+                          <span>{isSender ? "Read Her Reply Letter ✨ →" : "Read Your Letter to Him ♡ →"}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+              </>
+            )}
+
+            {/* VIEW B: HER REPLY LETTER */}
+            {activeLetterTab === "hers" && replyLetter && (
+              <>
+                {!isReplySealBroken ? (
+                  /* Her Velvety Rose-Berry Sealed Envelope */
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      width: "100%",
+                      padding: "16px 0",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: "'Caveat', cursive",
+                        fontSize: "22px",
+                        color: "#fbcfe8",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      sealed with love ♡
+                    </div>
+
+                    <h2
+                      style={{
+                        fontFamily: "'Caveat', cursive",
+                        fontSize: "32px",
+                        fontWeight: 700,
+                        margin: "0 0 6px",
+                        textAlign: "center",
+                        color: "#fff",
+                        textShadow: "0 2px 14px rgba(236, 72, 153, 0.45)",
+                      }}
+                    >
+                      {replyLetter.salutation || "To my handsome dinosaur ♡"}
+                    </h2>
+                    <p
+                      style={{
+                        fontSize: "13px",
+                        fontFamily: "'Quicksand', sans-serif",
+                        color: "rgba(255, 255, 255, 0.7)",
+                        margin: "0 0 24px",
+                        textAlign: "center",
+                      }}
+                    >
+                      Tap the wax seal to unfold her reply letter.
+                    </p>
+
+                    {/* Tactile 3D Velvet Berry Envelope */}
+                    <div
+                      style={{
+                        position: "relative",
+                        width: "250px",
+                        height: "165px",
+                        backgroundColor: "#3b1122",
+                        borderRadius: "14px",
+                        border: "1px solid rgba(244, 114, 182, 0.35)",
+                        boxShadow: "0 18px 45px rgba(0, 0, 0, 0.75)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                      }}
+                      onClick={handleBreakReplySeal}
+                    >
+                      {/* Flap */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: "82px",
+                          background: "linear-gradient(180deg, #4c1d2e 0%, #3b1122 100%)",
+                          clipPath: "polygon(0 0, 100% 0, 50% 100%)",
+                          transformOrigin: "top",
+                          transition: "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
+                          transform: isReplySealBroken ? "rotateX(180deg)" : "rotateX(0deg)",
+                          zIndex: 3,
+                        }}
+                      />
+
+                      {/* Rose Gold / Pink Wax Seal Stamp */}
+                      <div
+                        style={{
+                          position: "relative",
+                          zIndex: 10,
+                          width: "66px",
+                          height: "66px",
+                          borderRadius: "50%",
+                          backgroundColor: "#e11d48",
+                          border: "3px solid #fbcfe8",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          animation: "sealCandleGlow 3s infinite",
+                          transform: isReplySealBroken ? "scale(1.2) rotate(15deg)" : "scale(1)",
+                          opacity: isReplySealBroken ? 0 : 1,
+                          transition: "transform 0.4s ease, opacity 0.4s ease",
+                          boxShadow: "0 8px 24px rgba(225, 29, 72, 0.65)",
+                        }}
+                      >
+                        <div style={{ fontSize: "26px", color: "#fff" }}>♡</div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: "22px",
+                        fontSize: "13px",
+                        color: "#fbcfe8",
+                        fontFamily: "'Caveat', cursive",
+                        fontSizeAdjust: "0.55",
+                      }}
+                    >
+                      tap the wax seal to read her reply ✨
+                    </div>
+                  </div>
+                ) : (
+                  /* Unfolded Handwritten Reply Letter */
+                  <div
+                    style={{
+                      width: "100%",
+                      animation: "paperUnfold 0.5s ease-out",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      className="letter-stationery"
+                      style={{
+                        borderRadius: "18px",
+                        padding: "26px 20px",
+                        width: "100%",
+                        boxSizing: "border-box",
+                        textAlign: "left",
+                        position: "relative",
+                      }}
+                    >
+                      <div className="washi-tape" />
+
+                      {/* Salutation */}
+                      <h3
+                        style={{
+                          fontFamily: "'Caveat', cursive",
+                          fontSize: "26px",
+                          fontWeight: 700,
+                          color: "#9f1239",
+                          margin: "0 0 16px",
+                        }}
+                      >
+                        {replyLetter.salutation}
+                      </h3>
+
+                      {/* Letter Paragraphs */}
+                      {replyLetter.paragraphs.map((p, i) => (
+                        <p
+                          key={i}
+                          style={{
+                            fontFamily: "'Cormorant Garamond', Georgia, serif",
+                            fontSize: "17px",
+                            lineHeight: "1.75",
+                            margin: "0 0 14px",
+                            color: "#2c1a20",
+                            letterSpacing: "0.15px",
+                          }}
+                        >
+                          {p}
+                        </p>
+                      ))}
+
+                      {/* Closing & Signature */}
+                      <div style={{ marginTop: "20px", textAlign: "right" }}>
+                        <div
+                          style={{
+                            fontFamily: "'Cormorant Garamond', Georgia, serif",
+                            fontSize: "16px",
+                            fontStyle: "italic",
+                            color: "#785342",
+                          }}
+                        >
+                          {replyLetter.closing}
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: "'Caveat', cursive",
+                            fontSize: "27px",
+                            color: "#be123c",
+                            marginTop: "2px",
+                          }}
+                        >
+                          {replyLetter.signature}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Celebration / Heart reaction for her letter */}
+                    <button
+                      onClick={handleReplyCelebrateClick}
+                      style={{
+                        marginTop: "20px",
+                        background: "linear-gradient(135deg, #ec4899 0%, #be185d 100%)",
+                        border: "none",
+                        borderRadius: "999px",
+                        padding: "12px 28px",
+                        color: "#fff",
+                        fontSize: "13px",
+                        fontFamily: "'Quicksand', sans-serif",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: "0 8px 24px rgba(236, 72, 153, 0.4)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <span>💖</span>
+                      <span>
+                        {replyCelebrateCount === 0
+                          ? "I cherish every word ♡"
+                          : `Cherishing your love... 💕 (×${replyCelebrateCount})`}
+                      </span>
+                    </button>
+
+                    {/* Edit letter button for author */}
+                    <div style={{ marginTop: "14px", display: "flex", gap: "10px" }}>
+                      <button
+                        onClick={handleOpenDraftReplyModal}
+                        style={{
+                          background: "rgba(255, 255, 255, 0.08)",
+                          border: "1px dashed rgba(255, 255, 255, 0.25)",
+                          borderRadius: "999px",
+                          padding: "7px 18px",
+                          color: "rgba(255, 255, 255, 0.7)",
+                          fontSize: "12px",
+                          fontFamily: "'Quicksand', sans-serif",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        ✏️ Edit / Update Letter
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -2039,6 +2590,358 @@ export default function AnniversaryScrapbookPage() {
           next ›
         </button>
       </div>
+
+      {/* --- DRAFT A LETTER BACK MODAL --- */}
+      {isDraftingReply && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.88)",
+            backdropFilter: "blur(20px)",
+            zIndex: 9999999,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: "16px",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#19121d",
+              border: "1px solid rgba(244, 63, 94, 0.35)",
+              borderRadius: "24px",
+              padding: "24px 20px",
+              width: "100%",
+              maxWidth: "540px",
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+              color: "#fff",
+              boxSizing: "border-box",
+              overflowY: "auto",
+              boxShadow: "0 25px 60px rgba(0, 0, 0, 0.85)",
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "22px",
+                    color: "#fbcfe8",
+                    fontFamily: "'Caveat', cursive",
+                    fontWeight: 700,
+                  }}
+                >
+                  Draft a Letter Back ♡
+                </h3>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "rgba(255, 255, 255, 0.5)",
+                    fontFamily: "'Quicksand', sans-serif",
+                  }}
+                >
+                  Write in your own words. It will be sealed in a wax-stamped envelope and sent back to him.
+                </span>
+              </div>
+              <button
+                onClick={() => setIsDraftingReply(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "rgba(255, 255, 255, 0.6)",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  padding: "4px",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Toggle Preview Button */}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowReplyDraftPreview((prev) => !prev)}
+                style={{
+                  background: showReplyDraftPreview ? "rgba(244, 63, 94, 0.25)" : "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid " + (showReplyDraftPreview ? "#fda4af" : "rgba(255, 255, 255, 0.15)"),
+                  borderRadius: "8px",
+                  padding: "5px 12px",
+                  color: "#fbcfe8",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {showReplyDraftPreview ? "✏️ Back to Editor" : "👁️ Preview on Pastel Parchment"}
+              </button>
+            </div>
+
+            {showReplyDraftPreview ? (
+              /* Live Preview on Pastel Pink Stationery */
+              <div
+                className="letter-stationery"
+                style={{
+                  borderRadius: "18px",
+                  padding: "24px 18px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  textAlign: "left",
+                  position: "relative",
+                  margin: "6px 0",
+                }}
+              >
+                <div className="washi-tape" />
+                <h3
+                  style={{
+                    fontFamily: "'Caveat', cursive",
+                    fontSize: "25px",
+                    fontWeight: 700,
+                    color: "#9f1239",
+                    margin: "0 0 14px",
+                  }}
+                >
+                  {replyDraft.salutation || "To my handsome dinosaur ♡"}
+                </h3>
+
+                {(replyDraft.body.trim()
+                  ? replyDraft.body.split(/\n+/).filter(Boolean)
+                  : ["Your paragraphs will appear here..."]
+                ).map((p, i) => (
+                  <p
+                    key={i}
+                    style={{
+                      fontFamily: "'Cormorant Garamond', Georgia, serif",
+                      fontSize: "16px",
+                      lineHeight: "1.75",
+                      margin: "0 0 12px",
+                      color: "#2c1a20",
+                      letterSpacing: "0.15px",
+                    }}
+                  >
+                    {p}
+                  </p>
+                ))}
+
+                <div style={{ marginTop: "18px", textAlign: "right" }}>
+                  <div
+                    style={{
+                      fontFamily: "'Cormorant Garamond', Georgia, serif",
+                      fontSize: "15px",
+                      fontStyle: "italic",
+                      color: "#785342",
+                    }}
+                  >
+                    {replyDraft.closing || "Forever and always yours,"}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "'Caveat', cursive",
+                      fontSize: "25px",
+                      color: "#be123c",
+                      marginTop: "2px",
+                    }}
+                  >
+                    {replyDraft.signature || "Your Pretty Potato ♡"}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Editor Inputs */
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {/* 1. Salutation / Calling */}
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12px",
+                      color: "#fda4af",
+                      fontWeight: 600,
+                      marginBottom: "4px",
+                      fontFamily: "'Quicksand', sans-serif",
+                    }}
+                  >
+                    The Calling / Salutation:
+                  </label>
+                  <input
+                    type="text"
+                    value={replyDraft.salutation}
+                    onChange={(e) => setReplyDraft({ ...replyDraft, salutation: e.target.value })}
+                    placeholder="e.g. To my handsome dinosaur ♡"
+                    style={{
+                      width: "100%",
+                      backgroundColor: "rgba(255, 255, 255, 0.06)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      borderRadius: "10px",
+                      padding: "10px 14px",
+                      color: "#fff",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                      outline: "none",
+                    }}
+                  />
+                  <div style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.4)", marginTop: "3px" }}>
+                    What you want to address him as at the top of the letter.
+                  </div>
+                </div>
+
+                {/* 2. Message / Paragraphs */}
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12px",
+                      color: "#fda4af",
+                      fontWeight: 600,
+                      marginBottom: "4px",
+                      fontFamily: "'Quicksand', sans-serif",
+                    }}
+                  >
+                    Your Letter (Paragraphs):
+                  </label>
+                  <textarea
+                    rows={6}
+                    value={replyDraft.body}
+                    onChange={(e) => setReplyDraft({ ...replyDraft, body: e.target.value })}
+                    placeholder="Write what you want to tell him... Press Enter twice to create new paragraphs."
+                    style={{
+                      width: "100%",
+                      backgroundColor: "rgba(255, 255, 255, 0.06)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      borderRadius: "10px",
+                      padding: "12px 14px",
+                      color: "#fff",
+                      fontSize: "14px",
+                      lineHeight: "1.5",
+                      boxSizing: "border-box",
+                      outline: "none",
+                      resize: "vertical",
+                    }}
+                  />
+                  <div style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.4)", marginTop: "3px" }}>
+                    Paragraphs are automatically formatted onto the stationery.
+                  </div>
+                </div>
+
+                {/* 3. Closing sign-off */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "12px",
+                        color: "#fda4af",
+                        fontWeight: 600,
+                        marginBottom: "4px",
+                        fontFamily: "'Quicksand', sans-serif",
+                      }}
+                    >
+                      Closing Line:
+                    </label>
+                    <input
+                      type="text"
+                      value={replyDraft.closing}
+                      onChange={(e) => setReplyDraft({ ...replyDraft, closing: e.target.value })}
+                      placeholder="e.g. Always yours,"
+                      style={{
+                        width: "100%",
+                        backgroundColor: "rgba(255, 255, 255, 0.06)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        borderRadius: "10px",
+                        padding: "10px 14px",
+                        color: "#fff",
+                        fontSize: "13px",
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+
+                  {/* 4. Signature */}
+                  <div>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "12px",
+                        color: "#fda4af",
+                        fontWeight: 600,
+                        marginBottom: "4px",
+                        fontFamily: "'Quicksand', sans-serif",
+                      }}
+                    >
+                      Signature:
+                    </label>
+                    <input
+                      type="text"
+                      value={replyDraft.signature}
+                      onChange={(e) => setReplyDraft({ ...replyDraft, signature: e.target.value })}
+                      placeholder="e.g. Your Pretty Potato ♡"
+                      style={{
+                        width: "100%",
+                        backgroundColor: "rgba(255, 255, 255, 0.06)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        borderRadius: "10px",
+                        padding: "10px 14px",
+                        color: "#fff",
+                        fontSize: "13px",
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Bottom Actions */}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" }}>
+              <button
+                onClick={() => setIsDraftingReply(false)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  borderRadius: "10px",
+                  padding: "10px 18px",
+                  color: "rgba(255, 255, 255, 0.7)",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveReplyLetter}
+                disabled={!replyDraft.body.trim() || isSavingReply}
+                style={{
+                  background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
+                  border: "none",
+                  borderRadius: "10px",
+                  padding: "10px 22px",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: !replyDraft.body.trim() || isSavingReply ? "not-allowed" : "pointer",
+                  opacity: !replyDraft.body.trim() || isSavingReply ? 0.6 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  boxShadow: "0 6px 20px rgba(244, 63, 94, 0.4)",
+                }}
+              >
+                <span>💌</span>
+                <span>{isSavingReply ? "Sealing letter..." : "Seal & Send Letter ♡"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- MEMORIES & LETTER MANAGER DRAWER --- */}
       {isEditDrawerOpen && (
@@ -2126,6 +3029,54 @@ export default function AnniversaryScrapbookPage() {
                     {formatTimeAgo(lastCelebratedAt)}
                   </div>
                 </div>
+              )}
+            </div>
+
+            {/* LIVE RESPONSE LETTER STATUS BANNER */}
+            <div
+              style={{
+                background: replyLetter
+                  ? "linear-gradient(135deg, rgba(236, 72, 153, 0.18) 0%, rgba(190, 24, 93, 0.1) 100%)"
+                  : "rgba(255, 255, 255, 0.04)",
+                border: "1px solid " + (replyLetter ? "rgba(236, 72, 153, 0.35)" : "rgba(255, 255, 255, 0.08)"),
+                borderRadius: "14px",
+                padding: "10px 14px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "11px", color: replyLetter ? "#fbcfe8" : "rgba(255, 255, 255, 0.4)", fontWeight: 700, letterSpacing: "0.5px" }}>
+                  💌 HER RESPONSE LETTER:
+                </div>
+                <div style={{ fontSize: "15px", fontWeight: 700, color: "#fff", fontFamily: "'Caveat', cursive" }}>
+                  {replyLetter
+                    ? `She wrote back to you! "${replyLetter.salutation}" 💖`
+                    : "She hasn't drafted a reply letter yet..."}
+                </div>
+              </div>
+              {replyLetter && (
+                <button
+                  onClick={() => {
+                    setIsEditDrawerOpen(false);
+                    setActiveSlideIndex(totalSteps - 1);
+                    setActiveLetterTab("hers");
+                    setIsReplySealBroken(true);
+                  }}
+                  style={{
+                    background: "rgba(236, 72, 153, 0.25)",
+                    border: "1px solid #fbcfe8",
+                    borderRadius: "8px",
+                    padding: "6px 12px",
+                    color: "#fff",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Read Letter 💖
+                </button>
               )}
             </div>
 
