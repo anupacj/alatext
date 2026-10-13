@@ -55,8 +55,8 @@ export const DEFAULT_CONFIG: AnvConfig = {
       id: "mem-1",
       tag: "october 13 · day one ♡",
       title: "Where it all started",
-      dateLocation: "our first conversation",
-      caption: "I went back and read our first conversation, when I told you I liked you. It made me smile so much.",
+      dateLocation: "the day I said I like you first",
+      caption: "I went back and read our conversation on the day I said I like you first. It made me smile so much.",
       imageUrl: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=1000&q=80",
       accentColor: "#f472b6",
     },
@@ -91,7 +91,7 @@ export const DEFAULT_CONFIG: AnvConfig = {
   letter: {
     salutation: "Happy 1 year, Aleee.",
     paragraphs: [
-      "Before writing this, I went back and read our first conversation, when I told you I liked you. It made me smile. I liked you then, but I love you so much more now. I don't even know where the year went.",
+      "Before writing this, I went back and read our conversation on the day I said I like you first. It made me smile. I liked you then, but I love you so much more now. I don't even know where the year went.",
       "Thank you for always being there for me. When I'm sad or stressed or having a bad day, you never ignore me. You listen, and you always make me feel a little better. You accept me with all my flaws, and I'm really thankful for that. I'm also sorry if I've ever said something that hurt you. I never meant to.",
       "I know this isn't easy for you, with your family and everything, and I really appreciate that you still make time for me. You're one of the kindest, most thoughtful and coolest people I know, and you're really pretty too, way more than you realize.",
       "Thank you for trusting me with your heart. I'll always be gentle with it. I love you.",
@@ -106,6 +106,8 @@ class CozyAudioEngine {
   private ctx: AudioContext | null = null;
   public soundEnabled: boolean = true;
   private chimeStep: number = 0;
+  private ambientTimer: any = null;
+  private isAmbientRunning: boolean = false;
 
   private getContext(): AudioContext | null {
     if (typeof window === "undefined" || !this.soundEnabled) return null;
@@ -117,6 +119,102 @@ class CozyAudioEngine {
       this.ctx.resume().catch(() => {});
     }
     return this.ctx;
+  }
+
+  setSoundEnabled(enabled: boolean) {
+    this.soundEnabled = enabled;
+    if (!enabled) {
+      this.stopAmbientLoop();
+    } else {
+      this.startAmbientLoop();
+    }
+  }
+
+  // --- AMBIENT MUSIC BOX SOUNDSCAPE (Gentle, warm, relaxing, not loud) ---
+  startAmbientLoop() {
+    if (typeof window === "undefined" || !this.soundEnabled || this.isAmbientRunning) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    this.isAmbientRunning = true;
+    let stepIndex = 0;
+
+    // Cozy romantic music box notes (Pentatonic C major: C5, D5, E5, G5, A5, B5, C6)
+    const melody = [
+      523.25, // C5
+      659.25, // E5
+      783.99, // G5
+      880.00, // A5
+      1046.50, // C6
+      987.77,  // B5
+      783.99,  // G5
+      659.25,  // E5
+      587.33,  // D5
+      659.25,  // E5
+      880.00,  // A5
+      783.99,  // G5
+    ];
+
+    const playNextChime = () => {
+      if (!this.soundEnabled || !this.isAmbientRunning) return;
+      const actx = this.getContext();
+      if (!actx) return;
+
+      const now = actx.currentTime;
+      const freq = melody[stepIndex % melody.length];
+      stepIndex++;
+
+      // Pure soft music box tone
+      const osc = actx.createOscillator();
+      const gain = actx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now);
+
+      // Very gentle, quiet volume (0.013 - 0.017): warm, sweet, calming background
+      const vol = 0.013 + Math.random() * 0.004;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(vol, now + 0.035);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.7);
+
+      osc.connect(gain);
+      gain.connect(actx.destination);
+
+      osc.start(now);
+      osc.stop(now + 2.8);
+
+      // Occasionally add a sweet harmonic chime note
+      if (Math.random() > 0.6) {
+        const harmonyFreq = freq * 1.25;
+        const oscH = actx.createOscillator();
+        const gainH = actx.createGain();
+        oscH.type = "sine";
+        oscH.frequency.setValueAtTime(harmonyFreq, now + 0.14);
+
+        gainH.gain.setValueAtTime(0.0001, now + 0.14);
+        gainH.gain.linearRampToValueAtTime(vol * 0.55, now + 0.17);
+        gainH.gain.exponentialRampToValueAtTime(0.0001, now + 2.4);
+
+        oscH.connect(gainH);
+        gainH.connect(actx.destination);
+        oscH.start(now + 0.14);
+        oscH.stop(now + 2.5);
+      }
+
+      // Next note in 2.8 - 4.2 seconds
+      const nextInterval = 2800 + Math.random() * 1400;
+      this.ambientTimer = setTimeout(playNextChime, nextInterval);
+    };
+
+    playNextChime();
+  }
+
+  stopAmbientLoop() {
+    this.isAmbientRunning = false;
+    if (this.ambientTimer) {
+      clearTimeout(this.ambientTimer);
+      this.ambientTimer = null;
+    }
   }
 
   // Soft page turn / gentle kalimba pluck
@@ -355,7 +453,30 @@ export default function AnniversaryScrapbookPage() {
           .maybeSingle();
 
         if (configData && configData.value && isMounted) {
-          const cloudConfig = configData.value as AnvConfig;
+          const cloudConfig = { ...configData.value } as AnvConfig;
+          let changed = false;
+          if (cloudConfig.letter?.paragraphs?.[0]?.includes("read our first conversation")) {
+            cloudConfig.letter.paragraphs[0] = cloudConfig.letter.paragraphs[0].replace(
+              /read our first conversation,?\s*when I told you I liked you/i,
+              "read our conversation on the day I said I like you first"
+            );
+            changed = true;
+          }
+          if (cloudConfig.memories?.[0]?.caption?.includes("read our first conversation")) {
+            cloudConfig.memories[0].caption = cloudConfig.memories[0].caption.replace(
+              /read our first conversation,?\s*when I told you I liked you/i,
+              "read our conversation on the day I said I like you first"
+            );
+            cloudConfig.memories[0].dateLocation = "the day I said I like you first";
+            changed = true;
+          }
+          if (changed) {
+            supabase.from("app_settings").upsert({
+              key: SUPABASE_SETTINGS_KEY,
+              value: cloudConfig,
+              updated_at: new Date().toISOString(),
+            }).then(() => {});
+          }
           if (cloudConfig.letter && cloudConfig.memories) {
             setConfig(cloudConfig);
             if (typeof window !== "undefined") {
@@ -462,6 +583,13 @@ export default function AnniversaryScrapbookPage() {
       supabase.removeChannel(channel);
     };
   }, [user]);
+
+  // Clean up ambient audio on unmount
+  useEffect(() => {
+    return () => {
+      audio.stopAmbientLoop();
+    };
+  }, []);
 
   // Check if locked for current user (Sender is NEVER locked out)
   const isSender = Boolean(user && pairing && user.id === pairing.sender_id);
@@ -1176,6 +1304,10 @@ export default function AnniversaryScrapbookPage() {
   return (
     <div
       onClick={(e) => {
+        // Start sweet, cozy background ambient soundscape
+        if (!soundMuted) {
+          audio.startAmbientLoop();
+        }
         // Spawn floating tap hearts anywhere user clicks (except buttons/inputs)
         const target = e.target as HTMLElement;
         if (target.tagName !== "BUTTON" && target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
@@ -1461,7 +1593,7 @@ export default function AnniversaryScrapbookPage() {
               onClick={() => {
                 const nextState = !soundMuted;
                 setSoundMuted(nextState);
-                audio.soundEnabled = !nextState;
+                audio.setSoundEnabled(!nextState);
               }}
               style={{
                 background: "rgba(255, 255, 255, 0.06)",
