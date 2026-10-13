@@ -31,7 +31,7 @@ const STORAGE_CONFIG_KEY = "@anv_custom_config_2026";
 const SUPABASE_SETTINGS_KEY = "anniversary_config";
 
 export const DEFAULT_CONFIG: AnvConfig = {
-  coupleNames: "Aleee & You",
+  coupleNames: "Pretty Potato & You",
   anniversaryDate: "October 13, 2026",
   introTitle: "365 days of us",
   introSubtitle: "A little scrapbook of our first year together... all the quiet moments, late night talks, and memories that mean the world to me.",
@@ -103,7 +103,6 @@ class CozyAudioEngine {
     return this.ctx;
   }
 
-  // Soft page turn / gentle kalimba pluck
   playPageTurn() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -112,8 +111,8 @@ class CozyAudioEngine {
     const gain = ctx.createGain();
 
     osc.type = "sine";
-    osc.frequency.setValueAtTime(523.25, now); // C5
-    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.08); // E5
+    osc.frequency.setValueAtTime(523.25, now);
+    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.08);
 
     gain.gain.setValueAtTime(0.04, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
@@ -124,13 +123,11 @@ class CozyAudioEngine {
     osc.stop(now + 0.16);
   }
 
-  // Realistic tactile wax crack + sweet warm harmonic chime
   playWaxSealBreak() {
     const ctx = this.getContext();
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // 1. Soft paper/wax snap
     const oscSnap = ctx.createOscillator();
     const gainSnap = ctx.createGain();
     oscSnap.type = "triangle";
@@ -145,7 +142,6 @@ class CozyAudioEngine {
     oscSnap.start(now);
     oscSnap.stop(now + 0.09);
 
-    // 2. Warm music box arpeggio (C major 7th chord: C5 -> E5 -> G5 -> B5 -> C6)
     const notes = [523.25, 659.25, 783.99, 987.77, 1046.5];
     notes.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
@@ -164,7 +160,6 @@ class CozyAudioEngine {
     });
   }
 
-  // Heartfelt celebration chime
   playLoveFanfare() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -253,7 +248,7 @@ export default function AnniversaryScrapbookPage() {
 
   const [soundMuted, setSoundMuted] = useState(false);
 
-  // Sync with Supabase cloud so she sees his photos and letter immediately
+  // Sync with Supabase cloud so her phone gets his uploaded photos immediately
   useEffect(() => {
     let isMounted = true;
     async function loadCloudConfig() {
@@ -283,7 +278,7 @@ export default function AnniversaryScrapbookPage() {
     };
   }, []);
 
-  // Dynamically load elegant Google Fonts: Caveat (handwriting) & Cormorant Garamond (romantic serif)
+  // Dynamically load warm, cozy Google Fonts: Caveat (handwriting), Quicksand (soft rounded), Cormorant Garamond (serif)
   useEffect(() => {
     if (typeof document !== "undefined") {
       const fontId = "anv-google-fonts";
@@ -292,16 +287,13 @@ export default function AnniversaryScrapbookPage() {
         link.id = fontId;
         link.rel = "stylesheet";
         link.href =
-          "https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap";
+          "https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&family=Quicksand:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&display=swap";
         document.head.appendChild(link);
       }
     }
   }, []);
 
-  // Slide indexing:
-  // Slide 0: Warm Cover Card ("365 days of us")
-  // Slides 1 to N: Cozy Memory Polaroids
-  // Final Slide (N + 1): The Wax Seal Envelope & Handwritten Letter
+  // Slide indexing
   const totalSteps = 1 + config.memories.length + 1;
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
@@ -387,7 +379,7 @@ export default function AnniversaryScrapbookPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goToNextSlide, goToPrevSlide, isEditDrawerOpen, router]);
 
-  // Gentle auto-advance (8 seconds on memories, pauses on hover or on final letter slide)
+  // Gentle auto-advance (8.5 seconds on memories, pauses on hold or final letter slide)
   useEffect(() => {
     if (isFinalSlide || isEditDrawerOpen) return;
 
@@ -427,7 +419,6 @@ export default function AnniversaryScrapbookPage() {
     };
     window.addEventListener("resize", handleResize);
 
-    // Warm candle bokeh & fairy lights
     particlesRef.current = [];
     const warmPalette = ["#fde68a", "#fbcfe8", "#fed7aa", "#fef08a", "#ffd1dc"];
     for (let i = 0; i < 40; i++) {
@@ -453,12 +444,10 @@ export default function AnniversaryScrapbookPage() {
         p.y += p.vy;
 
         if (p.decay > 0) {
-          // Floating petals / celebration hearts
           p.alpha -= p.decay;
           p.vy += 0.05;
           p.vx *= 0.985;
         } else {
-          // Gentle breathing fireflies
           p.pulse += 0.02;
           const currentAlpha = Math.max(0.08, p.alpha + Math.sin(p.pulse) * 0.12);
 
@@ -629,7 +618,7 @@ export default function AnniversaryScrapbookPage() {
         inset: 0,
         backgroundColor: "#110d13",
         color: "#fff",
-        fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+        fontFamily: "'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -671,11 +660,15 @@ export default function AnniversaryScrapbookPage() {
         .polaroid-paper {
           background: #faf8f5;
           color: #2e2420;
-          border-radius: 6px;
-          padding: 12px 12px 26px 12px;
+          border-radius: 8px;
+          padding: 12px 12px 22px 12px;
           box-shadow: 0 18px 45px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.25);
           position: relative;
           transition: transform 0.4s ease;
+          box-sizing: border-box;
+          max-height: 84vh;
+          display: flex;
+          flex-direction: column;
         }
         .washi-tape {
           position: absolute;
@@ -716,7 +709,7 @@ export default function AnniversaryScrapbookPage() {
         }}
       />
 
-      {/* TOP HEADER: Delicate Progress Bars & Intimate Actions */}
+      {/* TOP HEADER */}
       <div
         style={{
           position: "relative",
@@ -768,7 +761,7 @@ export default function AnniversaryScrapbookPage() {
           })}
         </div>
 
-        {/* Header Controls: Clean & Uncluttered for Her */}
+        {/* Header Controls */}
         <div
           style={{
             display: "flex",
@@ -797,7 +790,7 @@ export default function AnniversaryScrapbookPage() {
           </button>
 
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            {/* Audio Toggle Button */}
+            {/* Audio Toggle */}
             <button
               onClick={() => {
                 const nextState = !soundMuted;
@@ -822,7 +815,7 @@ export default function AnniversaryScrapbookPage() {
               {soundMuted ? "🔇" : "♫"}
             </button>
 
-            {/* Subtle Scrapbook Manager Icon (Doesn't shout DEV to her) */}
+            {/* Discreet Scrapbook Manager */}
             <button
               onClick={() => {
                 setDraftConfig(config);
@@ -921,7 +914,7 @@ export default function AnniversaryScrapbookPage() {
               position: "relative",
               width: "100%",
               borderRadius: "28px",
-              padding: "44px 26px",
+              padding: "40px 24px",
               textAlign: "center",
               animation: "paperUnfold 0.45s ease-out",
               boxSizing: "border-box",
@@ -937,34 +930,38 @@ export default function AnniversaryScrapbookPage() {
                 border: "1px solid rgba(253, 164, 175, 0.3)",
                 color: "#fda4af",
                 fontSize: "12px",
-                fontFamily: "'Caveat', cursive",
-                fontSizeAdjust: "0.55",
-                letterSpacing: "1px",
+                fontFamily: "'Quicksand', sans-serif",
+                fontWeight: 600,
+                letterSpacing: "0.5px",
                 marginBottom: "16px",
               }}
             >
               october 13 · one year together ♡
             </div>
 
-            {/* Handwritten Title for Aleee */}
-            <h2
+            {/* Warm Loving Title for Pretty Potato */}
+            <h1
               style={{
-                fontFamily: "'Playfair Display', Georgia, serif",
-                fontSize: "34px",
-                fontWeight: 600,
-                margin: "0 0 6px",
+                fontFamily: "'Caveat', cursive",
+                fontSize: "44px",
+                fontWeight: 700,
+                margin: "0 0 2px",
                 lineHeight: "1.2",
                 color: "#fff",
+                textShadow: "0 2px 18px rgba(244, 63, 94, 0.45)",
+                letterSpacing: "0.5px",
               }}
             >
-              for aleee ♡
-            </h2>
+              To my Pretty Potato ♡
+            </h1>
 
             <div
               style={{
-                fontFamily: "'Caveat', cursive",
-                fontSize: "28px",
+                fontFamily: "'Quicksand', -apple-system, sans-serif",
+                fontSize: "17px",
+                fontWeight: 600,
                 color: "#fbcfe8",
+                letterSpacing: "0.5px",
                 marginBottom: "18px",
               }}
             >
@@ -975,7 +972,7 @@ export default function AnniversaryScrapbookPage() {
             <div
               style={{
                 fontSize: "36px",
-                margin: "8px 0 16px",
+                margin: "4px 0 14px",
                 filter: "drop-shadow(0 0 12px rgba(244, 63, 94, 0.5))",
               }}
             >
@@ -985,10 +982,11 @@ export default function AnniversaryScrapbookPage() {
             {/* Intro Narrative */}
             <p
               style={{
-                fontSize: "15px",
+                fontFamily: "'Quicksand', -apple-system, sans-serif",
+                fontSize: "14px",
                 lineHeight: "1.7",
-                color: "rgba(255, 255, 255, 0.82)",
-                margin: "0 0 28px",
+                color: "rgba(255, 255, 255, 0.85)",
+                margin: "0 0 26px",
                 padding: "0 8px",
                 fontStyle: "italic",
               }}
@@ -1003,10 +1001,11 @@ export default function AnniversaryScrapbookPage() {
                 background: "linear-gradient(135deg, #f43f5e 0%, #db2777 100%)",
                 border: "none",
                 borderRadius: "999px",
-                padding: "12px 30px",
+                padding: "12px 32px",
                 color: "#fff",
                 fontSize: "14px",
-                fontWeight: 600,
+                fontFamily: "'Quicksand', sans-serif",
+                fontWeight: 700,
                 cursor: "pointer",
                 boxShadow: "0 8px 25px rgba(244, 63, 94, 0.45)",
                 display: "inline-flex",
@@ -1020,7 +1019,7 @@ export default function AnniversaryScrapbookPage() {
           </div>
         )}
 
-        {/* --- SCENARIO 2: PHYSICAL POLAROID PHOTO MEMORY --- */}
+        {/* --- SCENARIO 2: PHYSICAL POLAROID PHOTO MEMORY (UNCROPPED & SEAMLESS) --- */}
         {!isCoverSlide && !isFinalSlide && currentMemory && (
           <div
             key={currentMemory.id}
@@ -1035,29 +1034,88 @@ export default function AnniversaryScrapbookPage() {
             {/* Washi Tape Strip at Top */}
             <div className="washi-tape" />
 
-            {/* Polaroid Photo Frame */}
+            {/* Polaroid Photo Frame (Adaptive Height, Full Contain, Seamless Ambient Blur Fill) */}
             <div
               style={{
                 position: "relative",
                 width: "100%",
-                aspectRatio: "1 / 1",
-                backgroundColor: "#1c1619",
-                borderRadius: "3px",
+                height: "320px",
+                maxHeight: "44vh",
+                backgroundColor: "#161118",
+                borderRadius: "5px",
                 overflow: "hidden",
-                boxShadow: "inset 0 0 10px rgba(0, 0, 0, 0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "inset 0 0 16px rgba(0, 0, 0, 0.45)",
+                flexShrink: 1,
               }}
             >
               {currentMemory.imageUrl ? (
-                <img
-                  src={currentMemory.imageUrl}
-                  alt={currentMemory.title}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
+                <>
+                  {/* Layer 1: Ambient Background Color Fill (Uses same photo to seamlessly fill any gaps - no weird black boxes) */}
+                  <img
+                    src={currentMemory.imageUrl}
+                    alt=""
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      inset: "-20px",
+                      width: "calc(100% + 40px)",
+                      height: "calc(100% + 40px)",
+                      objectFit: "cover",
+                      filter: "blur(22px) brightness(0.65) saturate(1.2)",
+                      opacity: 0.6,
+                      pointerEvents: "none",
+                    }}
+                  />
+
+                  {/* Layer 2: Sharp Uncropped Photo (100% visible, whole chat screenshot / photo shows!) */}
+                  <img
+                    src={currentMemory.imageUrl}
+                    alt={currentMemory.title}
+                    style={{
+                      position: "relative",
+                      zIndex: 2,
+                      maxWidth: "100%",
+                      maxHeight: "100%",
+                      width: "auto",
+                      height: "auto",
+                      objectFit: "contain",
+                      display: "block",
+                      borderRadius: "3px",
+                      filter: "drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35))",
+                    }}
+                  />
+
+                  {/* Subtle Change Photo Trigger in Top Corner (Never blocks message text) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerPhotoUpload(currentMemory.id);
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      zIndex: 10,
+                      background: "rgba(0, 0, 0, 0.52)",
+                      border: "1px solid rgba(255, 255, 255, 0.25)",
+                      borderRadius: "999px",
+                      padding: "3px 9px",
+                      color: "rgba(255, 255, 255, 0.9)",
+                      fontSize: "10px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      backdropFilter: "blur(8px)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "3px",
+                    }}
+                  >
+                    <span>📷</span> change
+                  </button>
+                </>
               ) : (
                 <div
                   style={{
@@ -1072,39 +1130,15 @@ export default function AnniversaryScrapbookPage() {
                   }}
                 >
                   <span style={{ fontSize: "28px" }}>📷</span>
-                  <span style={{ fontSize: "12px" }}>add our photo</span>
+                  <span style={{ fontSize: "12px", fontFamily: "'Quicksand', sans-serif" }}>
+                    add our photo
+                  </span>
                 </div>
               )}
-
-              {/* Subtle Change Photo Trigger */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  triggerPhotoUpload(currentMemory.id);
-                }}
-                style={{
-                  position: "absolute",
-                  bottom: "8px",
-                  right: "8px",
-                  background: "rgba(0, 0, 0, 0.6)",
-                  border: "1px solid rgba(255, 255, 255, 0.3)",
-                  borderRadius: "999px",
-                  padding: "4px 10px",
-                  color: "#fff",
-                  fontSize: "11px",
-                  cursor: "pointer",
-                  backdropFilter: "blur(6px)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <span>📷</span> change
-              </button>
             </div>
 
             {/* Handwritten Polaroid Notes */}
-            <div style={{ padding: "14px 6px 2px", textAlign: "left" }}>
+            <div style={{ padding: "12px 6px 2px", textAlign: "left", flexShrink: 0 }}>
               <div
                 style={{
                   display: "flex",
@@ -1116,7 +1150,7 @@ export default function AnniversaryScrapbookPage() {
                 <span
                   style={{
                     fontFamily: "'Caveat', cursive",
-                    fontSize: "23px",
+                    fontSize: "24px",
                     fontWeight: 700,
                     color: "#2e2420",
                   }}
@@ -1128,7 +1162,7 @@ export default function AnniversaryScrapbookPage() {
                   <span
                     style={{
                       fontFamily: "'Caveat', cursive",
-                      fontSize: "15px",
+                      fontSize: "16px",
                       color: "#92400e",
                     }}
                   >
@@ -1137,14 +1171,14 @@ export default function AnniversaryScrapbookPage() {
                 )}
               </div>
 
-              {/* Personal Caption in Handwritten Style */}
+              {/* Personal Caption */}
               <p
                 style={{
                   fontFamily: "'Caveat', cursive",
                   fontSize: "20px",
                   lineHeight: "1.35",
                   color: "#453229",
-                  margin: "4px 0 8px",
+                  margin: "2px 0 6px",
                 }}
               >
                 "{currentMemory.caption}"
@@ -1156,8 +1190,9 @@ export default function AnniversaryScrapbookPage() {
                   justifyContent: "space-between",
                   fontSize: "12px",
                   color: "#9c8e85",
-                  marginTop: "6px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  marginTop: "4px",
+                  fontFamily: "'Quicksand', sans-serif",
+                  fontWeight: 600,
                 }}
               >
                 <span>{currentMemory.tag}</span>
@@ -1199,9 +1234,9 @@ export default function AnniversaryScrapbookPage() {
                 <div
                   style={{
                     fontFamily: "'Caveat', cursive",
-                    fontSize: "20px",
+                    fontSize: "22px",
                     color: "#fbcfe8",
-                    marginBottom: "8px",
+                    marginBottom: "6px",
                   }}
                 >
                   sealed just for you ♡
@@ -1209,19 +1244,22 @@ export default function AnniversaryScrapbookPage() {
 
                 <h2
                   style={{
-                    fontFamily: "'Playfair Display', Georgia, serif",
-                    fontSize: "26px",
-                    fontWeight: 600,
+                    fontFamily: "'Caveat', cursive",
+                    fontSize: "34px",
+                    fontWeight: 700,
                     margin: "0 0 6px",
                     textAlign: "center",
+                    color: "#fff",
+                    textShadow: "0 2px 14px rgba(244, 63, 94, 0.45)",
                   }}
                 >
-                  A Letter for Aleee
+                  To my Pretty Potato ♡
                 </h2>
                 <p
                   style={{
                     fontSize: "13px",
-                    color: "rgba(255, 255, 255, 0.65)",
+                    fontFamily: "'Quicksand', sans-serif",
+                    color: "rgba(255, 255, 255, 0.7)",
                     margin: "0 0 24px",
                     textAlign: "center",
                   }}
@@ -1386,7 +1424,8 @@ export default function AnniversaryScrapbookPage() {
                     padding: "13px 30px",
                     color: "#fff",
                     fontSize: "14px",
-                    fontWeight: 600,
+                    fontFamily: "'Quicksand', sans-serif",
+                    fontWeight: 700,
                     cursor: "pointer",
                     boxShadow: "0 8px 24px rgba(244, 63, 94, 0.45)",
                     display: "flex",
@@ -1397,7 +1436,7 @@ export default function AnniversaryScrapbookPage() {
                   <span>🌸</span>
                   <span>
                     {celebrationFired
-                      ? "I love you so much, Aleee ♡"
+                      ? "I love you so much ♡"
                       : "A year of loving you 💕"}
                   </span>
                 </button>
@@ -1430,7 +1469,7 @@ export default function AnniversaryScrapbookPage() {
             border: "none",
             color: activeSlideIndex === 0 ? "rgba(255, 255, 255, 0.15)" : "rgba(255, 255, 255, 0.65)",
             fontSize: "13px",
-            fontWeight: 500,
+            fontWeight: 600,
             cursor: activeSlideIndex === 0 ? "default" : "pointer",
             display: "flex",
             alignItems: "center",
@@ -1442,8 +1481,8 @@ export default function AnniversaryScrapbookPage() {
 
         <div
           style={{
-            fontSize: "12px",
-            color: "rgba(255, 255, 255, 0.35)",
+            fontSize: "13px",
+            color: "rgba(255, 255, 255, 0.4)",
             fontFamily: "'Caveat', cursive",
             fontSizeAdjust: "0.55",
           }}
@@ -1459,7 +1498,7 @@ export default function AnniversaryScrapbookPage() {
             border: "none",
             color: isFinalSlide ? "rgba(255, 255, 255, 0.15)" : "#fda4af",
             fontSize: "13px",
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: isFinalSlide ? "default" : "pointer",
             display: "flex",
             alignItems: "center",
@@ -1470,7 +1509,7 @@ export default function AnniversaryScrapbookPage() {
         </button>
       </div>
 
-      {/* --- MEMORIES & LETTER MANAGER DRAWER (Discreet & Simple) --- */}
+      {/* --- MEMORIES & LETTER MANAGER DRAWER --- */}
       {isEditDrawerOpen && (
         <div
           style={{
@@ -1506,11 +1545,11 @@ export default function AnniversaryScrapbookPage() {
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#fbcfe8", fontFamily: "'Playfair Display', serif" }}>
-                  Our Memories & Letter
+                <h3 style={{ margin: 0, fontSize: "20px", color: "#fbcfe8", fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
+                  Our Memories & Letter ♡
                 </h3>
-                <span style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.5)" }}>
-                  Upload photos, edit captions, and sync live to Aleee's phone.
+                <span style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.5)", fontFamily: "'Quicksand', sans-serif" }}>
+                  Upload photos, edit captions, and sync live to her phone.
                 </span>
               </div>
               <button
@@ -1594,18 +1633,19 @@ export default function AnniversaryScrapbookPage() {
                           borderRadius: "8px",
                           overflow: "hidden",
                           backgroundColor: "#000",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                         }}
                       >
                         {mem.imageUrl ? (
                           <img
                             src={mem.imageUrl}
                             alt="thumb"
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
                           />
                         ) : (
-                          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            📷
-                          </div>
+                          <div style={{ fontSize: "20px" }}>📷</div>
                         )}
                       </div>
                       <button
@@ -1864,7 +1904,7 @@ export default function AnniversaryScrapbookPage() {
             >
               {saveSuccessNotice ? (
                 <span style={{ fontSize: "12px", color: "#34d399", fontWeight: 600 }}>
-                  ✓ Synced to Aleee's phone!
+                  ✓ Synced to her phone!
                 </span>
               ) : (
                 <span style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.4)" }}>
