@@ -94,18 +94,7 @@ export default function ChatSidebar({ activeChatId, onSelectChat, onToggleCollap
     }
   };
 
-  const tapTimesRef = useRef<number[]>([]);
-  const handleLogoTap = () => {
-    const now = Date.now();
-    tapTimesRef.current = tapTimesRef.current.filter((t: number) => now - t < 800);
-    tapTimesRef.current.push(now);
-    if (tapTimesRef.current.length >= 3) {
-      tapTimesRef.current = [];
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent("open_anniversary_milestone"));
-      }
-    }
-  };
+  const handleLogoTap = () => {};
 
   const isPreAnniversary = React.useMemo(() => {
     const d = new Date();
