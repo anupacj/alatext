@@ -3728,49 +3728,66 @@ export default function ChatScreen() {
             ]}
             pointerEvents="box-none"
           >
-            <TouchableOpacity
-              style={[
-                styles.anniversaryCountdownPill,
-                isAnniversaryUnlocked && styles.anniversaryUnlockedPill,
-                !isAnniversaryUnlocked && { borderColor: "rgba(244, 63, 94, 0.45)", backgroundColor: "rgba(244, 63, 94, 0.12)" },
-              ]}
-              onPress={() => {
-                if (isAnniversaryUnlocked) {
-                  router.push("/anv" as any);
-                } else {
-                  if (pillNoticeTimeoutRef.current) clearTimeout(pillNoticeTimeoutRef.current);
-                  setPillLockedNotice("🔒 Locked! Check back when countdown ends");
-                  pillNoticeTimeoutRef.current = setTimeout(() => {
-                    setPillLockedNotice(null);
-                  }, 2200);
-                }
-              }}
-              activeOpacity={isAnniversaryUnlocked ? 0.8 : 0.9}
-            >
-              {isAnniversaryUnlocked ? (
-                <Heart
-                  size={12}
-                  color="#f43f5e"
-                  fill="#f43f5e"
-                  style={{ marginRight: 6 }}
-                />
-              ) : (
-                <Lock
-                  size={12}
-                  color="#fda4af"
-                  style={{ marginRight: 6 }}
-                />
-              )}
-              <Text style={styles.anniversaryPillText}>
-                {pillLockedNotice ||
-                  (isAnniversaryUnlocked
-                    ? hasReplyLetter && anniversaryPairing.sender_id === user?.id
-                      ? "She wrote back! 💌 · Tap to read her letter 💖"
-                      : `${anniversaryPairing.pill_label || "Anniversary Surprise 💌"} · Tap to open ✨`
-                    : `Unlocks in ${anniversaryCountdown || "..."} ⏳`)}
-              </Text>
-              <Sparkles size={11} color="#fda4af" style={{ marginLeft: 6 }} />
-            </TouchableOpacity>
+            {(() => {
+              const isSenderOfPair = Boolean(user && anniversaryPairing && user.id === anniversaryPairing.sender_id);
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.anniversaryCountdownPill,
+                    isAnniversaryUnlocked && styles.anniversaryUnlockedPill,
+                    !isAnniversaryUnlocked && {
+                      borderColor: "rgba(244, 63, 94, 0.45)",
+                      backgroundColor: "rgba(244, 63, 94, 0.12)",
+                    },
+                  ]}
+                  onPress={() => {
+                    // SENDER can ALWAYS enter to preview & finalize!
+                    if (isAnniversaryUnlocked || isSenderOfPair) {
+                      router.push("/anv" as any);
+                    } else {
+                      if (pillNoticeTimeoutRef.current) clearTimeout(pillNoticeTimeoutRef.current);
+                      setPillLockedNotice("🔒 Locked! Check back when countdown ends");
+                      pillNoticeTimeoutRef.current = setTimeout(() => {
+                        setPillLockedNotice(null);
+                      }, 2200);
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  {isAnniversaryUnlocked ? (
+                    <Heart
+                      size={12}
+                      color="#f43f5e"
+                      fill="#f43f5e"
+                      style={{ marginRight: 6 }}
+                    />
+                  ) : isSenderOfPair ? (
+                    <Sparkles
+                      size={12}
+                      color="#fda4af"
+                      style={{ marginRight: 6 }}
+                    />
+                  ) : (
+                    <Lock
+                      size={12}
+                      color="#fda4af"
+                      style={{ marginRight: 6 }}
+                    />
+                  )}
+                  <Text style={styles.anniversaryPillText}>
+                    {pillLockedNotice ||
+                      (isAnniversaryUnlocked
+                        ? hasReplyLetter && anniversaryPairing.sender_id === user?.id
+                          ? "She wrote back! 💌 · Tap to read her letter 💖"
+                          : `${anniversaryPairing.pill_label || "Anniversary Surprise 💌"} · Tap to open ✨`
+                        : isSenderOfPair
+                        ? `Countdown: ${anniversaryCountdown || "..."} ⏳ · Tap to preview & edit ✨`
+                        : `Unlocks in ${anniversaryCountdown || "..."} ⏳`)}
+                  </Text>
+                  <Sparkles size={11} color="#fda4af" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              );
+            })()}
           </View>
         )}
 

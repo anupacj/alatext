@@ -463,11 +463,11 @@ export default function AnniversaryScrapbookPage() {
     };
   }, [user]);
 
-  // Check if locked for current user
+  // Check if locked for current user (Sender is NEVER locked out)
   const isSender = Boolean(user && pairing && user.id === pairing.sender_id);
   const isExpired = Boolean(pairing && new Date(pairing.unlock_at).getTime() <= Date.now());
   const isUnlockedGlobally = Boolean(pairing && (pairing.is_unlocked || isExpired));
-  const isLocked = Boolean(pairing && !isUnlockedGlobally && !isEditParam);
+  const isLocked = Boolean(pairing && !isUnlockedGlobally && !isSender && !isEditParam);
 
   // Lock countdown timer
   useEffect(() => {
@@ -1096,24 +1096,24 @@ export default function AnniversaryScrapbookPage() {
             Take a deep breath and check back in your chat soon ✨
           </p>
 
-          {/* Admin Sender Controls on Locked Screen */}
-          {isSender && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", marginTop: 8 }}>
-              <button
-                onClick={() => setIsEditParam(true)}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: 12,
-                  backgroundColor: "rgba(244, 63, 94, 0.2)",
-                  border: "1px solid rgba(244, 63, 94, 0.4)",
-                  color: "#fda4af",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                👑 Admin: Enter Preview & Edit Mode
-              </button>
+          {/* Creator Preview Controls on Locked Screen */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", marginTop: 8 }}>
+            <button
+              onClick={() => setIsEditParam(true)}
+              style={{
+                padding: "10px 18px",
+                borderRadius: 12,
+                backgroundColor: "rgba(244, 63, 94, 0.2)",
+                border: "1px solid rgba(244, 63, 94, 0.4)",
+                color: "#fda4af",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              👑 Enter Preview & Edit Mode (Creator)
+            </button>
+            {isSender && (
               <button
                 onClick={async () => {
                   try {
@@ -1149,8 +1149,8 @@ export default function AnniversaryScrapbookPage() {
               >
                 Instant Unlock for Her Now ✨
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           <button
             onClick={() => router.replace("/chat" as any)}
