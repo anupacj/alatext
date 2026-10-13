@@ -1,15 +1,14 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 
 // --- TYPES & DATA CONTRACTS ---
 export interface MemorySlide {
   id: string;
-  tag: string;           // e.g. "MOMENT I", "FIRST DATE", "SUMMER 2026"
-  title: string;         // e.g. "The First Spark"
-  dateLocation?: string; // e.g. "📍 The Corner Table"
-  caption: string;       // e.g. "I still remember how time seemed to stop..."
+  tag: string;           // e.g. "october 13 · day one ♡"
+  title: string;         // e.g. "Where it all started"
+  dateLocation?: string; // e.g. "our first conversation"
+  caption: string;       // e.g. "I went back and read our first conversation..."
   imageUrl: string;      // Base64 WebP or public image URL
   accentColor: string;
 }
@@ -32,67 +31,68 @@ const STORAGE_CONFIG_KEY = "@anv_custom_config_2026";
 const SUPABASE_SETTINGS_KEY = "anniversary_config";
 
 export const DEFAULT_CONFIG: AnvConfig = {
-  coupleNames: "Us",
+  coupleNames: "Aleee & You",
   anniversaryDate: "October 13, 2026",
-  introTitle: "365 Days of Us",
-  introSubtitle: "A private collection of our favorite moments, stolen minutes, and memories from our first year together.",
+  introTitle: "365 days of us",
+  introSubtitle: "A little scrapbook of our first year together... all the quiet moments, late night talks, and memories that mean the world to me.",
   memories: [
     {
       id: "mem-1",
-      tag: "CHAPTER I",
-      title: "Where It All Started",
-      dateLocation: "🗓️ Day 1 · October 13",
-      caption: "Looking back at where our story officially began. I still catch myself smiling at how effortless and magical talking to you felt from the very first moment.",
+      tag: "october 13 · day one ♡",
+      title: "Where it all started",
+      dateLocation: "our first conversation",
+      caption: "I went back and read our first conversation, when I told you I liked you. It made me smile so much.",
       imageUrl: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=1000&q=80",
-      accentColor: "#fb7185",
+      accentColor: "#f472b6",
     },
     {
       id: "mem-2",
-      tag: "CHAPTER II",
-      title: "Stolen Minutes",
-      dateLocation: "☕ Our Favorite Spot",
-      caption: "Running across the city just to steal a quick date together. Packed buses, silly jokes, and wishing the minutes wouldn't tick by so fast.",
-      imageUrl: "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=1000&q=80",
-      accentColor: "#c084fc",
+      tag: "late night whispers ♡",
+      title: "Talking until 4 AM",
+      dateLocation: "our quiet sanctuary",
+      caption: "When I am sad or stressed or having a bad day, you never ignore me. You listen, and you always make me feel a little better.",
+      imageUrl: "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1000&q=80",
+      accentColor: "#fbbf24",
     },
     {
       id: "mem-3",
-      tag: "CHAPTER III",
-      title: "Late Night Conversations",
-      dateLocation: "🌙 2:00 AM Whispers",
-      caption: "Our quiet sanctuary on our private app. Typing indicators that made hearts race and deep conversations that carried us until the early morning hours.",
-      imageUrl: "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1000&q=80",
-      accentColor: "#38bdf8",
+      tag: "stolen minutes ♡",
+      title: "Making time for each other",
+      dateLocation: "every sweet moment",
+      caption: "I know this is not easy for you, with your family and everything, and I really appreciate that you still make time for me.",
+      imageUrl: "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=1000&q=80",
+      accentColor: "#fb7185",
     },
     {
       id: "mem-4",
-      tag: "CHAPTER IV",
-      title: "My Safe Place",
-      dateLocation: "🤍 Everywhere With You",
-      caption: "In a noisy, crowded world, being with you feels like coming home. Thank you for your warmth, your sweetness, and for loving me the way you do.",
+      tag: "with all my heart ♡",
+      title: "My favorite person",
+      dateLocation: "always with you",
+      caption: "You are one of the kindest, most thoughtful and coolest people I know, and you are really pretty too, way more than you realize.",
       imageUrl: "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?auto=format&fit=crop&w=1000&q=80",
-      accentColor: "#fbbf24",
+      accentColor: "#f43f5e",
     },
   ],
   letter: {
-    salutation: "To My Favorite Person,",
+    salutation: "Happy 1 year, Aleee.",
     paragraphs: [
-      "365 days ago, our story officially began. Looking back at everything we've shared, I still catch myself smiling at how effortless and magical being with you feels.",
-      "From running for buses just to steal quick moments together, to texting until the early morning hours, you've made every ordinary day feel like an adventure.",
-      "Thank you for your warmth, your kindness, your silly jokes, and for loving me the way you do. You are my safe place and my favorite home.",
-      "Here is to 365 days behind us, and a lifetime of stolen moments ahead. Happy One Year Anniversary, my love! 💕",
+      "Before writing this, I went back and read our first conversation, when I told you I liked you. It made me smile. I liked you then, but I love you so much more now. I don't even know where the year went.",
+      "Thank you for always being there for me. When I'm sad or stressed or having a bad day, you never ignore me. You listen, and you always make me feel a little better. You accept me with all my flaws, and I'm really thankful for that. I'm also sorry if I've ever said something that hurt you. I never meant to.",
+      "I know this isn't easy for you, with your family and everything, and I really appreciate that you still make time for me. You're one of the kindest, most thoughtful and coolest people I know, and you're really pretty too, way more than you realize.",
+      "Thank you for trusting me with your heart. I'll always be gentle with it. I love you.",
     ],
-    closing: "Forever & Always Yours,",
-    signature: "With All My Heart",
+    closing: "Always yours,",
+    signature: "With all my heart ♡",
   },
 };
 
-// --- WEB AUDIO CHIME & SEAL CRACK ENGINE ---
-class AnvAudioEngine {
+// --- WARM ACOUSTIC CHIME & MUSIC BOX AUDIO ENGINE ---
+class CozyAudioEngine {
   private ctx: AudioContext | null = null;
+  public soundEnabled: boolean = true;
 
   private getContext(): AudioContext | null {
-    if (typeof window === "undefined") return null;
+    if (typeof window === "undefined" || !this.soundEnabled) return null;
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) this.ctx = new AudioCtx();
@@ -103,45 +103,8 @@ class AnvAudioEngine {
     return this.ctx;
   }
 
-  playSealBreak() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-
-    // 1. Tactile snap/crack
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(480, now);
-    osc.frequency.exponentialRampToValueAtTime(80, now + 0.08);
-
-    gain.gain.setValueAtTime(0.12, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.12);
-
-    // 2. Rising harmonic chime
-    [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
-      const chimeOsc = ctx.createOscillator();
-      const chimeGain = ctx.createGain();
-      chimeOsc.type = "sine";
-      chimeOsc.frequency.setValueAtTime(freq, now + 0.05 + idx * 0.04);
-
-      chimeGain.gain.setValueAtTime(0, now + 0.05 + idx * 0.04);
-      chimeGain.gain.linearRampToValueAtTime(0.06, now + 0.05 + idx * 0.04 + 0.08);
-      chimeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05 + idx * 0.04 + 1.8);
-
-      chimeOsc.connect(chimeGain);
-      chimeGain.connect(ctx.destination);
-      chimeOsc.start(now + 0.05 + idx * 0.04);
-      chimeOsc.stop(now + 0.05 + idx * 0.04 + 2.0);
-    });
-  }
-
-  playSlideTick() {
+  // Soft page turn / gentle kalimba pluck
+  playPageTurn() {
     const ctx = this.getContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -149,19 +112,60 @@ class AnvAudioEngine {
     const gain = ctx.createGain();
 
     osc.type = "sine";
-    osc.frequency.setValueAtTime(880, now);
-    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.04);
+    osc.frequency.setValueAtTime(523.25, now); // C5
+    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.08); // E5
 
-    gain.gain.setValueAtTime(0.02, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+    gain.gain.setValueAtTime(0.04, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.06);
+    osc.stop(now + 0.16);
   }
 
-  playCelebrationFanfare() {
+  // Realistic tactile wax crack + sweet warm harmonic chime
+  playWaxSealBreak() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // 1. Soft paper/wax snap
+    const oscSnap = ctx.createOscillator();
+    const gainSnap = ctx.createGain();
+    oscSnap.type = "triangle";
+    oscSnap.frequency.setValueAtTime(320, now);
+    oscSnap.frequency.exponentialRampToValueAtTime(70, now + 0.06);
+
+    gainSnap.gain.setValueAtTime(0.09, now);
+    gainSnap.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+    oscSnap.connect(gainSnap);
+    gainSnap.connect(ctx.destination);
+    oscSnap.start(now);
+    oscSnap.stop(now + 0.09);
+
+    // 2. Warm music box arpeggio (C major 7th chord: C5 -> E5 -> G5 -> B5 -> C6)
+    const notes = [523.25, 659.25, 783.99, 987.77, 1046.5];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + 0.04 + idx * 0.05);
+
+      gain.gain.setValueAtTime(0, now + 0.04 + idx * 0.05);
+      gain.gain.linearRampToValueAtTime(0.05, now + 0.04 + idx * 0.05 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04 + idx * 0.05 + 1.6);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + 0.04 + idx * 0.05);
+      osc.stop(now + 0.04 + idx * 0.05 + 1.8);
+    });
+  }
+
+  // Heartfelt celebration chime
+  playLoveFanfare() {
     const ctx = this.getContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -169,24 +173,24 @@ class AnvAudioEngine {
     chords.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + idx * 0.06);
 
-      gain.gain.setValueAtTime(0, now + idx * 0.05);
-      gain.gain.linearRampToValueAtTime(0.07, now + idx * 0.05 + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.05 + 2.5);
+      gain.gain.setValueAtTime(0, now + idx * 0.06);
+      gain.gain.linearRampToValueAtTime(0.06, now + idx * 0.06 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.06 + 2.4);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(now + idx * 0.05);
-      osc.stop(now + idx * 0.05 + 2.6);
+      osc.start(now + idx * 0.06);
+      osc.stop(now + idx * 0.06 + 2.5);
     });
   }
 }
 
-const audio = new AnvAudioEngine();
+const audio = new CozyAudioEngine();
 
-// --- CLIENT-SIDE IMAGE COMPRESSION (max 1100px, WebP/JPEG, ~75KB) ---
+// --- CLIENT-SIDE IMAGE COMPRESSION (Max 1100px, WebP/JPEG ~75KB) ---
 function compressImageFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -218,7 +222,6 @@ function compressImageFile(file: File): Promise<string> {
 
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Try WebP first (great compression), fallback to JPEG
         let dataUrl = canvas.toDataURL("image/webp", 0.78);
         if (!dataUrl.startsWith("data:image/webp")) {
           dataUrl = canvas.toDataURL("image/jpeg", 0.78);
@@ -233,11 +236,11 @@ function compressImageFile(file: File): Promise<string> {
   });
 }
 
-// --- MAIN ANNIVERSARY MEMORY SCRAPBOOK & WRAPPED PAGE ---
-export default function AnniversaryPage() {
+// --- MAIN ANNIVERSARY SCRAPBOOK & LOVE LETTER PAGE ---
+export default function AnniversaryScrapbookPage() {
   const router = useRouter();
 
-  // 1. Initial State: Load from localStorage first, then sync with Supabase cloud
+  // Load custom config from localStorage first, then sync with Supabase cloud
   const [config, setConfig] = useState<AnvConfig>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -248,9 +251,9 @@ export default function AnniversaryPage() {
     return DEFAULT_CONFIG;
   });
 
-  const [cloudSyncStatus, setCloudSyncStatus] = useState<"synced" | "syncing" | "offline">("synced");
+  const [soundMuted, setSoundMuted] = useState(false);
 
-  // Fetch config from Supabase app_settings so her phone gets his uploaded photos!
+  // Sync with Supabase cloud so she sees his photos and letter immediately
   useEffect(() => {
     let isMounted = true;
     async function loadCloudConfig() {
@@ -263,7 +266,7 @@ export default function AnniversaryPage() {
 
         if (!error && data && data.value && isMounted) {
           const cloudConfig = data.value as AnvConfig;
-          if (cloudConfig.memories && Array.isArray(cloudConfig.memories)) {
+          if (cloudConfig.letter && cloudConfig.memories) {
             setConfig(cloudConfig);
             if (typeof window !== "undefined") {
               window.localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(cloudConfig));
@@ -280,10 +283,25 @@ export default function AnniversaryPage() {
     };
   }, []);
 
+  // Dynamically load elegant Google Fonts: Caveat (handwriting) & Cormorant Garamond (romantic serif)
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      const fontId = "anv-google-fonts";
+      if (!document.getElementById(fontId)) {
+        const link = document.createElement("link");
+        link.id = fontId;
+        link.rel = "stylesheet";
+        link.href =
+          "https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap";
+        document.head.appendChild(link);
+      }
+    }
+  }, []);
+
   // Slide indexing:
-  // Slide 0: Cover / Intro Milestone Card ("365 Days of Us")
-  // Slides 1 to N: Couple Photo Memories
-  // Final Slide (N + 1): The 3D Wax Seal Envelope & Love Letter
+  // Slide 0: Warm Cover Card ("365 days of us")
+  // Slides 1 to N: Cozy Memory Polaroids
+  // Final Slide (N + 1): The Wax Seal Envelope & Handwritten Letter
   const totalSteps = 1 + config.memories.length + 1;
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
@@ -295,21 +313,21 @@ export default function AnniversaryPage() {
       ? config.memories[currentMemoryIndex]
       : null;
 
-  // Story progression timer & pause on touch/hold
+  // Story progression timer & pause on hold
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const isPausedRef = useRef(isPaused);
   isPausedRef.current = isPaused;
 
-  // Wax Seal & Letter Reveal State
+  // Wax Seal & Love Letter reveal states
   const [isSealBroken, setIsSealBroken] = useState(false);
   const [isLetterOpened, setIsLetterOpened] = useState(false);
   const [celebrationFired, setCelebrationFired] = useState(false);
 
-  // Quick Photo Uploader Drawer & Visual Admin Editor
+  // Discreet photo & letter manager drawer
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [draftConfig, setDraftConfig] = useState<AnvConfig>(config);
-  const [editingTab, setEditingTab] = useState<"photos" | "letter" | "raw">("photos");
+  const [editingTab, setEditingTab] = useState<"photos" | "letter">("photos");
   const [isUploading, setIsUploading] = useState(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
@@ -317,7 +335,7 @@ export default function AnniversaryPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadTargetMemoryIdRef = useRef<string | null>(null);
 
-  // Background Canvas Particle System
+  // Background Canvas: Warm candlelit stardust & romantic rose petals
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const particlesRef = useRef<any[]>([]);
 
@@ -341,7 +359,7 @@ export default function AnniversaryPage() {
     if (activeSlideIndex < totalSteps - 1) {
       setActiveSlideIndex((prev) => prev + 1);
       setProgress(0);
-      audio.playSlideTick();
+      audio.playPageTurn();
     }
   }, [activeSlideIndex, totalSteps]);
 
@@ -349,11 +367,11 @@ export default function AnniversaryPage() {
     if (activeSlideIndex > 0) {
       setActiveSlideIndex((prev) => prev - 1);
       setProgress(0);
-      audio.playSlideTick();
+      audio.playPageTurn();
     }
   }, [activeSlideIndex]);
 
-  // Keyboard navigation (ArrowLeft / ArrowRight / Escape)
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isEditDrawerOpen) return;
@@ -369,12 +387,11 @@ export default function AnniversaryPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goToNextSlide, goToPrevSlide, isEditDrawerOpen, router]);
 
-  // Auto-advance progress timer (Instagram story mode; pauses on hover or on final letter slide)
+  // Gentle auto-advance (8 seconds on memories, pauses on hover or on final letter slide)
   useEffect(() => {
     if (isFinalSlide || isEditDrawerOpen) return;
 
-    // Give photo slides 8 seconds to view peacefully
-    const SLIDE_DURATION_MS = isCoverSlide ? 6000 : 8000;
+    const SLIDE_DURATION_MS = isCoverSlide ? 6500 : 8500;
     const intervalMs = 50;
     const stepIncrement = (intervalMs / SLIDE_DURATION_MS) * 100;
 
@@ -393,7 +410,7 @@ export default function AnniversaryPage() {
     return () => clearInterval(timer);
   }, [activeSlideIndex, isFinalSlide, isCoverSlide, isEditDrawerOpen, goToNextSlide]);
 
-  // Canvas Particles Engine (Romantic Ambient Twinkles + Celebration Confetti)
+  // Warm floating candle fireflies & stardust
   useEffect(() => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -410,18 +427,19 @@ export default function AnniversaryPage() {
     };
     window.addEventListener("resize", handleResize);
 
-    // Ambient floating stardust
+    // Warm candle bokeh & fairy lights
     particlesRef.current = [];
-    const colors = ["#fda4af", "#f43f5e", "#fde047", "#fbbf24", "#e0e7ff", "#c084fc"];
-    for (let i = 0; i < 45; i++) {
+    const warmPalette = ["#fde68a", "#fbcfe8", "#fed7aa", "#fef08a", "#ffd1dc"];
+    for (let i = 0; i < 40; i++) {
       particlesRef.current.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: -0.15 - Math.random() * 0.35,
-        size: 1.5 + Math.random() * 2.5,
-        alpha: 0.2 + Math.random() * 0.5,
-        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: (Math.random() - 0.5) * 0.25,
+        vy: -0.1 - Math.random() * 0.25,
+        size: 1.8 + Math.random() * 2.8,
+        alpha: 0.15 + Math.random() * 0.45,
+        color: warmPalette[Math.floor(Math.random() * warmPalette.length)],
+        pulse: Math.random() * Math.PI,
         decay: 0,
       });
     }
@@ -435,13 +453,30 @@ export default function AnniversaryPage() {
         p.y += p.vy;
 
         if (p.decay > 0) {
+          // Floating petals / celebration hearts
           p.alpha -= p.decay;
-          p.vy += 0.08;
+          p.vy += 0.05;
           p.vx *= 0.985;
         } else {
-          if (p.y < -10) p.y = height + 10;
-          if (p.x < -10) p.x = width + 10;
-          if (p.x > width + 10) p.x = -10;
+          // Gentle breathing fireflies
+          p.pulse += 0.02;
+          const currentAlpha = Math.max(0.08, p.alpha + Math.sin(p.pulse) * 0.12);
+
+          if (p.y < -15) p.y = height + 15;
+          if (p.x < -15) p.x = width + 15;
+          if (p.x > width + 15) p.x = -15;
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, currentAlpha);
+          ctx.translate(p.x, p.y);
+          ctx.fillStyle = p.color;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          return;
         }
 
         ctx.save();
@@ -449,7 +484,7 @@ export default function AnniversaryPage() {
         ctx.translate(p.x, p.y);
         ctx.fillStyle = p.color;
         ctx.shadowColor = p.color;
-        ctx.shadowBlur = p.decay > 0 ? 10 : 3;
+        ctx.shadowBlur = 8;
         ctx.beginPath();
         ctx.arc(0, 0, p.size, 0, Math.PI * 2);
         ctx.fill();
@@ -468,35 +503,35 @@ export default function AnniversaryPage() {
     };
   }, []);
 
-  // Confetti Burst Trigger
+  // Heartfelt celebration trigger: rose petals & warm sparkle hearts
   const spawnCelebrationBurst = () => {
-    audio.playCelebrationFanfare();
+    audio.playLoveFanfare();
     setCelebrationFired(true);
 
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
-    const palette = ["#fbbf24", "#f43f5e", "#fda4af", "#fff", "#fde047", "#e879f9"];
+    const romanticColors = ["#f43f5e", "#fda4af", "#fbbf24", "#fff", "#f472b6", "#fed7aa"];
 
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 80; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 3.5 + Math.random() * 11;
+      const speed = 3.2 + Math.random() * 9.5;
       particlesRef.current.push({
         x: cx,
         y: cy,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 3.5,
-        size: 3 + Math.random() * 4,
+        vy: Math.sin(angle) * speed - 3.2,
+        size: 3.5 + Math.random() * 4,
         alpha: 1,
-        color: palette[Math.floor(Math.random() * palette.length)],
-        decay: 0.012 + Math.random() * 0.016,
+        color: romanticColors[Math.floor(Math.random() * romanticColors.length)],
+        decay: 0.012 + Math.random() * 0.015,
       });
     }
   };
 
-  // Wax Seal Break & Love Letter Open
+  // Wax Seal Break action
   const handleBreakSeal = () => {
     if (isSealBroken) return;
-    audio.playSealBreak();
+    audio.playWaxSealBreak();
     setIsSealBroken(true);
 
     setTimeout(() => {
@@ -505,7 +540,7 @@ export default function AnniversaryPage() {
     }, 650);
   };
 
-  // Save to Cloud & Local Storage
+  // Cloud & Local Storage Save
   const handleSaveConfig = async (newConfig: AnvConfig) => {
     setConfig(newConfig);
     setDraftConfig(newConfig);
@@ -513,7 +548,6 @@ export default function AnniversaryPage() {
       window.localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(newConfig));
     }
 
-    setCloudSyncStatus("syncing");
     try {
       const { error } = await supabase.from("app_settings").upsert({
         key: SUPABASE_SETTINGS_KEY,
@@ -521,21 +555,16 @@ export default function AnniversaryPage() {
         updated_at: new Date().toISOString(),
       });
 
-      if (error) {
-        console.error("Cloud save failed:", error);
-        setCloudSyncStatus("offline");
-      } else {
-        setCloudSyncStatus("synced");
+      if (!error) {
         setSaveSuccessNotice(true);
-        setTimeout(() => setSaveSuccessNotice(false), 3500);
+        setTimeout(() => setSaveSuccessNotice(false), 3000);
       }
     } catch (e) {
       console.error("Cloud sync exception:", e);
-      setCloudSyncStatus("offline");
     }
   };
 
-  // Handle Photo File Pick & Compression
+  // Handle Photo Pick & Compression
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -546,7 +575,6 @@ export default function AnniversaryPage() {
       const compressedDataUrl = await compressImageFile(file);
 
       if (targetMemoryId) {
-        // Update specific memory
         const updatedMemories = draftConfig.memories.map((m) =>
           m.id === targetMemoryId ? { ...m, imageUrl: compressedDataUrl } : m
         );
@@ -554,15 +582,14 @@ export default function AnniversaryPage() {
         setDraftConfig(updatedConfig);
         await handleSaveConfig(updatedConfig);
       } else {
-        // Add new memory with this photo
         const newMemory: MemorySlide = {
           id: `mem-${Date.now()}`,
-          tag: `MEMORY ${draftConfig.memories.length + 1}`,
+          tag: `our memories ♡`,
           title: "A Special Moment",
-          dateLocation: "🗓️ October 2026",
-          caption: "A favorite memory with you.",
+          dateLocation: "with you",
+          caption: "Another favorite memory with you.",
           imageUrl: compressedDataUrl,
-          accentColor: "#fb7185",
+          accentColor: "#f472b6",
         };
         const updatedConfig = {
           ...draftConfig,
@@ -572,23 +599,21 @@ export default function AnniversaryPage() {
         await handleSaveConfig(updatedConfig);
       }
     } catch (err) {
-      alert("Failed to process photo. Please try a different image.");
+      alert("Could not load photo. Please try another image.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  // Quick trigger to pick photo for current slide
   const triggerPhotoUpload = (memoryId?: string) => {
     uploadTargetMemoryIdRef.current = memoryId || null;
     fileInputRef.current?.click();
   };
 
-  // Delete memory
   const handleDeleteMemory = async (id: string) => {
     if (draftConfig.memories.length <= 1) {
-      alert("You need at least one memory slide!");
+      alert("Keep at least one memory in your scrapbook!");
       return;
     }
     const filtered = draftConfig.memories.filter((m) => m.id !== id);
@@ -602,10 +627,9 @@ export default function AnniversaryPage() {
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "#07050a",
+        backgroundColor: "#110d13",
         color: "#fff",
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -614,7 +638,7 @@ export default function AnniversaryPage() {
         zIndex: 999999,
       }}
     >
-      {/* Hidden File Input for Image Upload */}
+      {/* Hidden File Input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -623,58 +647,76 @@ export default function AnniversaryPage() {
         onChange={handleImageFileChange}
       />
 
-      {/* Embedded Aesthetics & Keyframe Animations */}
+      {/* Embedded Warm Aesthetics & Polaroid Styles */}
       <style>{`
-        @keyframes anvSlideUp {
-          from { transform: translateY(24px) scale(0.97); opacity: 0; }
+        @keyframes polaroidFloat {
+          0%, 100% { transform: translateY(0px) rotate(-1deg); }
+          50% { transform: translateY(-4px) rotate(-0.5deg); }
+        }
+        @keyframes sealCandleGlow {
+          0%, 100% { box-shadow: 0 0 18px rgba(225, 29, 72, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.2); }
+          50% { box-shadow: 0 0 32px rgba(225, 29, 72, 0.75), inset 0 0 15px rgba(255, 255, 255, 0.4); }
+        }
+        @keyframes paperUnfold {
+          from { transform: translateY(30px) scale(0.94); opacity: 0; }
           to { transform: translateY(0) scale(1); opacity: 1; }
         }
-        @keyframes anvFadeIn {
-          from { opacity: 0; transform: scale(0.98); }
-          to { opacity: 1; transform: scale(1); }
+        .cozy-card {
+          background: rgba(26, 19, 27, 0.88);
+          border: 1px solid rgba(254, 215, 170, 0.16);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(251, 191, 36, 0.05);
         }
-        @keyframes sealGlow {
-          0%, 100% { box-shadow: 0 0 20px rgba(225, 29, 72, 0.45), inset 0 0 10px rgba(255, 255, 255, 0.25); }
-          50% { box-shadow: 0 0 45px rgba(225, 29, 72, 0.85), inset 0 0 16px rgba(255, 255, 255, 0.45); }
+        .polaroid-paper {
+          background: #faf8f5;
+          color: #2e2420;
+          border-radius: 6px;
+          padding: 12px 12px 26px 12px;
+          box-shadow: 0 18px 45px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.25);
+          position: relative;
+          transition: transform 0.4s ease;
         }
-        @keyframes letterSlideOut {
-          from { transform: translateY(40px) scale(0.92); opacity: 0; }
-          to { transform: translateY(0) scale(1); opacity: 1; }
+        .washi-tape {
+          position: absolute;
+          top: -10px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 85px;
+          height: 22px;
+          background: rgba(254, 240, 215, 0.7);
+          box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+          border-left: 2px dashed rgba(217, 119, 6, 0.25);
+          border-right: 2px dashed rgba(217, 119, 6, 0.25);
+          z-index: 5;
         }
-        .anv-glass-card {
-          background: rgba(18, 14, 25, 0.78);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          backdrop-filter: blur(28px);
-          -webkit-backdrop-filter: blur(28px);
-          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(244, 63, 94, 0.08);
-        }
-        .polaroid-frame {
-          background: #191422;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          box-shadow: 0 20px 45px rgba(0, 0, 0, 0.65), 0 0 25px rgba(244, 63, 94, 0.12);
-          transition: transform 0.3s ease;
+        .letter-stationery {
+          background: #fffdf9;
+          color: #2b1d16;
+          box-shadow: inset 0 0 35px rgba(217, 119, 6, 0.06), 0 15px 40px rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(217, 119, 6, 0.15);
         }
       `}</style>
 
-      {/* Background HTML5 Canvas */}
+      {/* Ambient Canvas Particles */}
       <canvas
         ref={canvasRef}
         style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}
       />
 
-      {/* Twilight Ambient Gradient */}
+      {/* Cozy Candlelit Gradient Backdrop */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(ellipse at 50% 30%, rgba(88, 28, 135, 0.28) 0%, rgba(225, 29, 72, 0.14) 50%, rgba(7, 5, 10, 0.98) 85%)",
+            "radial-gradient(ellipse at 50% 35%, rgba(67, 24, 38, 0.45) 0%, rgba(35, 18, 28, 0.6) 45%, rgba(13, 10, 15, 0.98) 90%)",
           pointerEvents: "none",
           zIndex: 0,
         }}
       />
 
-      {/* TOP BAR: Instagram-style Story Bars & Header Controls */}
+      {/* TOP HEADER: Delicate Progress Bars & Intimate Actions */}
       <div
         style={{
           position: "relative",
@@ -682,15 +724,15 @@ export default function AnniversaryPage() {
           padding: "16px 20px 8px",
           display: "flex",
           flexDirection: "column",
-          gap: "12px",
+          gap: "10px",
           width: "100%",
-          maxWidth: "680px",
+          maxWidth: "520px",
           margin: "0 auto",
           boxSizing: "border-box",
         }}
       >
-        {/* Story Progress Segmented Bars */}
-        <div style={{ display: "flex", gap: "5px", width: "100%" }}>
+        {/* Soft Story Progress Bars */}
+        <div style={{ display: "flex", gap: "4px", width: "100%" }}>
           {Array.from({ length: totalSteps }).map((_, idx) => {
             const isCompleted = idx < activeSlideIndex;
             const isCurrent = idx === activeSlideIndex;
@@ -705,8 +747,8 @@ export default function AnniversaryPage() {
                 }}
                 style={{
                   flex: 1,
-                  height: "3.5px",
-                  backgroundColor: "rgba(255, 255, 255, 0.22)",
+                  height: "3px",
+                  backgroundColor: "rgba(255, 255, 255, 0.18)",
                   borderRadius: "999px",
                   overflow: "hidden",
                   cursor: "pointer",
@@ -716,9 +758,9 @@ export default function AnniversaryPage() {
                   style={{
                     height: "100%",
                     width: fillWidth,
-                    backgroundColor: isCompleted || isCurrent ? "#f43f5e" : "transparent",
+                    backgroundColor: isCompleted || isCurrent ? "#fda4af" : "transparent",
                     transition: isCurrent ? "width 0.05s linear" : "width 0.2s ease",
-                    boxShadow: isCurrent ? "0 0 8px #f43f5e" : undefined,
+                    boxShadow: isCurrent ? "0 0 6px #fda4af" : undefined,
                   }}
                 />
               </div>
@@ -726,69 +768,88 @@ export default function AnniversaryPage() {
           })}
         </div>
 
-        {/* Header Action Buttons */}
+        {/* Header Controls: Clean & Uncluttered for Her */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             width: "100%",
+            paddingTop: "2px",
           }}
         >
           <button
             onClick={() => router.replace("/")}
             style={{
-              background: "rgba(255, 255, 255, 0.08)",
-              border: "1px solid rgba(255, 255, 255, 0.14)",
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
               borderRadius: "999px",
-              padding: "6px 14px",
-              color: "#fff",
+              padding: "5px 12px",
+              color: "rgba(255, 255, 255, 0.8)",
               fontSize: "12px",
-              fontWeight: 600,
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              gap: "6px",
-              backdropFilter: "blur(12px)",
+              gap: "5px",
             }}
           >
-            <span>←</span> Return to Chat
+            <span>←</span> Back to chat
           </button>
 
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            {saveSuccessNotice && (
-              <span style={{ fontSize: "11px", color: "#34d399", fontWeight: 700 }}>
-                ✓ Synced to Cloud!
-              </span>
-            )}
+            {/* Audio Toggle Button */}
+            <button
+              onClick={() => {
+                const nextState = !soundMuted;
+                setSoundMuted(nextState);
+                audio.soundEnabled = !nextState;
+              }}
+              style={{
+                background: "rgba(255, 255, 255, 0.06)",
+                border: "1px solid rgba(255, 255, 255, 0.12)",
+                borderRadius: "999px",
+                width: "28px",
+                height: "28px",
+                color: soundMuted ? "rgba(255, 255, 255, 0.4)" : "#fed7aa",
+                fontSize: "12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title={soundMuted ? "Unmute sound" : "Mute sound"}
+            >
+              {soundMuted ? "🔇" : "♫"}
+            </button>
 
+            {/* Subtle Scrapbook Manager Icon (Doesn't shout DEV to her) */}
             <button
               onClick={() => {
                 setDraftConfig(config);
                 setIsEditDrawerOpen(true);
               }}
               style={{
-                background: "rgba(251, 191, 36, 0.12)",
-                border: "1px solid rgba(251, 191, 36, 0.35)",
+                background: "rgba(254, 215, 170, 0.12)",
+                border: "1px solid rgba(254, 215, 170, 0.25)",
                 borderRadius: "999px",
-                padding: "6px 14px",
-                color: "#fbbf24",
-                fontSize: "12px",
-                fontWeight: 700,
+                padding: "5px 12px",
+                color: "#fed7aa",
+                fontSize: "11px",
+                fontWeight: 600,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                gap: "5px",
+                gap: "4px",
               }}
-              title="Add photos, edit captions & letter"
+              title="Edit photos or letter"
             >
-              <span>📷</span> Manage Photos & Letter
+              <span>✏️</span> memories
             </button>
           </div>
         </div>
       </div>
 
-      {/* MAIN STORY CONTENT CONTAINER */}
+      {/* MAIN SCRAPBOOK STAGE */}
       <div
         style={{
           position: "relative",
@@ -797,9 +858,9 @@ export default function AnniversaryPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "8px 16px 20px",
+          padding: "6px 16px 18px",
           width: "100%",
-          maxWidth: "540px",
+          maxWidth: "460px",
           margin: "0 auto",
           boxSizing: "border-box",
         }}
@@ -852,184 +913,138 @@ export default function AnniversaryPage() {
           }}
         />
 
-        {/* --- SCENARIO 1: COVER SLIDE ("365 Days of Us") --- */}
+        {/* --- SCENARIO 1: WARM SCRAPBOOK COVER --- */}
         {isCoverSlide && (
           <div
-            className="anv-glass-card"
+            className="cozy-card"
             style={{
               position: "relative",
               width: "100%",
-              borderRadius: "32px",
-              padding: "44px 28px",
+              borderRadius: "28px",
+              padding: "44px 26px",
               textAlign: "center",
-              animation: "anvSlideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1)",
+              animation: "paperUnfold 0.45s ease-out",
               boxSizing: "border-box",
             }}
           >
-            {/* Romantic Anniversary Badge */}
+            {/* Subtle Intimate Badge */}
             <div
               style={{
                 display: "inline-block",
-                padding: "6px 16px",
+                padding: "5px 14px",
                 borderRadius: "999px",
-                background: "rgba(244, 63, 94, 0.12)",
-                border: "1px solid rgba(244, 63, 94, 0.35)",
+                background: "rgba(253, 164, 175, 0.12)",
+                border: "1px solid rgba(253, 164, 175, 0.3)",
                 color: "#fda4af",
                 fontSize: "12px",
-                fontWeight: 800,
-                letterSpacing: "2px",
-                marginBottom: "20px",
+                fontFamily: "'Caveat', cursive",
+                fontSizeAdjust: "0.55",
+                letterSpacing: "1px",
+                marginBottom: "16px",
               }}
             >
-              ✦ ONE YEAR MILESTONE ✦
+              october 13 · one year together ♡
             </div>
 
-            {/* Title */}
-            <h1
+            {/* Handwritten Title for Aleee */}
+            <h2
+              style={{
+                fontFamily: "'Playfair Display', Georgia, serif",
+                fontSize: "34px",
+                fontWeight: 600,
+                margin: "0 0 6px",
+                lineHeight: "1.2",
+                color: "#fff",
+              }}
+            >
+              for aleee ♡
+            </h2>
+
+            <div
+              style={{
+                fontFamily: "'Caveat', cursive",
+                fontSize: "28px",
+                color: "#fbcfe8",
+                marginBottom: "18px",
+              }}
+            >
+              365 days of us
+            </div>
+
+            {/* Warm Heart Icon */}
+            <div
               style={{
                 fontSize: "36px",
-                fontWeight: 900,
-                margin: "0 0 12px",
-                lineHeight: "1.2",
-                background: "linear-gradient(135deg, #fff 40%, #fb7185 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
+                margin: "8px 0 16px",
+                filter: "drop-shadow(0 0 12px rgba(244, 63, 94, 0.5))",
               }}
             >
-              {config.introTitle}
-            </h1>
-
-            {/* Glowing 365 Days Marker */}
-            <div
-              style={{
-                fontSize: "56px",
-                fontWeight: 900,
-                color: "#f43f5e",
-                lineHeight: "1",
-                margin: "18px 0 10px",
-                textShadow: "0 0 35px rgba(244, 63, 94, 0.6)",
-              }}
-            >
-              365
+              🌸
             </div>
 
-            <div
-              style={{
-                fontSize: "13px",
-                color: "#fbbf24",
-                fontWeight: 700,
-                letterSpacing: "1.5px",
-                textTransform: "uppercase",
-                marginBottom: "22px",
-              }}
-            >
-              Days of Love & Laughter
-            </div>
-
-            {/* Subtitle / Intro Narrative */}
+            {/* Intro Narrative */}
             <p
               style={{
                 fontSize: "15px",
                 lineHeight: "1.7",
-                color: "rgba(255, 255, 255, 0.85)",
-                margin: "0 0 32px",
-                padding: "0 10px",
+                color: "rgba(255, 255, 255, 0.82)",
+                margin: "0 0 28px",
+                padding: "0 8px",
+                fontStyle: "italic",
               }}
             >
               {config.introSubtitle}
             </p>
 
-            {/* Start Button */}
+            {/* Tender Open Button */}
             <button
               onClick={goToNextSlide}
               style={{
-                background: "linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)",
+                background: "linear-gradient(135deg, #f43f5e 0%, #db2777 100%)",
                 border: "none",
                 borderRadius: "999px",
-                padding: "14px 34px",
+                padding: "12px 30px",
                 color: "#fff",
                 fontSize: "14px",
-                fontWeight: 800,
-                letterSpacing: "0.5px",
+                fontWeight: 600,
                 cursor: "pointer",
-                boxShadow: "0 10px 28px rgba(244, 63, 94, 0.5)",
+                boxShadow: "0 8px 25px rgba(244, 63, 94, 0.45)",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "8px",
+                gap: "6px",
               }}
             >
-              <span>View Our Memories</span>
-              <span>→</span>
+              <span>open our memories</span>
+              <span>♡</span>
             </button>
           </div>
         )}
 
-        {/* --- SCENARIO 2: PHOTO MEMORY POLAROID SLIDES --- */}
+        {/* --- SCENARIO 2: PHYSICAL POLAROID PHOTO MEMORY --- */}
         {!isCoverSlide && !isFinalSlide && currentMemory && (
           <div
             key={currentMemory.id}
-            className="polaroid-frame"
+            className="polaroid-paper"
             style={{
-              position: "relative",
               width: "100%",
-              maxHeight: "82vh",
-              borderRadius: "28px",
-              padding: "18px 18px 22px",
-              textAlign: "center",
-              animation: "anvSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+              maxWidth: "380px",
+              animation: "polaroidFloat 6s ease-in-out infinite",
               boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
             }}
           >
-            {/* Top Tag & Location Badge */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "0 6px 12px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 800,
-                  letterSpacing: "1.6px",
-                  color: currentMemory.accentColor,
-                  textTransform: "uppercase",
-                }}
-              >
-                {currentMemory.tag}
-              </span>
+            {/* Washi Tape Strip at Top */}
+            <div className="washi-tape" />
 
-              {currentMemory.dateLocation && (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "rgba(255, 255, 255, 0.65)",
-                    background: "rgba(255, 255, 255, 0.08)",
-                    padding: "3px 10px",
-                    borderRadius: "999px",
-                  }}
-                >
-                  {currentMemory.dateLocation}
-                </span>
-              )}
-            </div>
-
-            {/* Featured Photo Container */}
+            {/* Polaroid Photo Frame */}
             <div
               style={{
                 position: "relative",
                 width: "100%",
-                height: "300px",
-                maxHeight: "42vh",
-                borderRadius: "20px",
+                aspectRatio: "1 / 1",
+                backgroundColor: "#1c1619",
+                borderRadius: "3px",
                 overflow: "hidden",
-                backgroundColor: "#0d0a14",
-                boxShadow: "inset 0 0 20px rgba(0, 0, 0, 0.6)",
+                boxShadow: "inset 0 0 10px rgba(0, 0, 0, 0.35)",
               }}
             >
               {currentMemory.imageUrl ? (
@@ -1052,16 +1067,16 @@ export default function AnniversaryPage() {
                     flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: "10px",
-                    color: "rgba(255, 255, 255, 0.4)",
+                    gap: "6px",
+                    color: "#888",
                   }}
                 >
-                  <span style={{ fontSize: "32px" }}>📷</span>
-                  <span style={{ fontSize: "13px" }}>No photo uploaded yet</span>
+                  <span style={{ fontSize: "28px" }}>📷</span>
+                  <span style={{ fontSize: "12px" }}>add our photo</span>
                 </div>
               )}
 
-              {/* Discrete Replace Photo Button directly on Card */}
+              {/* Subtle Change Photo Trigger */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1069,46 +1084,67 @@ export default function AnniversaryPage() {
                 }}
                 style={{
                   position: "absolute",
-                  bottom: "10px",
-                  right: "10px",
-                  background: "rgba(0, 0, 0, 0.68)",
+                  bottom: "8px",
+                  right: "8px",
+                  background: "rgba(0, 0, 0, 0.6)",
                   border: "1px solid rgba(255, 255, 255, 0.3)",
                   borderRadius: "999px",
-                  padding: "5px 12px",
+                  padding: "4px 10px",
                   color: "#fff",
                   fontSize: "11px",
-                  fontWeight: 600,
                   cursor: "pointer",
-                  backdropFilter: "blur(10px)",
+                  backdropFilter: "blur(6px)",
                   display: "flex",
                   alignItems: "center",
                   gap: "4px",
                 }}
               >
-                <span>📷</span> Change Photo
+                <span>📷</span> change
               </button>
             </div>
 
-            {/* Title & Caption */}
-            <div style={{ padding: "16px 8px 6px" }}>
-              <h2
+            {/* Handwritten Polaroid Notes */}
+            <div style={{ padding: "14px 6px 2px", textAlign: "left" }}>
+              <div
                 style={{
-                  fontSize: "22px",
-                  fontWeight: 800,
-                  margin: "0 0 8px",
-                  color: "#fff",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  marginBottom: "4px",
                 }}
               >
-                {currentMemory.title}
-              </h2>
+                <span
+                  style={{
+                    fontFamily: "'Caveat', cursive",
+                    fontSize: "23px",
+                    fontWeight: 700,
+                    color: "#2e2420",
+                  }}
+                >
+                  {currentMemory.title}
+                </span>
 
+                {currentMemory.dateLocation && (
+                  <span
+                    style={{
+                      fontFamily: "'Caveat', cursive",
+                      fontSize: "15px",
+                      color: "#92400e",
+                    }}
+                  >
+                    {currentMemory.dateLocation}
+                  </span>
+                )}
+              </div>
+
+              {/* Personal Caption in Handwritten Style */}
               <p
                 style={{
-                  fontSize: "14px",
-                  lineHeight: "1.65",
-                  color: "rgba(255, 255, 255, 0.88)",
-                  margin: "0 0 10px",
-                  fontStyle: "italic",
+                  fontFamily: "'Caveat', cursive",
+                  fontSize: "20px",
+                  lineHeight: "1.35",
+                  color: "#453229",
+                  margin: "4px 0 8px",
                 }}
               >
                 "{currentMemory.caption}"
@@ -1116,89 +1152,93 @@ export default function AnniversaryPage() {
 
               <div
                 style={{
-                  fontSize: "11px",
-                  color: "rgba(255, 255, 255, 0.35)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "12px",
+                  color: "#9c8e85",
                   marginTop: "6px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
                 }}
               >
-                Tap right to continue · Tap left to rewind
+                <span>{currentMemory.tag}</span>
+                <span>swipe to turn ˘͈ᵕ˘͈</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* --- SCENARIO 3: GRAND FINALE (Slide N: Wax Seal & Handwritten Letter) --- */}
+        {/* --- SCENARIO 3: THE WAX SEAL ENVELOPE & WRITTEN LETTER --- */}
         {isFinalSlide && (
           <div
-            className="anv-glass-card"
+            className="cozy-card"
             style={{
               position: "relative",
               width: "100%",
               maxHeight: "82vh",
-              borderRadius: "32px",
-              padding: "32px 24px",
+              borderRadius: "28px",
+              padding: "28px 20px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              animation: "anvFadeIn 0.5s ease-out",
+              animation: "paperUnfold 0.45s ease-out",
               boxSizing: "border-box",
               overflowY: isLetterOpened ? "auto" : "hidden",
             }}
           >
             {!isLetterOpened ? (
-              /* Envelope & Wax Seal Interaction */
+              /* Velvet Wine Envelope & Crimson Wax Seal Stamp */
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   width: "100%",
-                  padding: "20px 0",
+                  padding: "16px 0",
                 }}
               >
                 <div
                   style={{
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    color: "#fbbf24",
-                    letterSpacing: "2px",
-                    marginBottom: "12px",
+                    fontFamily: "'Caveat', cursive",
+                    fontSize: "20px",
+                    color: "#fbcfe8",
+                    marginBottom: "8px",
                   }}
                 >
-                  ✦ THE GRAND FINALE ✦
+                  sealed just for you ♡
                 </div>
 
                 <h2
                   style={{
-                    fontSize: "28px",
-                    fontWeight: 800,
-                    margin: "0 0 8px",
+                    fontFamily: "'Playfair Display', Georgia, serif",
+                    fontSize: "26px",
+                    fontWeight: 600,
+                    margin: "0 0 6px",
                     textAlign: "center",
                   }}
                 >
-                  A Letter for You
+                  A Letter for Aleee
                 </h2>
                 <p
                   style={{
-                    fontSize: "14px",
+                    fontSize: "13px",
                     color: "rgba(255, 255, 255, 0.65)",
-                    margin: "0 0 30px",
+                    margin: "0 0 24px",
                     textAlign: "center",
                   }}
                 >
-                  Sealed with one year of memories. Tap the wax seal to break it open.
+                  Tap the wax seal to break it open.
                 </p>
 
-                {/* 3D Envelope Container */}
+                {/* Tactile 3D Envelope */}
                 <div
                   style={{
                     position: "relative",
-                    width: "260px",
-                    height: "170px",
-                    backgroundColor: "#1c1424",
-                    borderRadius: "16px",
-                    border: "1px solid rgba(244, 63, 94, 0.35)",
-                    boxShadow: "0 20px 45px rgba(0, 0, 0, 0.7)",
+                    width: "250px",
+                    height: "165px",
+                    backgroundColor: "#2e0f19",
+                    borderRadius: "14px",
+                    border: "1px solid rgba(251, 191, 36, 0.3)",
+                    boxShadow: "0 18px 45px rgba(0, 0, 0, 0.75)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1206,15 +1246,15 @@ export default function AnniversaryPage() {
                   }}
                   onClick={handleBreakSeal}
                 >
-                  {/* Envelope Triangular Flap */}
+                  {/* Flap */}
                   <div
                     style={{
                       position: "absolute",
                       top: 0,
                       left: 0,
                       right: 0,
-                      height: "85px",
-                      background: "linear-gradient(180deg, #2a1b38 0%, #1c1424 100%)",
+                      height: "82px",
+                      background: "linear-gradient(180deg, #421624 0%, #2e0f19 100%)",
                       clipPath: "polygon(0 0, 100% 0, 50% 100%)",
                       transformOrigin: "top",
                       transition: "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -1223,42 +1263,40 @@ export default function AnniversaryPage() {
                     }}
                   />
 
-                  {/* Textured Crimson Wax Seal Stamp */}
+                  {/* Crimson Wax Seal Stamp */}
                   <div
                     style={{
                       position: "relative",
                       zIndex: 10,
-                      width: "68px",
-                      height: "68px",
+                      width: "66px",
+                      height: "66px",
                       borderRadius: "50%",
                       backgroundColor: "#be123c",
                       border: "3px solid #fda4af",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      animation: "sealGlow 3s infinite",
-                      transform: isSealBroken ? "scale(1.25) rotate(15deg)" : "scale(1)",
+                      animation: "sealCandleGlow 3s infinite",
+                      transform: isSealBroken ? "scale(1.2) rotate(15deg)" : "scale(1)",
                       opacity: isSealBroken ? 0 : 1,
                       transition: "transform 0.4s ease, opacity 0.4s ease",
-                      boxShadow: "0 8px 24px rgba(190, 18, 60, 0.6)",
+                      boxShadow: "0 8px 24px rgba(190, 18, 60, 0.65)",
                     }}
                   >
-                    <div style={{ fontSize: "28px", color: "#ffe4e6", fontWeight: "900" }}>
-                      ❦
-                    </div>
+                    <div style={{ fontSize: "26px", color: "#ffe4e6" }}>❦</div>
                   </div>
                 </div>
 
                 <div
                   style={{
-                    marginTop: "26px",
+                    marginTop: "22px",
                     fontSize: "13px",
-                    color: "#fbbf24",
-                    fontWeight: 600,
-                    letterSpacing: "0.5px",
+                    color: "#fbcfe8",
+                    fontFamily: "'Caveat', cursive",
+                    fontSizeAdjust: "0.55",
                   }}
                 >
-                  Tap the seal to read your letter ✨
+                  tap the wax seal to read your letter ✨
                 </div>
               </div>
             ) : (
@@ -1266,49 +1304,46 @@ export default function AnniversaryPage() {
               <div
                 style={{
                   width: "100%",
-                  animation: "letterSlideOut 0.5s ease-out",
+                  animation: "paperUnfold 0.5s ease-out",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                 }}
               >
                 <div
+                  className="letter-stationery"
                   style={{
-                    background: "rgba(254, 243, 199, 0.06)",
-                    border: "1px solid rgba(251, 191, 36, 0.25)",
-                    borderRadius: "24px",
-                    padding: "28px 22px",
+                    borderRadius: "18px",
+                    padding: "26px 20px",
                     width: "100%",
                     boxSizing: "border-box",
                     textAlign: "left",
-                    color: "#fef3c7",
-                    fontFamily: "'Cormorant Garamond', Georgia, serif",
-                    boxShadow: "inset 0 0 30px rgba(0, 0, 0, 0.35)",
                   }}
                 >
                   {/* Salutation */}
                   <h3
                     style={{
-                      fontSize: "24px",
-                      fontStyle: "italic",
-                      color: "#fbbf24",
+                      fontFamily: "'Caveat', cursive",
+                      fontSize: "26px",
+                      fontWeight: 700,
+                      color: "#9f1239",
                       margin: "0 0 16px",
-                      fontFamily: "'Playwrite BR', 'Dancing Script', cursive",
                     }}
                   >
                     {config.letter.salutation}
                   </h3>
 
-                  {/* Paragraphs */}
+                  {/* Letter Paragraphs (His Exact Words) */}
                   {config.letter.paragraphs.map((p, i) => (
                     <p
                       key={i}
                       style={{
+                        fontFamily: "'Cormorant Garamond', Georgia, serif",
                         fontSize: "17px",
-                        lineHeight: "1.8",
-                        margin: "0 0 16px",
-                        color: "rgba(255, 255, 255, 0.92)",
-                        letterSpacing: "0.2px",
+                        lineHeight: "1.75",
+                        margin: "0 0 14px",
+                        color: "#2c1c14",
+                        letterSpacing: "0.15px",
                       }}
                     >
                       {p}
@@ -1316,22 +1351,23 @@ export default function AnniversaryPage() {
                   ))}
 
                   {/* Closing & Signature */}
-                  <div style={{ marginTop: "24px", textAlign: "right" }}>
+                  <div style={{ marginTop: "20px", textAlign: "right" }}>
                     <div
                       style={{
+                        fontFamily: "'Cormorant Garamond', Georgia, serif",
                         fontSize: "16px",
                         fontStyle: "italic",
-                        color: "rgba(255, 255, 255, 0.7)",
+                        color: "#785342",
                       }}
                     >
                       {config.letter.closing}
                     </div>
                     <div
                       style={{
-                        fontSize: "26px",
-                        color: "#f43f5e",
-                        marginTop: "4px",
-                        fontFamily: "'Playwrite BR', 'Dancing Script', cursive",
+                        fontFamily: "'Caveat', cursive",
+                        fontSize: "27px",
+                        color: "#be123c",
+                        marginTop: "2px",
                       }}
                     >
                       {config.letter.signature}
@@ -1339,32 +1375,30 @@ export default function AnniversaryPage() {
                   </div>
                 </div>
 
-                {/* Celebration Fanfare & Fireworks Button */}
+                {/* Sweet Celebration Button */}
                 <button
                   onClick={spawnCelebrationBurst}
                   style={{
-                    marginTop: "26px",
-                    background:
-                      "linear-gradient(135deg, #f43f5e 0%, #e11d48 50%, #fbbf24 100%)",
+                    marginTop: "22px",
+                    background: "linear-gradient(135deg, #f43f5e 0%, #be123c 100%)",
                     border: "none",
                     borderRadius: "999px",
-                    padding: "14px 34px",
+                    padding: "13px 30px",
                     color: "#fff",
-                    fontSize: "15px",
-                    fontWeight: 800,
-                    letterSpacing: "0.5px",
+                    fontSize: "14px",
+                    fontWeight: 600,
                     cursor: "pointer",
-                    boxShadow: "0 10px 30px rgba(244, 63, 94, 0.55)",
+                    boxShadow: "0 8px 24px rgba(244, 63, 94, 0.45)",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
                   }}
                 >
-                  <span>🎉</span>
+                  <span>🌸</span>
                   <span>
                     {celebrationFired
-                      ? "Ignite More Fireworks ✨"
-                      : "Celebrate Our First Year 💕"}
+                      ? "I love you so much, Aleee ♡"
+                      : "A year of loving you 💕"}
                   </span>
                 </button>
               </div>
@@ -1381,9 +1415,9 @@ export default function AnniversaryPage() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          padding: "12px 24px 20px",
+          padding: "10px 24px 18px",
           width: "100%",
-          maxWidth: "540px",
+          maxWidth: "460px",
           margin: "0 auto",
           boxSizing: "border-box",
         }}
@@ -1394,20 +1428,27 @@ export default function AnniversaryPage() {
           style={{
             background: "transparent",
             border: "none",
-            color: activeSlideIndex === 0 ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.7)",
-            fontSize: "14px",
-            fontWeight: 600,
+            color: activeSlideIndex === 0 ? "rgba(255, 255, 255, 0.15)" : "rgba(255, 255, 255, 0.65)",
+            fontSize: "13px",
+            fontWeight: 500,
             cursor: activeSlideIndex === 0 ? "default" : "pointer",
             display: "flex",
             alignItems: "center",
-            gap: "4px",
+            gap: "3px",
           }}
         >
-          ‹ Rewind
+          ‹ rewind
         </button>
 
-        <div style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.4)", fontWeight: 600 }}>
-          {activeSlideIndex + 1} / {totalSteps}
+        <div
+          style={{
+            fontSize: "12px",
+            color: "rgba(255, 255, 255, 0.35)",
+            fontFamily: "'Caveat', cursive",
+            fontSizeAdjust: "0.55",
+          }}
+        >
+          {activeSlideIndex + 1} of {totalSteps}
         </div>
 
         <button
@@ -1416,26 +1457,26 @@ export default function AnniversaryPage() {
           style={{
             background: "transparent",
             border: "none",
-            color: isFinalSlide ? "rgba(255, 255, 255, 0.2)" : "#f43f5e",
-            fontSize: "14px",
-            fontWeight: 700,
+            color: isFinalSlide ? "rgba(255, 255, 255, 0.15)" : "#fda4af",
+            fontSize: "13px",
+            fontWeight: 600,
             cursor: isFinalSlide ? "default" : "pointer",
             display: "flex",
             alignItems: "center",
-            gap: "4px",
+            gap: "3px",
           }}
         >
-          Next ›
+          next ›
         </button>
       </div>
 
-      {/* --- PHOTO & MEMORIES ADMIN DRAWER --- */}
+      {/* --- MEMORIES & LETTER MANAGER DRAWER (Discreet & Simple) --- */}
       {isEditDrawerOpen && (
         <div
           style={{
             position: "fixed",
             inset: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.85)",
+            backgroundColor: "rgba(0, 0, 0, 0.88)",
             backdropFilter: "blur(20px)",
             zIndex: 9999999,
             display: "flex",
@@ -1447,29 +1488,29 @@ export default function AnniversaryPage() {
         >
           <div
             style={{
-              backgroundColor: "#151020",
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              borderRadius: "24px",
-              padding: "24px",
+              backgroundColor: "#19121d",
+              border: "1px solid rgba(254, 215, 170, 0.2)",
+              borderRadius: "22px",
+              padding: "22px",
               width: "100%",
-              maxWidth: "680px",
-              maxHeight: "90vh",
+              maxWidth: "600px",
+              maxHeight: "88vh",
               display: "flex",
               flexDirection: "column",
-              gap: "16px",
+              gap: "14px",
               color: "#fff",
               boxSizing: "border-box",
               overflow: "hidden",
             }}
           >
-            {/* Modal Header */}
+            {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: "19px", color: "#fbbf24" }}>
-                  📷 Memories & Love Letter
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#fbcfe8", fontFamily: "'Playfair Display', serif" }}>
+                  Our Memories & Letter
                 </h3>
-                <span style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.55)" }}>
-                  Upload couple photos, edit captions & sync directly to her device.
+                <span style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.5)" }}>
+                  Upload photos, edit captions, and sync live to Aleee's phone.
                 </span>
               </div>
               <button
@@ -1478,7 +1519,7 @@ export default function AnniversaryPage() {
                   background: "transparent",
                   border: "none",
                   color: "rgba(255, 255, 255, 0.6)",
-                  fontSize: "22px",
+                  fontSize: "20px",
                   cursor: "pointer",
                 }}
               >
@@ -1487,55 +1528,40 @@ export default function AnniversaryPage() {
             </div>
 
             {/* Tab Switcher */}
-            <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid rgba(255, 255, 255, 0.1)", paddingBottom: "10px" }}>
+            <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "10px" }}>
               <button
                 onClick={() => setEditingTab("photos")}
                 style={{
-                  background: editingTab === "photos" ? "#f43f5e" : "rgba(255, 255, 255, 0.08)",
+                  background: editingTab === "photos" ? "#f43f5e" : "rgba(255, 255, 255, 0.06)",
                   border: "none",
                   borderRadius: "8px",
-                  padding: "8px 16px",
+                  padding: "7px 14px",
                   color: "#fff",
-                  fontSize: "13px",
-                  fontWeight: 700,
+                  fontSize: "12px",
+                  fontWeight: 600,
                   cursor: "pointer",
                 }}
               >
-                📷 Photo Memories ({draftConfig.memories.length})
+                📷 Polaroid Photos ({draftConfig.memories.length})
               </button>
               <button
                 onClick={() => setEditingTab("letter")}
                 style={{
-                  background: editingTab === "letter" ? "#f43f5e" : "rgba(255, 255, 255, 0.08)",
+                  background: editingTab === "letter" ? "#f43f5e" : "rgba(255, 255, 255, 0.06)",
                   border: "none",
                   borderRadius: "8px",
-                  padding: "8px 16px",
+                  padding: "7px 14px",
                   color: "#fff",
-                  fontSize: "13px",
-                  fontWeight: 700,
+                  fontSize: "12px",
+                  fontWeight: 600,
                   cursor: "pointer",
                 }}
               >
                 💌 Love Letter
               </button>
-              <button
-                onClick={() => setEditingTab("raw")}
-                style={{
-                  background: editingTab === "raw" ? "#f43f5e" : "rgba(255, 255, 255, 0.08)",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "8px 16px",
-                  color: "#fff",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                ⚙️ Raw JSON
-              </button>
             </div>
 
-            {/* Tab 1: Photo Memories Visual Manager */}
+            {/* Tab 1: Photos */}
             {editingTab === "photos" && (
               <div
                 style={{
@@ -1543,134 +1569,69 @@ export default function AnniversaryPage() {
                   overflowY: "auto",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "16px",
-                  paddingRight: "6px",
+                  gap: "14px",
+                  paddingRight: "4px",
                 }}
               >
-                {/* Intro Settings */}
-                <div
-                  style={{
-                    background: "rgba(255, 255, 255, 0.04)",
-                    borderRadius: "12px",
-                    padding: "12px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                  }}
-                >
-                  <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
-                    Cover Slide Title:
-                  </label>
-                  <input
-                    type="text"
-                    value={draftConfig.introTitle}
-                    onChange={(e) =>
-                      setDraftConfig({ ...draftConfig, introTitle: e.target.value })
-                    }
-                    style={{
-                      background: "#0d0a14",
-                      border: "1px solid rgba(255, 255, 255, 0.15)",
-                      borderRadius: "8px",
-                      padding: "8px 12px",
-                      color: "#fff",
-                      fontSize: "14px",
-                    }}
-                  />
-                </div>
-
-                {/* List of Memories */}
                 {draftConfig.memories.map((mem, index) => (
                   <div
                     key={mem.id}
                     style={{
-                      background: "rgba(255, 255, 255, 0.04)",
+                      background: "rgba(255, 255, 255, 0.03)",
                       border: "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: "16px",
-                      padding: "16px",
+                      borderRadius: "14px",
+                      padding: "12px",
                       display: "flex",
-                      flexDirection: "column",
                       gap: "12px",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: "13px", fontWeight: 800, color: mem.accentColor }}>
-                        Slide #{index + 1}: {mem.tag}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteMemory(mem.id)}
+                    {/* Thumbnail & Upload Trigger */}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+                      <div
                         style={{
-                          background: "rgba(244, 63, 94, 0.15)",
-                          border: "none",
-                          color: "#f43f5e",
-                          borderRadius: "6px",
-                          padding: "4px 10px",
-                          fontSize: "12px",
-                          cursor: "pointer",
+                          width: "75px",
+                          height: "75px",
+                          borderRadius: "8px",
+                          overflow: "hidden",
+                          backgroundColor: "#000",
                         }}
                       >
-                        Delete
+                        {mem.imageUrl ? (
+                          <img
+                            src={mem.imageUrl}
+                            alt="thumb"
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            📷
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => triggerPhotoUpload(mem.id)}
+                        disabled={isUploading}
+                        style={{
+                          background: "rgba(255, 255, 255, 0.1)",
+                          border: "none",
+                          borderRadius: "6px",
+                          padding: "3px 8px",
+                          color: "#fed7aa",
+                          fontSize: "10px",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isUploading ? "..." : "upload photo"}
                       </button>
                     </div>
 
-                    <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
-                      {/* Photo Thumbnail + Upload Button */}
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
-                        <div
-                          style={{
-                            width: "90px",
-                            height: "90px",
-                            borderRadius: "12px",
-                            overflow: "hidden",
-                            backgroundColor: "#000",
-                            border: "1px solid rgba(255, 255, 255, 0.2)",
-                          }}
-                        >
-                          {mem.imageUrl ? (
-                            <img
-                              src={mem.imageUrl}
-                              alt="thumb"
-                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: "20px",
-                                color: "#666",
-                              }}
-                            >
-                              📷
-                            </div>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() => triggerPhotoUpload(mem.id)}
-                          disabled={isUploading}
-                          style={{
-                            background: "rgba(255, 255, 255, 0.12)",
-                            border: "1px solid rgba(255, 255, 255, 0.25)",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            color: "#fff",
-                            fontSize: "11px",
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {isUploading ? "Uploading..." : "Upload Photo"}
-                        </button>
-                      </div>
-
-                      {/* Title & Caption Inputs */}
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {/* Captions */}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <input
                           type="text"
-                          placeholder="Memory Title (e.g. That Rainy Tuesday)"
+                          placeholder="Title"
                           value={mem.title}
                           onChange={(e) => {
                             const newMems = [...draftConfig.memories];
@@ -1678,83 +1639,91 @@ export default function AnniversaryPage() {
                             setDraftConfig({ ...draftConfig, memories: newMems });
                           }}
                           style={{
-                            background: "#0d0a14",
-                            border: "1px solid rgba(255, 255, 255, 0.12)",
-                            borderRadius: "8px",
-                            padding: "6px 10px",
+                            flex: 1,
+                            background: "#0c0810",
+                            border: "1px solid rgba(255, 255, 255, 0.1)",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
                             color: "#fff",
-                            fontSize: "13px",
-                            fontWeight: 600,
-                          }}
-                        />
-
-                        <input
-                          type="text"
-                          placeholder="Date or Location (e.g. 📍 Central Park · Oct 2025)"
-                          value={mem.dateLocation || ""}
-                          onChange={(e) => {
-                            const newMems = [...draftConfig.memories];
-                            newMems[index].dateLocation = e.target.value;
-                            setDraftConfig({ ...draftConfig, memories: newMems });
-                          }}
-                          style={{
-                            background: "#0d0a14",
-                            border: "1px solid rgba(255, 255, 255, 0.12)",
-                            borderRadius: "8px",
-                            padding: "6px 10px",
-                            color: "#fda4af",
                             fontSize: "12px",
                           }}
                         />
-
-                        <textarea
-                          placeholder="Personal note or caption..."
-                          value={mem.caption}
-                          onChange={(e) => {
-                            const newMems = [...draftConfig.memories];
-                            newMems[index].caption = e.target.value;
-                            setDraftConfig({ ...draftConfig, memories: newMems });
-                          }}
-                          rows={2}
+                        <button
+                          onClick={() => handleDeleteMemory(mem.id)}
                           style={{
-                            background: "#0d0a14",
-                            border: "1px solid rgba(255, 255, 255, 0.12)",
-                            borderRadius: "8px",
-                            padding: "6px 10px",
-                            color: "#fff",
-                            fontSize: "13px",
-                            resize: "vertical",
+                            background: "transparent",
+                            border: "none",
+                            color: "#f43f5e",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            padding: "0 6px",
                           }}
-                        />
+                        >
+                          delete
+                        </button>
                       </div>
+
+                      <input
+                        type="text"
+                        placeholder="Date / Note (e.g. october 13)"
+                        value={mem.dateLocation || ""}
+                        onChange={(e) => {
+                          const newMems = [...draftConfig.memories];
+                          newMems[index].dateLocation = e.target.value;
+                          setDraftConfig({ ...draftConfig, memories: newMems });
+                        }}
+                        style={{
+                          background: "#0c0810",
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          borderRadius: "6px",
+                          padding: "4px 8px",
+                          color: "#fbcfe8",
+                          fontSize: "11px",
+                        }}
+                      />
+
+                      <textarea
+                        rows={2}
+                        placeholder="Caption..."
+                        value={mem.caption}
+                        onChange={(e) => {
+                          const newMems = [...draftConfig.memories];
+                          newMems[index].caption = e.target.value;
+                          setDraftConfig({ ...draftConfig, memories: newMems });
+                        }}
+                        style={{
+                          background: "#0c0810",
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          borderRadius: "6px",
+                          padding: "4px 8px",
+                          color: "#fff",
+                          fontSize: "12px",
+                          resize: "vertical",
+                        }}
+                      />
                     </div>
                   </div>
                 ))}
 
-                {/* Add New Memory Button */}
                 <button
                   onClick={() => triggerPhotoUpload()}
                   style={{
-                    background: "rgba(255, 255, 255, 0.08)",
-                    border: "1px dashed rgba(255, 255, 255, 0.25)",
-                    borderRadius: "14px",
-                    padding: "14px",
-                    color: "#fbbf24",
-                    fontSize: "14px",
-                    fontWeight: 700,
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "1px dashed rgba(255, 255, 255, 0.2)",
+                    borderRadius: "12px",
+                    padding: "12px",
+                    color: "#fbcfe8",
+                    fontSize: "13px",
                     cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "8px",
+                    textAlign: "center",
                   }}
                 >
-                  <span>+</span> Upload & Add New Memory Photo
+                  + Add another memory photo
                 </button>
               </div>
             )}
 
-            {/* Tab 2: Love Letter Manager */}
+            {/* Tab 2: Letter */}
             {editingTab === "letter" && (
               <div
                 style={{
@@ -1762,13 +1731,13 @@ export default function AnniversaryPage() {
                   overflowY: "auto",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "14px",
-                  paddingRight: "6px",
+                  gap: "12px",
+                  paddingRight: "4px",
                 }}
               >
                 <div>
-                  <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
-                    Salutation / Opening:
+                  <label style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.5)" }}>
+                    Opening:
                   </label>
                   <input
                     type="text"
@@ -1781,21 +1750,21 @@ export default function AnniversaryPage() {
                     }
                     style={{
                       width: "100%",
-                      background: "#0d0a14",
-                      border: "1px solid rgba(255, 255, 255, 0.15)",
-                      borderRadius: "8px",
-                      padding: "8px 12px",
+                      background: "#0c0810",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      borderRadius: "6px",
+                      padding: "6px 10px",
                       color: "#fff",
-                      fontSize: "14px",
+                      fontSize: "13px",
                       boxSizing: "border-box",
-                      marginTop: "4px",
+                      marginTop: "3px",
                     }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
-                    Letter Paragraphs (separate paragraphs with an empty line):
+                  <label style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.5)" }}>
+                    Letter content (separate paragraphs with an empty line):
                   </label>
                   <textarea
                     rows={8}
@@ -1812,24 +1781,23 @@ export default function AnniversaryPage() {
                     }}
                     style={{
                       width: "100%",
-                      background: "#0d0a14",
-                      border: "1px solid rgba(255, 255, 255, 0.15)",
-                      borderRadius: "8px",
-                      padding: "10px 12px",
+                      background: "#0c0810",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      borderRadius: "6px",
+                      padding: "8px 10px",
                       color: "#fef3c7",
-                      fontSize: "14px",
+                      fontSize: "13px",
                       lineHeight: "1.6",
                       boxSizing: "border-box",
-                      marginTop: "4px",
-                      resize: "vertical",
+                      marginTop: "3px",
                     }}
                   />
                 </div>
 
-                <div style={{ display: "flex", gap: "12px" }}>
+                <div style={{ display: "flex", gap: "10px" }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
-                      Closing (e.g. Forever Yours):
+                    <label style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.5)" }}>
+                      Closing:
                     </label>
                     <input
                       type="text"
@@ -1842,21 +1810,21 @@ export default function AnniversaryPage() {
                       }
                       style={{
                         width: "100%",
-                        background: "#0d0a14",
-                        border: "1px solid rgba(255, 255, 255, 0.15)",
-                        borderRadius: "8px",
-                        padding: "8px 12px",
+                        background: "#0c0810",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        borderRadius: "6px",
+                        padding: "6px 10px",
                         color: "#fff",
-                        fontSize: "14px",
+                        fontSize: "13px",
                         boxSizing: "border-box",
-                        marginTop: "4px",
+                        marginTop: "3px",
                       }}
                     />
                   </div>
 
                   <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.6)" }}>
-                      Signature (e.g. Your Name):
+                    <label style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.5)" }}>
+                      Signature:
                     </label>
                     <input
                       type="text"
@@ -1869,14 +1837,14 @@ export default function AnniversaryPage() {
                       }
                       style={{
                         width: "100%",
-                        background: "#0d0a14",
-                        border: "1px solid rgba(255, 255, 255, 0.15)",
-                        borderRadius: "8px",
-                        padding: "8px 12px",
+                        background: "#0c0810",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        borderRadius: "6px",
+                        padding: "6px 10px",
                         color: "#fff",
-                        fontSize: "14px",
+                        fontSize: "13px",
                         boxSizing: "border-box",
-                        marginTop: "4px",
+                        marginTop: "3px",
                       }}
                     />
                   </div>
@@ -1884,72 +1852,36 @@ export default function AnniversaryPage() {
               </div>
             )}
 
-            {/* Tab 3: Raw JSON */}
-            {editingTab === "raw" && (
-              <textarea
-                value={JSON.stringify(draftConfig, null, 2)}
-                onChange={(e) => {
-                  try {
-                    setDraftConfig(JSON.parse(e.target.value));
-                  } catch {}
-                }}
-                style={{
-                  flex: 1,
-                  backgroundColor: "#0d0a14",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  borderRadius: "12px",
-                  padding: "14px",
-                  color: "#a5f3fc",
-                  fontFamily: "monospace",
-                  fontSize: "12px",
-                  lineHeight: "1.5",
-                  resize: "none",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
-            )}
-
-            {/* Drawer Footer Actions */}
+            {/* Footer */}
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-                paddingTop: "14px",
+                borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                paddingTop: "12px",
               }}
             >
-              <button
-                onClick={() => {
-                  setDraftConfig(DEFAULT_CONFIG);
-                  handleSaveConfig(DEFAULT_CONFIG);
-                }}
-                style={{
-                  background: "rgba(244, 63, 94, 0.15)",
-                  border: "1px solid rgba(244, 63, 94, 0.3)",
-                  borderRadius: "8px",
-                  padding: "8px 14px",
-                  color: "#f43f5e",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Reset to Defaults
-              </button>
+              {saveSuccessNotice ? (
+                <span style={{ fontSize: "12px", color: "#34d399", fontWeight: 600 }}>
+                  ✓ Synced to Aleee's phone!
+                </span>
+              ) : (
+                <span style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.4)" }}>
+                  Changes sync across all devices
+                </span>
+              )}
 
-              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "8px" }}>
                 <button
                   onClick={() => setIsEditDrawerOpen(false)}
                   style={{
                     background: "rgba(255, 255, 255, 0.08)",
                     border: "none",
                     borderRadius: "8px",
-                    padding: "8px 16px",
+                    padding: "7px 14px",
                     color: "rgba(255, 255, 255, 0.7)",
-                    fontSize: "13px",
-                    fontWeight: 600,
+                    fontSize: "12px",
                     cursor: "pointer",
                   }}
                 >
@@ -1964,15 +1896,14 @@ export default function AnniversaryPage() {
                     background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                     border: "none",
                     borderRadius: "8px",
-                    padding: "9px 22px",
+                    padding: "7px 18px",
                     color: "#fff",
-                    fontSize: "13px",
-                    fontWeight: 800,
+                    fontSize: "12px",
+                    fontWeight: 700,
                     cursor: "pointer",
-                    boxShadow: "0 6px 18px rgba(16, 185, 129, 0.4)",
                   }}
                 >
-                  Save & Sync to Cloud ✨
+                  Save & Sync ✨
                 </button>
               </div>
             </div>
