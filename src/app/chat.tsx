@@ -251,6 +251,10 @@ export default function ChatScreen() {
   const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
   const publicFeaturesRef = useRef<string[]>([]);
   publicFeaturesRef.current = publicFeatures;
+  // Anniversary Pairing & Countdown Pill State
+  const [anniversaryPairing, setAnniversaryPairing] = useState<any>(null);
+  const [anniversaryCountdown, setAnniversaryCountdown] = useState<string>("");
+  const [isAnniversaryUnlocked, setIsAnniversaryUnlocked] = useState(false);
   const isTargetOnline = targetUser && targetUser.updated_at 
     ? Date.now() - new Date(targetUser.updated_at).getTime() < 45 * 1000 
     : false;
@@ -1374,6 +1378,83 @@ export default function ChatScreen() {
     };
   }, [targetUser?.nickname, targetUser?.username, name]);
 
+  // Check if current 1-on-1 chat matches an active couple anniversary pairing
+  const checkAnniversaryPairing = useCallback(async (currentPairings?: any[]) => {
+    if (!user?.id || !targetUser?.id || isGroup) {
+      setAnniversaryPairing(null);
+      return;
+    }
+
+    let pairings = currentPairings;
+    if (!pairings) {
+      try {
+        const { data } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", "anniversary_pairings")
+          .maybeSingle();
+        if (data?.value && Array.isArray(data.value)) {
+          pairings = data.value;
+        }
+      } catch {}
+    }
+
+    if (!pairings || !Array.isArray(pairings)) {
+      setAnniversaryPairing(null);
+      return;
+    }
+
+    // Must strictly match either sender or recipient in this 1-on-1 private chat
+    const match = pairings.find(
+      (p: any) =>
+        p.active !== false &&
+        ((p.sender_id === user.id && p.recipient_id === targetUser.id) ||
+         (p.sender_id === targetUser.id && p.recipient_id === user.id))
+    );
+
+    if (match) {
+      setAnniversaryPairing(match);
+      const isUnlocked = match.is_unlocked || new Date(match.unlock_at).getTime() <= Date.now();
+      setIsAnniversaryUnlocked(isUnlocked);
+    } else {
+      setAnniversaryPairing(null);
+    }
+  }, [user?.id, targetUser?.id, isGroup]);
+
+  useEffect(() => {
+    if (targetUser?.id && !isGroup) {
+      checkAnniversaryPairing();
+    } else {
+      setAnniversaryPairing(null);
+    }
+  }, [targetUser?.id, isGroup, checkAnniversaryPairing]);
+
+  useEffect(() => {
+    if (!anniversaryPairing) return;
+
+    const updateTimer = () => {
+      const isUnlocked = anniversaryPairing.is_unlocked || new Date(anniversaryPairing.unlock_at).getTime() <= Date.now();
+      setIsAnniversaryUnlocked(isUnlocked);
+
+      if (isUnlocked) {
+        setAnniversaryCountdown("");
+        return;
+      }
+
+      const diff = Math.max(0, new Date(anniversaryPairing.unlock_at).getTime() - Date.now());
+      const hours = Math.floor(diff / (1000 * 3600));
+      const mins = Math.floor((diff % (1000 * 3600)) / (1000 * 60));
+      const secs = Math.floor((diff % (1000 * 60)) / 1000);
+
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setAnniversaryCountdown(`${pad(hours)}:${pad(mins)}:${pad(secs)}`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [anniversaryPairing]);
+
   useEffect(() => {
     if (!id || !user) return;
     setMessages([]); setHasMore(true); setEditingMsgId(null); setReplyingTo(null);
@@ -1542,6 +1623,9 @@ export default function ChatScreen() {
         }
         if (payload.payload?.userId === user?.id && payload.payload?.awardedFeatures) {
           setMyProfile((prev: any) => (prev ? { ...prev, awarded_features: payload.payload.awardedFeatures } : prev));
+        }
+        if (payload.payload?.anniversaryPairings) {
+          checkAnniversaryPairing(payload.payload.anniversaryPairings);
         }
       })
       .subscribe();
@@ -3621,6 +3705,39 @@ export default function ChatScreen() {
           )}
         </View>
 
+        {/* ANNIVERSARY COUNTDOWN / UNLOCK PILL (ONLY FOR PAIRED COUPLE) */}
+        {anniversaryPairing && (
+          <View
+            style={[
+              styles.anniversaryPillAnchor,
+              { top: headerPaddingTop + effectivePillHeight + 6 },
+            ]}
+            pointerEvents="box-none"
+          >
+            <TouchableOpacity
+              style={[
+                styles.anniversaryCountdownPill,
+                isAnniversaryUnlocked && styles.anniversaryUnlockedPill,
+              ]}
+              onPress={() => router.push("/anv" as any)}
+              activeOpacity={0.8}
+            >
+              <Heart
+                size={12}
+                color="#f43f5e"
+                fill="#f43f5e"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.anniversaryPillText}>
+                {isAnniversaryUnlocked
+                  ? `${anniversaryPairing.pill_label || "Anniversary Surprise 💌"} · Tap to open ✨`
+                  : `Unlocks in ${anniversaryCountdown || "..."} ⏳`}
+              </Text>
+              <Sparkles size={11} color="#fda4af" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* ANIMATED ⋮ DROPDOWN MENU */}
         {moreMenuVisible && (
           <>
@@ -4710,6 +4827,47 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     paddingBottom: 6,
     zIndex: 100,
     gap: 8,
+  },
+  anniversaryPillAnchor: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 96,
+  },
+  anniversaryCountdownPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 9999,
+    backgroundColor: "rgba(244, 63, 94, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.38)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+    shadowColor: "#f43f5e",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 5,
+    ...(Platform.OS === "web" ? {
+      boxShadow: "0 2px 14px rgba(244, 63, 94, 0.28)",
+      cursor: "pointer",
+    } : {}),
+  } as any,
+  anniversaryUnlockedPill: {
+    backgroundColor: "rgba(244, 63, 94, 0.25)",
+    borderColor: "rgba(251, 113, 133, 0.6)",
+    ...(Platform.OS === "web" ? {
+      boxShadow: "0 0 18px rgba(244, 63, 94, 0.45), 0 2px 10px rgba(0, 0, 0, 0.3)",
+    } : {}),
+  } as any,
+  anniversaryPillText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#fecdd3",
+    letterSpacing: 0.2,
   },
   headerPill: {
     flexDirection: "row",

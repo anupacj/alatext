@@ -32,11 +32,34 @@ import {
   ArrowUpDown,
   UserCheck,
   UserX,
+  Heart,
+  Clock,
+  Trash2,
+  Plus,
+  Unlock,
+  Calendar,
 } from "lucide-react-native";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { FeatureKey, UserProfile, DEFAULT_PUBLIC_FEATURES } from "../lib/features";
+
+export interface AnniversaryPairingItem {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  unlock_at: string;
+  is_unlocked: boolean;
+  active: boolean;
+  pill_label?: string;
+  sender_name?: string;
+  recipient_name?: string;
+}
+
+export interface AnniversaryStatsData {
+  celebrate_clicks: number;
+  last_clicked_at: string | null;
+}
 
 const ALL_FEATURES: { key: FeatureKey; label: string; icon: any; desc: string }[] = [
   { key: "ghost_typing", label: "Ghost Typing Preview (Beta)", icon: Ghost, desc: "Live letter-by-letter typing preview" },
@@ -58,6 +81,18 @@ export default function OverseerScreen() {
   const [publicFeatures, setPublicFeatures] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Anniversary & Couple Pairings State
+  const [anniversaryPairings, setAnniversaryPairings] = useState<AnniversaryPairingItem[]>([]);
+  const [anniversaryStats, setAnniversaryStats] = useState<AnniversaryStatsData>({
+    celebrate_clicks: 0,
+    last_clicked_at: null,
+  });
+  const [showAddPairing, setShowAddPairing] = useState(false);
+  const [newSenderId, setNewSenderId] = useState("");
+  const [newRecipientId, setNewRecipientId] = useState("");
+  const [newTimerHours, setNewTimerHours] = useState("3");
+  const [newPillLabel, setNewPillLabel] = useState("Anniversary Surprise 💌");
 
   // Search, Filter & Sort State
   const [searchQuery, setSearchQuery] = useState("");
@@ -174,6 +209,28 @@ export default function OverseerScreen() {
           .from("app_settings")
           .upsert({ key: "public_features", value: DEFAULT_PUBLIC_FEATURES });
       }
+
+      // 4. Fetch anniversary_pairings
+      const { data: pairingsData } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "anniversary_pairings")
+        .maybeSingle();
+
+      if (pairingsData?.value && Array.isArray(pairingsData.value)) {
+        setAnniversaryPairings(pairingsData.value);
+      }
+
+      // 5. Fetch anniversary_stats
+      const { data: statsData } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "anniversary_stats")
+        .maybeSingle();
+
+      if (statsData?.value) {
+        setAnniversaryStats(statsData.value);
+      }
     } catch (e: any) {
       console.error("Overseer error:", e);
       showToast(`⚠️ ${e.message || "Failed to load"}`);
@@ -185,6 +242,109 @@ export default function OverseerScreen() {
   useEffect(() => {
     fetchOverseerData();
   }, [fetchOverseerData]);
+
+  // Anniversary Pairing Database Actions
+  const savePairingsToDb = async (updated: AnniversaryPairingItem[]) => {
+    setAnniversaryPairings(updated);
+    try {
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert({ key: "anniversary_pairings", value: updated });
+      if (error) {
+        showToast(`⚠️ Failed to save pairings: ${error.message}`);
+      } else {
+        showToast(`✓ Anniversary pairings saved!`);
+        broadcastSettingsUpdate({ anniversaryPairings: updated });
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Error: ${e.message}`);
+    }
+  };
+
+  const togglePairingUnlock = async (pairingId: string) => {
+    const updated = anniversaryPairings.map((p) => {
+      if (p.id === pairingId) {
+        return { ...p, is_unlocked: !p.is_unlocked };
+      }
+      return p;
+    });
+    await savePairingsToDb(updated);
+  };
+
+  const setPairingTimerHours = async (pairingId: string, hours: number) => {
+    const newUnlockDate = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+    const updated = anniversaryPairings.map((p) => {
+      if (p.id === pairingId) {
+        return { ...p, unlock_at: newUnlockDate, is_unlocked: false };
+      }
+      return p;
+    });
+    await savePairingsToDb(updated);
+    showToast(`✓ Timer set: Unlocks in ${hours} hour${hours > 1 ? "s" : ""}!`);
+  };
+
+  const togglePairingActive = async (pairingId: string) => {
+    const updated = anniversaryPairings.map((p) => {
+      if (p.id === pairingId) {
+        return { ...p, active: !p.active };
+      }
+      return p;
+    });
+    await savePairingsToDb(updated);
+  };
+
+  const deletePairing = async (pairingId: string) => {
+    const updated = anniversaryPairings.filter((p) => p.id !== pairingId);
+    await savePairingsToDb(updated);
+    showToast(`✓ Pairing removed.`);
+  };
+
+  const handleAddNewPairing = async () => {
+    if (!newSenderId.trim() || !newRecipientId.trim()) {
+      showToast(`⚠️ Please choose both Sender and Recipient!`);
+      return;
+    }
+    if (newSenderId.trim() === newRecipientId.trim()) {
+      showToast(`⚠️ Sender and Recipient must be different users!`);
+      return;
+    }
+
+    const senderProf = profiles.find((p) => p.id === newSenderId.trim());
+    const recipientProf = profiles.find((p) => p.id === newRecipientId.trim());
+
+    const hours = parseFloat(newTimerHours) || 3;
+    const unlockAtIso = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+
+    const newPair: AnniversaryPairingItem = {
+      id: `pair-${Date.now()}`,
+      sender_id: newSenderId.trim(),
+      recipient_id: newRecipientId.trim(),
+      sender_name: senderProf?.username || "Sender",
+      recipient_name: recipientProf?.username || "Recipient",
+      unlock_at: unlockAtIso,
+      is_unlocked: false,
+      active: true,
+      pill_label: newPillLabel.trim() || "Anniversary Surprise 💌",
+    };
+
+    const updated = [...anniversaryPairings, newPair];
+    await savePairingsToDb(updated);
+    setShowAddPairing(false);
+    setNewSenderId("");
+    setNewRecipientId("");
+    showToast(`✓ Added couple pairing! Countdown set for ${hours}h.`);
+  };
+
+  const resetCelebrateStats = async () => {
+    const cleared: AnniversaryStatsData = { celebrate_clicks: 0, last_clicked_at: null };
+    setAnniversaryStats(cleared);
+    try {
+      await supabase.from("app_settings").upsert({ key: "anniversary_stats", value: cleared });
+      showToast(`✓ Celebrate clicks counter reset to 0.`);
+    } catch (e: any) {
+      showToast(`⚠️ Error: ${e.message}`);
+    }
+  };
 
   // Toggle Global Public Feature Release
   const toggleGlobalFeature = async (featureKey: FeatureKey, label: string) => {
@@ -506,6 +666,250 @@ export default function OverseerScreen() {
               </View>
             );
           })}
+        </View>
+
+        {/* SECTION 1.5: ANNIVERSARY COUPLE PAIRINGS & SCRAPBOOK UNLOCK */}
+        <View style={[styles.sectionCard, styles.anniversarySectionCard]}>
+          <View style={styles.sectionHeader}>
+            <Heart size={20} color="#f43f5e" fill="#f43f5e" style={{ marginRight: 8 }} />
+            <Text style={styles.sectionTitle}>Anniversary Couple Pairing & Countdown Registry</Text>
+            <View style={styles.anvCountPill}>
+              <Text style={styles.anvCountPillText}>
+                {anniversaryPairings.filter((p) => p.active).length} Active Pairings
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.sectionSubtitle}>
+            Configure the 1-Year Anniversary Scrapbook (`/anv`) and countdown pill. The pink countdown pill appears <Text style={{ color: "#f43f5e", fontWeight: "bold" }}>ONLY</Text> in the private chat between the designated Sender and Recipient.
+          </Text>
+
+          {/* Celebrate Reaction Stats Banner */}
+          <View style={styles.anvStatsBanner}>
+            <View style={styles.anvStatsLeft}>
+              <View style={styles.anvStatsIconCircle}>
+                <Sparkles size={18} color="#f43f5e" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.anvStatsTitle}>
+                  Celebrate Clicks: <Text style={{ color: "#f43f5e", fontWeight: "bold", fontSize: 16 }}>{anniversaryStats.celebrate_clicks}</Text> tap{anniversaryStats.celebrate_clicks === 1 ? "" : "s"}
+                </Text>
+                <Text style={styles.anvStatsSubtitle}>
+                  {anniversaryStats.last_clicked_at
+                    ? `Last tapped: ${formatActiveDate(anniversaryStats.last_clicked_at)}`
+                    : "No reactions recorded yet."}
+                </Text>
+              </View>
+            </View>
+            {anniversaryStats.celebrate_clicks > 0 && (
+              <TouchableOpacity style={styles.anvStatsResetBtn} onPress={resetCelebrateStats}>
+                <Text style={styles.anvStatsResetText}>Reset</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Pairings List */}
+          {anniversaryPairings.length === 0 ? (
+            <View style={styles.anvEmptyState}>
+              <Heart size={28} color="#666666" />
+              <Text style={styles.anvEmptyText}>No anniversary pairings configured yet.</Text>
+            </View>
+          ) : (
+            anniversaryPairings.map((pair) => {
+              const sender = profiles.find((u) => u.id === pair.sender_id);
+              const recipient = profiles.find((u) => u.id === pair.recipient_id);
+              const isExpired = new Date(pair.unlock_at).getTime() <= Date.now();
+              const isUnlockedNow = pair.is_unlocked || isExpired;
+              const remainingMs = Math.max(0, new Date(pair.unlock_at).getTime() - Date.now());
+              const remainingHrs = Math.floor(remainingMs / (1000 * 3600));
+              const remainingMins = Math.floor((remainingMs % (1000 * 3600)) / (1000 * 60));
+
+              return (
+                <View key={pair.id} style={[styles.anvPairCard, !pair.active && styles.anvPairCardInactive]}>
+                  {/* Top: Users Row */}
+                  <View style={styles.anvPairHeaderRow}>
+                    <View style={styles.anvCoupleUsers}>
+                      <View style={styles.anvUserBadge}>
+                        <Text style={styles.anvUserBadgeRole}>SENDER</Text>
+                        <Text style={styles.anvUserBadgeName}>@{sender?.username || pair.sender_name || pair.sender_id.slice(0, 8)}</Text>
+                      </View>
+                      <View style={styles.anvHeartConnector}>
+                        <Heart size={14} color="#f43f5e" fill="#f43f5e" />
+                      </View>
+                      <View style={styles.anvUserBadge}>
+                        <Text style={styles.anvUserBadgeRole}>RECIPIENT</Text>
+                        <Text style={styles.anvUserBadgeName}>@{recipient?.username || pair.recipient_name || pair.recipient_id.slice(0, 8)}</Text>
+                      </View>
+                    </View>
+
+                    {/* Status Pill */}
+                    <View style={[styles.anvStatusPill, isUnlockedNow ? styles.anvStatusPillUnlocked : styles.anvStatusPillLocked]}>
+                      <Text style={[styles.anvStatusText, isUnlockedNow ? styles.anvStatusTextUnlocked : styles.anvStatusTextLocked]}>
+                        {isUnlockedNow ? "UNLOCKED ✨" : `LOCKED 🔒 (${remainingHrs}h ${remainingMins}m)`}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Timing & Label Details */}
+                  <View style={styles.anvDetailsRow}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Clock size={13} color="#949ba4" />
+                      <Text style={styles.anvDetailSub}>
+                        {isUnlockedNow
+                          ? "Available immediately to recipient in chat"
+                          : `Scheduled: ${new Date(pair.unlock_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} (${new Date(pair.unlock_at).toLocaleDateString()})`}
+                      </Text>
+                    </View>
+                    <Text style={styles.anvDetailSub}>Label: &ldquo;{pair.pill_label || "Anniversary Surprise 💌"}&rdquo;</Text>
+                  </View>
+
+                  {/* Action Controls */}
+                  <View style={styles.anvActionsRow}>
+                    {/* Quick Timer Presets */}
+                    <View style={styles.anvTimerPresets}>
+                      <Text style={styles.anvActionLabel}>Timer:</Text>
+                      <TouchableOpacity style={styles.anvPresetBtn} onPress={() => setPairingTimerHours(pair.id, 1)}>
+                        <Text style={styles.anvPresetText}>+1h</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.anvPresetBtn} onPress={() => setPairingTimerHours(pair.id, 2)}>
+                        <Text style={styles.anvPresetText}>+2h</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.anvPresetBtn} onPress={() => setPairingTimerHours(pair.id, 3)}>
+                        <Text style={styles.anvPresetText}>+3h</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.anvPresetBtn} onPress={() => setPairingTimerHours(pair.id, 6)}>
+                        <Text style={styles.anvPresetText}>+6h</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Instant Unlock & Active Toggle */}
+                    <View style={styles.anvRightControls}>
+                      <TouchableOpacity
+                        style={[styles.anvUnlockBtn, pair.is_unlocked && styles.anvUnlockBtnActive]}
+                        onPress={() => togglePairingUnlock(pair.id)}
+                      >
+                        <Unlock size={13} color={pair.is_unlocked ? "#ffffff" : "#38bdf8"} />
+                        <Text style={[styles.anvUnlockBtnText, pair.is_unlocked && styles.anvUnlockBtnTextActive]}>
+                          {pair.is_unlocked ? "Force Locked" : "Instant Unlock"}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <View style={styles.anvSwitchWrap}>
+                        <Text style={styles.anvSwitchLabel}>Active:</Text>
+                        <Switch
+                          value={pair.active}
+                          onValueChange={() => togglePairingActive(pair.id)}
+                          trackColor={{ false: "#27272a", true: "#f43f5e" }}
+                          thumbColor={pair.active ? "#fda4af" : "#888888"}
+                        />
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.anvDeleteBtn}
+                        onPress={() => deletePairing(pair.id)}
+                        accessibilityLabel="Delete pairing"
+                      >
+                        <Trash2 size={16} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
+
+          {/* Add New Couple Pairing Form Toggle */}
+          {!showAddPairing ? (
+            <TouchableOpacity style={styles.anvAddTriggerBtn} onPress={() => setShowAddPairing(true)}>
+              <Plus size={16} color="#f43f5e" style={{ marginRight: 6 }} />
+              <Text style={styles.anvAddTriggerText}>Link Another Couple / Test Pairing</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.anvAddFormContainer}>
+              <View style={styles.anvAddFormHeader}>
+                <Text style={styles.anvAddFormTitle}>Create New Couple Pairing</Text>
+                <TouchableOpacity onPress={() => setShowAddPairing(false)}>
+                  <X size={18} color="#949ba4" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Sender Select */}
+              <View style={styles.anvInputGroup}>
+                <Text style={styles.anvInputLabel}>1. Select Sender (e.g. dinosaur):</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    {profiles.map((p) => (
+                      <TouchableOpacity
+                        key={`sender-${p.id}`}
+                        style={[
+                          styles.anvUserSelectChip,
+                          newSenderId === p.id && styles.anvUserSelectChipActive,
+                        ]}
+                        onPress={() => p.id && setNewSenderId(p.id)}
+                      >
+                        <Text style={[styles.anvUserSelectText, newSenderId === p.id && styles.anvUserSelectTextActive]}>
+                          @{p.username || p.display_name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+
+              {/* Recipient Select */}
+              <View style={styles.anvInputGroup}>
+                <Text style={styles.anvInputLabel}>2. Select Recipient (e.g. potato):</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    {profiles.map((p) => (
+                      <TouchableOpacity
+                        key={`recip-${p.id}`}
+                        style={[
+                          styles.anvUserSelectChip,
+                          newRecipientId === p.id && styles.anvUserSelectChipActiveRose,
+                        ]}
+                        onPress={() => p.id && setNewRecipientId(p.id)}
+                      >
+                        <Text style={[styles.anvUserSelectText, newRecipientId === p.id && styles.anvUserSelectTextActiveRose]}>
+                          @{p.username || p.display_name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+
+              {/* Duration and Label Inputs */}
+              <View style={styles.anvInputRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.anvInputLabel}>Countdown Duration (Hours):</Text>
+                  <TextInput
+                    style={styles.anvTextInput}
+                    placeholder="3"
+                    placeholderTextColor="#666"
+                    keyboardType="numeric"
+                    value={newTimerHours}
+                    onChangeText={setNewTimerHours}
+                  />
+                </View>
+                <View style={{ flex: 2 }}>
+                  <Text style={styles.anvInputLabel}>Pill Label:</Text>
+                  <TextInput
+                    style={styles.anvTextInput}
+                    placeholder="Anniversary Surprise 💌"
+                    placeholderTextColor="#666"
+                    value={newPillLabel}
+                    onChangeText={setNewPillLabel}
+                  />
+                </View>
+              </View>
+
+              {/* Submit Button */}
+              <TouchableOpacity style={styles.anvSubmitBtn} onPress={handleAddNewPairing}>
+                <Heart size={16} color="#ffffff" fill="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={styles.anvSubmitBtnText}>Save & Start Countdown</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* SECTION 2: USER OVERSIGHT & DETAILED INSPECTION */}
@@ -1429,6 +1833,339 @@ const styles = StyleSheet.create({
   },
   modalAwardBtnTextActive: {
     color: "#ffffff",
+    fontWeight: "bold",
+  },
+  // Anniversary Section Styles
+  anniversarySectionCard: {
+    borderColor: "rgba(244, 63, 94, 0.35)",
+    backgroundColor: "rgba(244, 63, 94, 0.03)",
+  },
+  anvCountPill: {
+    backgroundColor: "rgba(244, 63, 94, 0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.3)",
+  },
+  anvCountPillText: {
+    color: "#fb7185",
+    fontSize: 11,
+    fontWeight: "bold",
+  },
+  anvStatsBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(244, 63, 94, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.25)",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  anvStatsLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 10,
+  },
+  anvStatsIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(244, 63, 94, 0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  anvStatsTitle: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  anvStatsSubtitle: {
+    color: "#949ba4",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  anvStatsResetBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  anvStatsResetText: {
+    color: "#f43f5e",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  anvEmptyState: {
+    alignItems: "center",
+    paddingVertical: 20,
+    gap: 6,
+  },
+  anvEmptyText: {
+    color: "#888888",
+    fontSize: 13,
+  },
+  anvPairCard: {
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.25)",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+  },
+  anvPairCardInactive: {
+    opacity: 0.6,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  anvPairHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  anvCoupleUsers: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  anvUserBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  anvUserBadgeRole: {
+    color: "#888888",
+    fontSize: 9,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+  },
+  anvUserBadgeName: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "bold",
+    marginTop: 1,
+  },
+  anvHeartConnector: {
+    paddingHorizontal: 2,
+  },
+  anvStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  anvStatusPillUnlocked: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderColor: "#10b981",
+  },
+  anvStatusPillLocked: {
+    backgroundColor: "rgba(244, 63, 94, 0.15)",
+    borderColor: "#f43f5e",
+  },
+  anvStatusText: {
+    fontSize: 11,
+    fontWeight: "bold",
+  },
+  anvStatusTextUnlocked: {
+    color: "#34d399",
+  },
+  anvStatusTextLocked: {
+    color: "#fda4af",
+  },
+  anvDetailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginVertical: 10,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  anvDetailSub: {
+    color: "#949ba4",
+    fontSize: 12,
+  },
+  anvActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.06)",
+  },
+  anvTimerPresets: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  anvActionLabel: {
+    color: "#888888",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  anvPresetBtn: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+  },
+  anvPresetText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  anvRightControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  anvUnlockBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderWidth: 1,
+    borderColor: "#38bdf8",
+  },
+  anvUnlockBtnActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#38bdf8",
+  },
+  anvUnlockBtnText: {
+    color: "#38bdf8",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  anvUnlockBtnTextActive: {
+    color: "#ffffff",
+  },
+  anvSwitchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  anvSwitchLabel: {
+    color: "#888888",
+    fontSize: 11,
+  },
+  anvDeleteBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+  },
+  anvAddTriggerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(244, 63, 94, 0.08)",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(244, 63, 94, 0.3)",
+    marginTop: 6,
+  },
+  anvAddTriggerText: {
+    color: "#f43f5e",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  anvAddFormContainer: {
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.3)",
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 10,
+    gap: 12,
+  },
+  anvAddFormHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  anvAddFormTitle: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  anvInputGroup: {
+    gap: 4,
+  },
+  anvInputLabel: {
+    color: "#949ba4",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  anvUserSelectChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  anvUserSelectChipActive: {
+    backgroundColor: "rgba(56, 189, 248, 0.25)",
+    borderColor: "#38bdf8",
+  },
+  anvUserSelectChipActiveRose: {
+    backgroundColor: "rgba(244, 63, 94, 0.25)",
+    borderColor: "#f43f5e",
+  },
+  anvUserSelectText: {
+    color: "#888888",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  anvUserSelectTextActive: {
+    color: "#38bdf8",
+    fontWeight: "bold",
+  },
+  anvUserSelectTextActiveRose: {
+    color: "#fda4af",
+    fontWeight: "bold",
+  },
+  anvInputRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  anvTextInput: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    color: "#ffffff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  anvSubmitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e11d48",
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  anvSubmitBtnText: {
+    color: "#ffffff",
+    fontSize: 13,
     fontWeight: "bold",
   },
 });

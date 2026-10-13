@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 
 // --- TYPES & DATA CONTRACTS ---
 export interface MemorySlide {
@@ -278,6 +279,7 @@ function formatTimeAgo(isoString: string): string {
 // --- MAIN ANNIVERSARY SCRAPBOOK & LOVE LETTER PAGE ---
 export default function AnniversaryScrapbookPage() {
   const router = useRouter();
+  const { user } = useAuth();
 
   // Load custom config from localStorage first, then sync with Supabase cloud
   const [config, setConfig] = useState<AnvConfig>(() => {
@@ -296,6 +298,11 @@ export default function AnniversaryScrapbookPage() {
   const [celebrateCount, setCelebrateCount] = useState<number>(0);
   const [lastCelebratedAt, setLastCelebratedAt] = useState<string | null>(null);
   const [buttonSpringAnim, setButtonSpringAnim] = useState(false);
+
+  // Pairing lock & countdown state
+  const [pairing, setPairing] = useState<any>(null);
+  const [lockRemaining, setLockRemaining] = useState<string>("");
+  const [isEditParam, setIsEditParam] = useState(false);
 
   // Sync with Supabase cloud on mount
   useEffect(() => {
@@ -334,6 +341,22 @@ export default function AnniversaryScrapbookPage() {
             setLastCelebratedAt(statsData.value.last_clicked_at);
           }
         }
+
+        // 3. Fetch anniversary pairings to check countdown lock
+        const { data: pairingsData } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", "anniversary_pairings")
+          .maybeSingle();
+
+        if (pairingsData?.value && Array.isArray(pairingsData.value) && isMounted) {
+          const match = pairingsData.value.find(
+            (p: any) => p.active !== false && (p.recipient_id === user?.id || p.sender_id === user?.id)
+          );
+          if (match) {
+            setPairing(match);
+          }
+        }
       } catch (err) {
         console.warn("Could not fetch data from cloud:", err);
       }
@@ -342,7 +365,39 @@ export default function AnniversaryScrapbookPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [user]);
+
+  // Check if locked for current user
+  const isSender = Boolean(user && pairing && user.id === pairing.sender_id);
+  const isRecipient = Boolean(user && pairing && user.id === pairing.recipient_id);
+  const isExpired = Boolean(pairing && new Date(pairing.unlock_at).getTime() <= Date.now());
+  const isUnlockedGlobally = Boolean(pairing && (pairing.is_unlocked || isExpired));
+  const isLockedForRecipient = Boolean(!isEditParam && isRecipient && !isUnlockedGlobally);
+
+  // Lock countdown timer
+  useEffect(() => {
+    if (!pairing || isUnlockedGlobally) {
+      setLockRemaining("");
+      return;
+    }
+
+    const updateTimer = () => {
+      const diff = Math.max(0, new Date(pairing.unlock_at).getTime() - Date.now());
+      if (diff <= 0) {
+        setLockRemaining("00:00:00");
+        return;
+      }
+      const hours = Math.floor(diff / (1000 * 3600));
+      const mins = Math.floor((diff % (1000 * 3600)) / (1000 * 60));
+      const secs = Math.floor((diff % (1000 * 60)) / 1000);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setLockRemaining(`${pad(hours)}:${pad(mins)}:${pad(secs)}`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [pairing, isUnlockedGlobally]);
 
   // Dynamically load warm, cozy Google Fonts: Caveat, Quicksand, Cormorant Garamond
   useEffect(() => {
@@ -405,6 +460,7 @@ export default function AnniversaryScrapbookPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("edit") === "true") {
+        setIsEditParam(true);
         setDraftConfig(config);
         setIsEditDrawerOpen(true);
       }
@@ -768,6 +824,99 @@ export default function AnniversaryScrapbookPage() {
     await handleSaveConfig(updated);
   };
 
+  // If locked for recipient (before scheduled unlock time and not in ?edit=true mode)
+  if (isLockedForRecipient) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "#110d13",
+          backgroundImage: "radial-gradient(ellipse at 50% 25%, rgba(244,63,94,0.18) 0%, rgba(17,13,19,0.98) 75%)",
+          color: "#fff",
+          fontFamily: "'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          textAlign: "center",
+          zIndex: 999999,
+          userSelect: "none",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 400,
+            width: "100%",
+            backgroundColor: "rgba(255, 255, 255, 0.04)",
+            border: "1px solid rgba(244, 63, 94, 0.3)",
+            borderRadius: 24,
+            padding: "36px 24px",
+            boxShadow: "0 20px 50px rgba(0,0,0,0.6), 0 0 35px rgba(244,63,94,0.15)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+          }}
+        >
+          <div style={{ fontSize: 52, filter: "drop-shadow(0 4px 14px rgba(244,63,94,0.4))" }}>
+            💌
+          </div>
+
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "#fecdd3", letterSpacing: "-0.01em" }}>
+            A Little Surprise is Waiting...
+          </h2>
+
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", margin: 0, lineHeight: 1.6 }}>
+            To my Pretty Potato ♡<br />
+            Our 1-Year Scrapbook unlocks in:
+          </p>
+
+          <div
+            style={{
+              fontSize: 32,
+              fontWeight: 800,
+              fontFamily: "'Courier New', monospace",
+              letterSpacing: 3,
+              color: "#fb7185",
+              backgroundColor: "rgba(244, 63, 94, 0.12)",
+              border: "1px solid rgba(244, 63, 94, 0.35)",
+              padding: "10px 24px",
+              borderRadius: 16,
+              boxShadow: "inset 0 2px 6px rgba(0,0,0,0.3)",
+            }}
+          >
+            {lockRemaining || "00:00:00"}
+          </div>
+
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", margin: 0 }}>
+            Take a deep breath and check back in your chat soon ✨
+          </p>
+
+          <button
+            onClick={() => router.replace("/chat" as any)}
+            style={{
+              marginTop: 10,
+              padding: "10px 22px",
+              borderRadius: 12,
+              backgroundColor: "rgba(255, 255, 255, 0.08)",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              color: "#ffffff",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            ← Return to Chat
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       onClick={(e) => {
@@ -791,6 +940,94 @@ export default function AnniversaryScrapbookPage() {
         zIndex: 999999,
       }}
     >
+      {/* Sender Admin Preview Banner */}
+      {isSender && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1000000,
+            backgroundColor: "rgba(244, 63, 94, 0.95)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            color: "#ffffff",
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "8px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span>👑</span>
+            <span>
+              Preview Mode · {isUnlockedGlobally ? "Unlocked & Live for Potato ✨" : `Locks for Potato: ${lockRemaining || "calculating..."}`}
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!isUnlockedGlobally && (
+              <button
+                onClick={async () => {
+                  try {
+                    const { data: pData } = await supabase
+                      .from("app_settings")
+                      .select("value")
+                      .eq("key", "anniversary_pairings")
+                      .maybeSingle();
+                    if (pData?.value && Array.isArray(pData.value)) {
+                      const updated = pData.value.map((p: any) =>
+                        p.id === pairing.id ? { ...p, is_unlocked: true } : p
+                      );
+                      await supabase
+                        .from("app_settings")
+                        .upsert({ key: "anniversary_pairings", value: updated });
+                      setPairing((prev: any) => (prev ? { ...prev, is_unlocked: true } : prev));
+                      alert("✓ Unlocked! Potato can now open it in her chat!");
+                    }
+                  } catch (e: any) {
+                    alert("Error: " + e.message);
+                  }
+                }}
+                style={{
+                  backgroundColor: "#ffffff",
+                  color: "#e11d48",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Instant Unlock For Her Now ✨
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setDraftConfig(config);
+                setIsEditDrawerOpen(true);
+              }}
+              style={{
+                backgroundColor: "rgba(0,0,0,0.3)",
+                color: "#ffffff",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 6,
+                padding: "4px 10px",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Edit Photos / Text
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hidden File Input */}
       <input
         type="file"
