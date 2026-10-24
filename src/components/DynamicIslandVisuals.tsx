@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useMemo } from "react";
-import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity, Image, PanResponder } from "react-native";
+import React, { useEffect, useRef, useMemo, useState } from "react";
+import { View, Text, StyleSheet, Animated, Easing, Platform, TouchableOpacity, Image, PanResponder, NativeModules } from "react-native";
 import { User, Heart, ChevronLeft, MoreVertical, Volume2, Phone, Video, PhoneOff, Mic, MicOff, VideoOff, ChevronUp, Sparkles, Info, Compass, MapPin, RotateCcw, Navigation, Lock, ArrowUpRight } from "lucide-react-native";
+import { BlurView } from "expo-blur";
 import { NotchConfig, DynamicIslandAudioEvent } from "../utils/notchConfig";
 import { formatCoupleDistance, formatDataAge } from "../utils/coupleRadar";
 import { CoupleMood, isMoodActive, formatMoodRemaining } from "../utils/coupleMood";
@@ -362,6 +363,43 @@ export function DynamicIslandExpandedView({
     });
   }, [isTargetOnline, radarPartnerLoc, lastSeenText]);
 
+  const [deviceTime, setDeviceTime] = useState(() => {
+    const d = new Date();
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  });
+  const [batteryPct, setBatteryPct] = useState<number | null>(null);
+
+  useEffect(() => {
+    const updateTime = () => {
+      const d = new Date();
+      setDeviceTime(d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+    };
+    const interval = setInterval(updateTime, 10000);
+
+    const fetchBattery = async () => {
+      try {
+        if (NativeModules.AlaBattery?.getBatteryLevel) {
+          const level = await NativeModules.AlaBattery.getBatteryLevel();
+          if (typeof level === 'number' && level >= 0) {
+            setBatteryPct(level);
+            return;
+          }
+        }
+        if (typeof navigator !== 'undefined' && 'getBattery' in navigator) {
+          const b = await (navigator as any).getBattery();
+          setBatteryPct(Math.round(b.level * 100));
+        }
+      } catch {}
+    };
+    fetchBattery();
+    const batteryInterval = setInterval(fetchBattery, 30000);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(batteryInterval);
+    };
+  }, []);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -413,7 +451,8 @@ export function DynamicIslandExpandedView({
   const isCallActive = isCalling || callStatus !== "idle";
 
   return (
-    <View {...panResponder.panHandlers} style={visualStyles.expandedContainer}>
+    <View {...panResponder.panHandlers} style={[visualStyles.expandedContainer, { overflow: "hidden" }]}>
+      <BlurView intensity={Platform.OS === "android" ? 50 : 35} tint="dark" style={StyleSheet.absoluteFill} />
       {/* Top Header Row */}
       <View style={visualStyles.expandedTopRow}>
         <View
@@ -483,14 +522,25 @@ export function DynamicIslandExpandedView({
               </Text>
               <DynamicTypingDots color={theme?.accent || "#5865F2"} active={true} />
             </View>
+          ) : statusText ? (
+            <Text style={[visualStyles.expandedSubtitle, { color: "rgba(255,255,255,0.6)", marginTop: 1 }]} numberOfLines={1}>
+              {statusText}
+            </Text>
           ) : null}
         </View>
 
-        {/* Top-Right Status Text & Collapse Button */}
+        {/* Top-Right Cluster: Clean Device Time & Battery % near Collapse Chevron */}
         <View style={visualStyles.headerStatusCluster}>
-          <Text style={visualStyles.headerStatusText} numberOfLines={1}>
-            {statusText}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginRight: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.85)", fontFamily: "Josefin Sans" }}>
+              {deviceTime}
+            </Text>
+            {batteryPct !== null && (
+              <Text style={{ fontSize: 11, fontWeight: "700", color: "#10b981", fontFamily: "Josefin Sans" }}>
+                {batteryPct}%
+              </Text>
+            )}
+          </View>
           <TouchableOpacity
             style={visualStyles.expandedCollapseBtn}
             onPress={onCollapse}

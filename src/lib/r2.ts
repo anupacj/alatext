@@ -1,10 +1,24 @@
 import { AwsClient } from "aws4fetch";
 import { decode } from "base64-arraybuffer";
 
-const R2_ACCESS_KEY_ID = process.env.EXPO_PUBLIC_R2_ACCESS_KEY_ID as string;
-const R2_SECRET_ACCESS_KEY = process.env.EXPO_PUBLIC_R2_SECRET_ACCESS_KEY as string;
-const R2_ENDPOINT = process.env.EXPO_PUBLIC_R2_ENDPOINT as string;
-const R2_PUBLIC_URL = process.env.EXPO_PUBLIC_R2_PUBLIC_URL as string;
+const R2_ACCESS_KEY_ID = (process.env.EXPO_PUBLIC_R2_ACCESS_KEY_ID || "").trim();
+const R2_SECRET_ACCESS_KEY = (process.env.EXPO_PUBLIC_R2_SECRET_ACCESS_KEY || "").trim();
+const R2_ENDPOINT = (process.env.EXPO_PUBLIC_R2_ENDPOINT || "").trim().replace(/\/+$/, "");
+const R2_PUBLIC_URL = (process.env.EXPO_PUBLIC_R2_PUBLIC_URL || "").trim().replace(/\/+$/, "");
+
+const getCleanPublicUrl = (fileName: string): string => {
+  const cleanPath = fileName.replace(/^\/+/, "");
+  return `${R2_PUBLIC_URL}/${cleanPath}`;
+};
+
+const getCleanUploadUrl = (bucketName: string, fileName: string): URL => {
+  let cleanEndpoint = R2_ENDPOINT.replace(/\/+$/, "");
+  if (cleanEndpoint.endsWith(`/${bucketName}`)) {
+    cleanEndpoint = cleanEndpoint.slice(0, -(bucketName.length + 1));
+  }
+  const cleanFileName = fileName.replace(/^\/+/, "");
+  return new URL(`${cleanEndpoint}/${bucketName}/${cleanFileName}`);
+};
 
 const aws = new AwsClient({
   accessKeyId: R2_ACCESS_KEY_ID,
@@ -58,7 +72,7 @@ export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mi
   if (rawExt.includes("ogg")) rawExt = "ogg";
   const fileName = `${pathPrefix}.${rawExt}`;
   const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || "alatext";
-  const uploadUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
+  const uploadUrl = getCleanUploadUrl(bucketName, fileName);
   const arrayBuffer = decode(base64Data);
   const response = await aws.fetch(uploadUrl.toString(), {
     method: "PUT",
@@ -66,7 +80,7 @@ export const uploadImageToR2 = async (pathPrefix: string, base64Data: string, mi
     headers: { "Content-Type": cleanMime },
   });
   if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
-  return `${R2_PUBLIC_URL}/${fileName}`;
+  return getCleanPublicUrl(fileName);
 };
 
 export const uploadAudioToR2 = async (chatId: string, base64Data: string, mimeType: string): Promise<string> => {
@@ -88,7 +102,7 @@ export const deleteFileFromR2ByUrl = async (publicUrl: string) => {
   if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT || !publicUrl.startsWith(R2_PUBLIC_URL)) return;
   const fileName = publicUrl.replace(`${R2_PUBLIC_URL}/`, '');
   const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || "alatext";
-  const deleteUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
+  const deleteUrl = getCleanUploadUrl(bucketName, fileName);
   try {
     await aws.fetch(deleteUrl.toString(), { method: "DELETE" });
   } catch (e) {
@@ -96,19 +110,53 @@ export const deleteFileFromR2ByUrl = async (publicUrl: string) => {
   }
 };
 
+const getArrayBufferFromBlob = async (blob: any): Promise<ArrayBuffer> => {
+  if (blob && typeof blob.arrayBuffer === "function") {
+    try {
+      return await blob.arrayBuffer();
+    } catch (e) {
+      // Fallback
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        if (reader.result instanceof ArrayBuffer) {
+          resolve(reader.result);
+        } else if (typeof reader.result === "string") {
+          const clean = reader.result.includes(",") ? reader.result.split(",")[1] : reader.result;
+          resolve(decode(clean));
+        } else {
+          reject(new Error("Unable to convert blob to buffer"));
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error("FileReader error"));
+    try {
+      reader.readAsDataURL(blob);
+    } catch (e) {
+      reject(e);
+    }
+  });
+};
+
 export const uploadBlobToR2 = async (
   pathPrefix: string,
-  blob: Blob,
+  blob: any,
   onProgress?: (percent: number) => void
 ): Promise<string> => {
   if (!R2_ACCESS_KEY_ID || !R2_ENDPOINT) throw new Error("R2 credentials missing");
-  const fileExt = blob.type.split("/")[1] || "webp";
+  const fileExt = (blob.type || "").split("/")[1] || "webp";
   const fileName = `${pathPrefix}.${fileExt}`;
   const bucketName = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || "alatext";
-  const uploadUrl = new URL(`${R2_ENDPOINT}/${bucketName}/${fileName}`);
+  const uploadUrl = getCleanUploadUrl(bucketName, fileName);
 
   const cleanMime = blob.type ? blob.type.split(";")[0].trim() : "image/jpeg";
-  const arrayBuffer = await blob.arrayBuffer();
+  const arrayBuffer = await getArrayBufferFromBlob(blob);
 
   if (typeof XMLHttpRequest !== "undefined") {
     return new Promise(async (resolve, reject) => {
@@ -137,7 +185,7 @@ export const uploadBlobToR2 = async (
 
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(`${R2_PUBLIC_URL}/${fileName}`);
+            resolve(getCleanPublicUrl(fileName));
           } else {
             reject(new Error(`Upload failed with status ${xhr.status}`));
           }
@@ -158,7 +206,7 @@ export const uploadBlobToR2 = async (
   });
   if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
   if (onProgress) onProgress(100);
-  return `${R2_PUBLIC_URL}/${fileName}`;
+  return getCleanPublicUrl(fileName);
 };
 
 export const uploadAnniversaryVideoToR2 = async (

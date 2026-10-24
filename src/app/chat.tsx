@@ -11,7 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText, Lock } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText, Lock, Navigation } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
@@ -28,6 +28,7 @@ import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
+import { BlurView } from "expo-blur";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
 import { FloatingHearts } from "../components/FloatingHearts";
 import { SleepyByeBlocker } from "../components/SleepyByeBlocker";
@@ -38,7 +39,7 @@ import { getDailyByeQuote } from "../lib/sleepyByeQuotes";
 import { renderFormattedContent } from "../lib/formatText";
 import { LottieSticker } from "../components/LottieSticker";
 import { supabase } from "../lib/supabase";
-import { uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
+import { uploadImageToR2, uploadChatImageToR2, uploadAudioToR2, uploadVideoToR2, uploadBlobToR2 } from "../lib/r2";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { isFeatureEnabled, UserProfile } from "../lib/features";
@@ -93,6 +94,9 @@ import {
   getCurrentDeviceLocation,
   RADAR_UPDATE_INTERVAL_MS,
   RADAR_EXPIRY_TTL_MS,
+  syncLocationToCloud,
+  fetchPartnerLocationFromCloud,
+  formatCoupleDistance,
 } from "../utils/coupleRadar";
 import {
   CoupleMood,
@@ -243,7 +247,27 @@ export default function ChatScreen() {
     total: number;
     percent: number;
   }>({ active: false, current: 0, total: 0, percent: 0 });
-  const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
+  const [imageViewerData, setImageViewerData] = useState<{
+    url: string | null;
+    images: string[];
+    initialIndex: number;
+  }>({ url: null, images: [], initialIndex: 0 });
+
+  const setImageViewerUrl = useCallback((url: string | null, allImages?: string[], index?: number) => {
+    if (!url) {
+      setImageViewerData({ url: null, images: [], initialIndex: 0 });
+      return;
+    }
+    const imgList = (allImages && allImages.length > 0) ? allImages : [url];
+    const activeIdx = typeof index === "number" ? index : Math.max(0, imgList.indexOf(url));
+    setImageViewerData({
+      url,
+      images: imgList,
+      initialIndex: activeIdx >= 0 ? activeIdx : 0,
+    });
+  }, []);
+
+  const imageViewerUrl = imageViewerData.url;
   const [isGroup, setIsGroup] = useState(isGroupParam === "true");
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const myProfileRef = useRef<UserProfile | null>(null);
@@ -475,27 +499,42 @@ export default function ChatScreen() {
 
   const radarLastUpdated = radarPartnerLoc?.timestamp ?? null;
 
-  // Refresh radar location (enforcing 20min interval unless force=true)
+  // Refresh radar location:
+  // - No 2h reset
+  // - Asynchronous sync: Saves location to cloud and pulls partner's last known location from cloud
+  // - Does NOT require both users to be online simultaneously
   const refreshRadarLocation = useCallback(async (force = false) => {
-    if (isGroup || !id || !user || isDesktop) return;
+    if (isGroup || !id || !user) return;
     const now = Date.now();
     const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
 
     if (!force && now - lastRadarBroadcastRef.current < RADAR_UPDATE_INTERVAL_MS) {
-      if (radarPartnerLoc && now - radarPartnerLoc.timestamp > RADAR_EXPIRY_TTL_MS) {
-        setRadarPartnerLoc(null);
-        getStoredPartnerLocation(chatIdStr);
-      }
       return;
     }
 
-    const myNewLoc = await getCurrentDeviceLocation();
     lastRadarBroadcastRef.current = now;
+
+    // 1. Asynchronously fetch partner's last recorded location from cloud
+    if (targetUser?.id) {
+      fetchPartnerLocationFromCloud(targetUser.id).then((cloudPartnerLoc) => {
+        if (cloudPartnerLoc) {
+          setRadarPartnerLoc(cloudPartnerLoc);
+          savePartnerLocation(chatIdStr, cloudPartnerLoc);
+        }
+      });
+    }
+
+    // 2. Obtain device location safely
+    const myNewLoc = await getCurrentDeviceLocation();
     if (!myNewLoc) return;
 
     setRadarMyLoc(myNewLoc);
     saveMyLocation(myNewLoc);
 
+    // 3. Save my latest location to cloud so partner can read it whenever they come online later
+    syncLocationToCloud(user.id, myNewLoc);
+
+    // 4. Send Realtime broadcast in case partner is currently in the chat
     if (typingChannelRef.current) {
       try {
         typingChannelRef.current.send({
@@ -508,13 +547,18 @@ export default function ChatScreen() {
             timestamp: myNewLoc.timestamp,
           },
         });
+        typingChannelRef.current.send({
+          type: "broadcast",
+          event: "radar_request",
+          payload: { user_id: user.id },
+        });
       } catch (e) {}
     }
-  }, [id, user, isGroup, isDesktop, radarPartnerLoc]);
+  }, [id, user, targetUser?.id, isGroup]);
 
-  // Load cached radar locations on mount and set up periodic 20-min sync check (MOBILE ONLY)
+  // Load cached radar locations on mount and set up periodic sync check
   useEffect(() => {
-    if (!id || isGroup || isDesktop) return;
+    if (!id || isGroup) return;
     const chatIdStr = (Array.isArray(id) ? id[0] : id) as string;
 
     getStoredPartnerLocation(chatIdStr).then((loc) => {
@@ -525,15 +569,25 @@ export default function ChatScreen() {
       if (loc) setRadarMyLoc(loc);
     });
 
-    // Check device location & broadcast once on entering chat if permissions allow
-    refreshRadarLocation(false);
+    // Check cloud for partner's last known location
+    if (targetUser?.id) {
+      fetchPartnerLocationFromCloud(targetUser.id).then((cloudLoc) => {
+        if (cloudLoc) {
+          setRadarPartnerLoc(cloudLoc);
+          savePartnerLocation(chatIdStr, cloudLoc);
+        }
+      });
+    }
+
+    // Check device location & broadcast once on entering chat
+    refreshRadarLocation(true);
 
     const syncInterval = setInterval(() => {
       refreshRadarLocation(false);
     }, RADAR_UPDATE_INTERVAL_MS);
 
     return () => clearInterval(syncInterval);
-  }, [id, isGroup, isDesktop]);
+  }, [id, isGroup, targetUser?.id]);
 
   // Load cached couple moods on mount and prune expired moods (>6 hours)
   useEffect(() => {
@@ -1965,10 +2019,23 @@ export default function ChatScreen() {
           });
         }
       })
+      .on("broadcast", { event: "radar_request" }, () => {
+        if (radarMyLoc) {
+          typingChannelRef.current?.send({
+            type: "broadcast",
+            event: "radar_ping",
+            payload: {
+              user_id: user.id,
+              lat: radarMyLoc.lat,
+              lng: radarMyLoc.lng,
+              timestamp: radarMyLoc.timestamp,
+            },
+          });
+        }
+      })
       .on("broadcast", { event: "radar_ping" }, (payload: any) => {
         const p = payload?.payload;
         if (!p || p.user_id === user.id) return;
-        if (Date.now() - p.timestamp > RADAR_EXPIRY_TTL_MS) return;
 
         const newPartnerLoc: RadarLocation = {
           lat: p.lat,
@@ -2695,6 +2762,7 @@ export default function ChatScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
       selectionLimit: 10,
+      base64: true,
     });
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const assets = result.assets.slice(0, 10);
@@ -2716,11 +2784,17 @@ export default function ChatScreen() {
         for (let i = 0; i < assets.length; i++) {
           const asset = assets[i];
           const isVideo = asset.type === "video" || asset.mimeType?.startsWith("video");
-          const resp = await fetch(asset.uri);
-          const blob = await resp.blob();
           const prefix = isVideo ? `chat-videos/${id}-${Date.now()}-${i}` : `chat-images/${id}-${Date.now()}-${i}`;
-          const url = await uploadBlobToR2(prefix, blob, (pct) => updateOverallProgress(i, pct));
-          updateOverallProgress(i, 100);
+          let url: string;
+          if (asset.base64) {
+            url = await uploadImageToR2(prefix, asset.base64, asset.mimeType || (isVideo ? "video/mp4" : "image/jpeg"));
+            updateOverallProgress(i, 100);
+          } else {
+            const resp = await fetch(asset.uri);
+            const blob = await resp.blob();
+            url = await uploadBlobToR2(prefix, blob, (pct) => updateOverallProgress(i, pct));
+            updateOverallProgress(i, 100);
+          }
           msgs.push({
             chat_id: id,
             sender_id: user?.id,
@@ -3273,10 +3347,12 @@ export default function ChatScreen() {
                         width: effectivePillHeight,
                         borderRadius: effectivePillHeight / 2,
                       },
+                      { overflow: "hidden" },
                     ]}
                     activeOpacity={0.7}
                     accessibilityLabel="Back"
                   >
+                    <BlurView intensity={Platform.OS === "android" ? 50 : 30} tint="dark" style={StyleSheet.absoluteFill} />
                     <ChevronLeft size={24} color={headerIconColor} />
                   </TouchableOpacity>
                 )}
@@ -3497,16 +3573,43 @@ export default function ChatScreen() {
                           {groupMemberCount > 0 ? `${groupMemberCount} members` : "Group"}
                         </Text>
                       ) : targetUser ? (
-                        <Text 
-                          style={[
-                            styles.lastSeenText, 
-                            !isTargetOnline && styles.offlineText,
-                            chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {formatLastSeenText(targetUser, isTargetOnline)}
-                        </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
+                          <Text 
+                            style={[
+                              styles.lastSeenText, 
+                              !isTargetOnline && styles.offlineText,
+                              chatSettings?.font_family && chatSettings.font_family !== "system" ? { fontFamily: chatSettings.font_family } : {}
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {formatLastSeenText(targetUser, isTargetOnline)}
+                          </Text>
+                          {Platform.OS === "web" && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e?.stopPropagation?.();
+                                refreshRadarLocation(true);
+                              }}
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 3,
+                                backgroundColor: "rgba(244, 63, 94, 0.12)",
+                                paddingHorizontal: 6,
+                                paddingVertical: 1.5,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: "rgba(244, 63, 94, 0.25)",
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Navigation size={10} color="#f43f5e" />
+                              <Text style={{ fontSize: 11, fontWeight: "600", color: "#f43f5e", fontFamily: "Josefin Sans" }}>
+                                {formatCoupleDistance(radarDistanceKm)}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       ) : null}
                     </View>
 
@@ -3530,7 +3633,9 @@ export default function ChatScreen() {
                     height: effectivePillHeight,
                     borderRadius: effectivePillHeight / 2,
                   },
+                  { overflow: "hidden" },
                 ]}>
+                  <BlurView intensity={Platform.OS === "android" ? 50 : 30} tint="dark" style={StyleSheet.absoluteFill} />
                   {!isGroup && (
                     <TouchableOpacity
                       style={[
@@ -3739,6 +3844,7 @@ export default function ChatScreen() {
                       borderColor: "rgba(244, 63, 94, 0.45)",
                       backgroundColor: "rgba(244, 63, 94, 0.12)",
                     },
+                    { overflow: "hidden" },
                   ]}
                   onPress={() => {
                     // SENDER can ALWAYS enter to preview & finalize!
@@ -3754,6 +3860,7 @@ export default function ChatScreen() {
                   }}
                   activeOpacity={0.8}
                 >
+                  <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} />
                   {isAnniversaryUnlocked ? (
                     <Heart
                       size={12}
@@ -4033,7 +4140,7 @@ export default function ChatScreen() {
             styles.inputArea,
             {
               bottom: viewportBottom,
-              paddingBottom: isGlassKeyboardOpen ? 0 : (viewportBottom > 0 ? 6 : (Platform.OS === "web" ? (isDesktop ? 16 : 22) : (Platform.OS === "ios" ? 28 : 16)))
+              paddingBottom: isGlassKeyboardOpen ? 0 : (viewportBottom > 0 ? 6 : (Platform.OS === "web" ? (isDesktop ? 16 : 22) : (Platform.OS === "ios" ? 28 : 19)))
             },
             showWallpaper && { backgroundColor: "transparent" }
           ]}>
@@ -4314,12 +4421,14 @@ export default function ChatScreen() {
                   <View style={[
                     styles.inputWrapper,
                     isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
-                    showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                    showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.5)', borderColor: 'rgba(255,255,255,0.18)' } :
                     theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
                     theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
                     { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
-                    inputText.includes("\n") ? { height: undefined, minHeight: 46, maxHeight: 120 } : { height: 46 }
+                    inputText.includes("\n") ? { height: undefined, minHeight: 46, maxHeight: 120 } : { height: 46 },
+                    { overflow: "hidden" }
                   ]}>
+                    <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} />
                     <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                       {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
                     </TouchableOpacity>
@@ -4447,10 +4556,11 @@ export default function ChatScreen() {
                     style={[
                       styles.circularSendBtn,
                       isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
-                      showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.65)', borderColor: 'rgba(255,255,255,0.12)' } :
+                      showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.5)', borderColor: 'rgba(255,255,255,0.18)' } :
                       theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
                       theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
-                      { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' }
+                      { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
+                      { overflow: "hidden" }
                     ]}
                     onPress={() => {
                       if (inputText.trim()) {
@@ -4460,6 +4570,7 @@ export default function ChatScreen() {
                       }
                     }}
                   >
+                    <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} />
                     <RNAnimated.View
                       style={{
                         transform: [
@@ -4587,11 +4698,14 @@ export default function ChatScreen() {
             setGroupChatData((prev: any) => ({ ...prev, ...updated }));
           }}
           onOpenImageViewer={(url) => setImageViewerUrl(url)}
+          radarDistanceKm={radarDistanceKm}
         />
       )}
       <ZoomableImageViewer
-        visible={!!imageViewerUrl}
-        imageUrl={imageViewerUrl}
+        visible={!!imageViewerData.url}
+        imageUrl={imageViewerData.url}
+        images={imageViewerData.images}
+        initialIndex={imageViewerData.initialIndex}
         onClose={() => setImageViewerUrl(null)}
         onDownload={handleDownloadImage}
         onCopy={handleCopyImage}
@@ -5400,9 +5514,11 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
 // --- Dynamic Image Sizing & WhatsApp-Style Clumped Media Grid Components ---
 const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress: () => void; style?: any }) => {
   const [aspectRatio, setAspectRatio] = useState<number>(1.2);
+  const [hasError, setHasError] = useState<boolean>(false);
 
   useEffect(() => {
     if (!uri || typeof uri !== "string") return;
+    setHasError(false);
     try {
       Image.getSize(
         uri,
@@ -5412,7 +5528,9 @@ const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress
             setAspectRatio(Math.max(0.65, Math.min(1.75, ratio)));
           }
         },
-        () => {}
+        (err) => {
+          console.warn("[DynamicImage] Failed to get image size for:", uri, err);
+        }
       );
     } catch (e) {}
   }, [uri]);
@@ -5423,10 +5541,44 @@ const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress
   const computedW = Math.min(maxW, Math.max(160, 220 * (aspectRatio >= 1 ? Math.min(1.35, aspectRatio) : 1)));
   const computedH = Math.min(330, computedW / aspectRatio);
 
+  if (hasError) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        style={[
+          {
+            width: computedW,
+            minHeight: 110,
+            borderRadius: 12,
+            backgroundColor: "rgba(255, 255, 255, 0.06)",
+            borderWidth: 1,
+            borderColor: "rgba(239, 68, 68, 0.3)",
+            padding: 12,
+            justifyContent: "center",
+            alignItems: "center",
+          },
+          style,
+        ]}
+      >
+        <Text style={{ color: "#f87171", fontSize: 12, fontWeight: "600", marginBottom: 4 }}>
+          Photo unavailable
+        </Text>
+        <Text style={{ color: "rgba(255, 255, 255, 0.45)", fontSize: 10, textAlign: "center" }} numberOfLines={2}>
+          {uri}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
       <Image
         source={{ uri }}
+        onError={(e) => {
+          console.warn("[DynamicImage] Image loading error:", uri, e.nativeEvent);
+          setHasError(true);
+        }}
         style={[
           {
             width: computedW,
@@ -5441,18 +5593,19 @@ const DynamicImage = React.memo(({ uri, onPress, style }: { uri: string; onPress
   );
 });
 
-const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[]; setImageViewerUrl: (url: string) => void }) => {
+const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[]; setImageViewerUrl: (url: string, allUrls?: string[], index?: number) => void }) => {
   const total = items.length;
+  const allUrls = React.useMemo(() => items.map((it: any) => it.text), [items]);
 
   if (total === 1) {
-    return <DynamicImage uri={items[0].text} onPress={() => setImageViewerUrl(items[0].text)} />;
+    return <DynamicImage uri={items[0].text} onPress={() => setImageViewerUrl(items[0].text, allUrls, 0)} />;
   }
 
   if (total === 2) {
     return (
       <View style={{ flexDirection: "row", gap: 2, borderRadius: 12, overflow: "hidden", maxWidth: 274 }}>
-        {items.map((item) => (
-          <TouchableOpacity key={item.id} onPress={() => setImageViewerUrl(item.text)} style={{ width: 136, height: 180 }} activeOpacity={0.85}>
+        {items.map((item, idx) => (
+          <TouchableOpacity key={item.id} onPress={() => setImageViewerUrl(item.text, allUrls, idx)} style={{ width: 136, height: 180 }} activeOpacity={0.85}>
             <Image source={{ uri: item.text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
           </TouchableOpacity>
         ))}
@@ -5463,14 +5616,14 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
   if (total === 3) {
     return (
       <View style={{ flexDirection: "row", gap: 2, borderRadius: 12, overflow: "hidden", maxWidth: 274, height: 274 }}>
-        <TouchableOpacity onPress={() => setImageViewerUrl(items[0].text)} style={{ width: 136, height: 274 }} activeOpacity={0.85}>
+        <TouchableOpacity onPress={() => setImageViewerUrl(items[0].text, allUrls, 0)} style={{ width: 136, height: 274 }} activeOpacity={0.85}>
           <Image source={{ uri: items[0].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
         </TouchableOpacity>
         <View style={{ width: 136, height: 274, gap: 2 }}>
-          <TouchableOpacity onPress={() => setImageViewerUrl(items[1].text)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => setImageViewerUrl(items[1].text, allUrls, 1)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
             <Image source={{ uri: items[1].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setImageViewerUrl(items[2].text)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => setImageViewerUrl(items[2].text, allUrls, 2)} style={{ width: 136, height: 136 }} activeOpacity={0.85}>
             <Image source={{ uri: items[2].text }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
           </TouchableOpacity>
         </View>
@@ -5488,7 +5641,7 @@ const MediaAlbumGrid = React.memo(({ items, setImageViewerUrl }: { items: any[];
         return (
           <TouchableOpacity
             key={item.id}
-            onPress={() => setImageViewerUrl(item.text)}
+            onPress={() => setImageViewerUrl(item.text, allUrls, idx)}
             style={{ width: 136, height: 136, position: "relative" }}
             activeOpacity={0.85}
           >

@@ -4,6 +4,8 @@ import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { Platform } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
 
 import { AlaPinProvider } from '../context/AlaPinContext';
 import AlaPinLockScreen from '../components/AlaPinLockScreen';
@@ -62,6 +64,35 @@ function RootNavigator() {
 }
 
 export default function Layout() {
+  const [fontsLoaded] = useFonts({
+    'Josefin Sans': require('../../assets/fonts/JosefinSans.ttf'),
+    'JosefinSans': require('../../assets/fonts/JosefinSans.ttf'),
+    'JosefinSans-Regular': require('../../assets/fonts/JosefinSans.ttf'),
+    'JosefinSans-Bold': require('../../assets/fonts/JosefinSans-Bold.ttf'),
+    'JosefinSans-SemiBold': require('../../assets/fonts/JosefinSans-SemiBold.ttf'),
+    'JosefinSans-Light': require('../../assets/fonts/JosefinSans-Light.ttf'),
+    'JosefinSans-Medium': require('../../assets/fonts/JosefinSans-Medium.ttf'),
+    'Cinzel': require('../../assets/fonts/Cinzel.ttf'),
+    'Playfair Display': require('../../assets/fonts/PlayfairDisplay.ttf'),
+    'Caveat': require('../../assets/fonts/Caveat.ttf'),
+    'Dancing Script': require('../../assets/fonts/DancingScript.ttf'),
+    'Pacifico': require('../../assets/fonts/Pacifico.ttf'),
+    'Shadows Into Light': require('../../assets/fonts/ShadowsIntoLight.ttf'),
+    'Indie Flower': require('../../assets/fonts/IndieFlower.ttf'),
+    'Permanent Marker': require('../../assets/fonts/PermanentMarker.ttf'),
+    'Satisfy': require('../../assets/fonts/Satisfy.ttf'),
+    'Great Vibes': require('../../assets/fonts/GreatVibes.ttf'),
+    'Sacramento': require('../../assets/fonts/Sacramento.ttf'),
+    'Press Start 2P': require('../../assets/fonts/PressStart2P.ttf'),
+    'VT323': require('../../assets/fonts/VT323.ttf'),
+  });
+
+  useEffect(() => {
+    if (fontsLoaded || Platform.OS === 'web') {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
+
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       // 1. Google Fonts Preconnect & Stylesheet
@@ -201,13 +232,13 @@ export default function Layout() {
         }).catch(() => {});
       }
     }
-    SplashScreen.hideAsync();
   }, []);
 
   return (
     <AuthProvider>
       <ThemeProvider>
         <AlaPinProvider>
+          <StatusBar hidden={true} />
           <RootNavigator />
           <AlaPinLockScreen />
           <AlaContextMenu />

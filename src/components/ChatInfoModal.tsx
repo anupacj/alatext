@@ -7,8 +7,9 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   X, UserPlus, LogOut, Search, Camera, Trash2, Edit3,
-  Check, Users, Image as ImageIcon, UserMinus, Crown, ShieldAlert,
+  Check, Users, Image as ImageIcon, UserMinus, Crown, ShieldAlert, Navigation,
 } from "lucide-react-native";
+import { formatCoupleDistance } from "../utils/coupleRadar";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../lib/supabase";
 import { uploadImageToR2, deleteFileFromR2ByUrl, getThumbnailUrl } from "../lib/r2";
@@ -58,6 +59,7 @@ interface ChatInfoModalProps {
   chatAvatar?: string | null;
   onGroupUpdated?: (updated: { name?: string; avatar_url?: string }) => void;
   onOpenImageViewer?: (url: string) => void;
+  radarDistanceKm?: number | null;
 }
 
 export default function ChatInfoModal({
@@ -70,6 +72,7 @@ export default function ChatInfoModal({
   chatAvatar,
   onGroupUpdated,
   onOpenImageViewer,
+  radarDistanceKm,
 }: ChatInfoModalProps) {
   const router = useRouter();
   const { theme } = useTheme();
@@ -621,6 +624,15 @@ export default function ChatInfoModal({
         </Text>
       )}
       <Text style={styles.hugeHandle}>@{targetUser?.username}</Text>
+
+      {radarDistanceKm !== undefined && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(244, 63, 94, 0.12)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginTop: 10, borderWidth: 1, borderColor: "rgba(244, 63, 94, 0.3)", alignSelf: "center" }}>
+          <Navigation size={14} color="#f43f5e" />
+          <Text style={{ color: "#f43f5e", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" }}>
+            {formatCoupleDistance(radarDistanceKm)}
+          </Text>
+        </View>
+      )}
 
       {targetUser?.bio ? (
         <View style={styles.bioBox}>
