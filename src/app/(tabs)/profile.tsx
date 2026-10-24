@@ -859,7 +859,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     alignItems: 'center',
     paddingTop: 32,
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: Platform.OS === 'web' ? 120 : 40,
   },
   avatarContainer: {
     position: 'relative',

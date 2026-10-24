@@ -161,7 +161,7 @@ function SendingDots() {
   return <>{dots}</>;
 }
 
-function EntranceSyncPfp({ avatarUrl }: { avatarUrl?: string }) {
+function EntranceLocationSyncBadge() {
   const [visible, setVisible] = useState(true);
   const opacityAnim = useRef(new RNAnimated.Value(0)).current;
   const scaleAnim = useRef(new RNAnimated.Value(0.3)).current;
@@ -172,10 +172,10 @@ function EntranceSyncPfp({ avatarUrl }: { avatarUrl?: string }) {
     const useNativeDriver = !isWeb;
 
     const anim = RNAnimated.parallel([
-      // Smooth 360 degree rotation
+      // Smooth 180-degree sweep to hint location sync / refresh
       RNAnimated.timing(rotateAnim, {
         toValue: 1,
-        duration: 2100,
+        duration: 1800,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver,
       }),
@@ -183,21 +183,21 @@ function EntranceSyncPfp({ avatarUrl }: { avatarUrl?: string }) {
       RNAnimated.sequence([
         // Enter smoothly
         RNAnimated.parallel([
-          RNAnimated.timing(scaleAnim, { toValue: 1, duration: 300, easing: Easing.out(Easing.back(1.5)), useNativeDriver }),
-          RNAnimated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver }),
+          RNAnimated.timing(scaleAnim, { toValue: 1, duration: 250, easing: Easing.out(Easing.back(1.5)), useNativeDriver }),
+          RNAnimated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver }),
         ]),
         // Blink 1
-        RNAnimated.timing(opacityAnim, { toValue: 0.2, duration: 250, useNativeDriver }),
+        RNAnimated.timing(opacityAnim, { toValue: 0.25, duration: 250, useNativeDriver }),
         RNAnimated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver }),
         // Blink 2
-        RNAnimated.timing(opacityAnim, { toValue: 0.2, duration: 250, useNativeDriver }),
+        RNAnimated.timing(opacityAnim, { toValue: 0.25, duration: 250, useNativeDriver }),
         RNAnimated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver }),
         // Brief pause
         RNAnimated.delay(200),
         // Smooth exit
         RNAnimated.parallel([
-          RNAnimated.timing(opacityAnim, { toValue: 0, duration: 350, useNativeDriver }),
-          RNAnimated.timing(scaleAnim, { toValue: 0.3, duration: 350, useNativeDriver }),
+          RNAnimated.timing(opacityAnim, { toValue: 0, duration: 300, useNativeDriver }),
+          RNAnimated.timing(scaleAnim, { toValue: 0.3, duration: 300, useNativeDriver }),
         ]),
       ]),
     ]);
@@ -211,9 +211,10 @@ function EntranceSyncPfp({ avatarUrl }: { avatarUrl?: string }) {
 
   if (!visible) return null;
 
+  // Rotate 180 degrees only (not a full 360 circle)
   const spin = rotateAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
+    outputRange: ["0deg", "180deg"],
   });
 
   return (
@@ -221,7 +222,7 @@ function EntranceSyncPfp({ avatarUrl }: { avatarUrl?: string }) {
       style={{
         marginRight: 6,
         opacity: opacityAnim,
-        transform: [{ scale: scaleAnim }, { rotate: spin }],
+        transform: [{ scale: scaleAnim }],
       }}
       pointerEvents="none"
     >
@@ -231,19 +232,17 @@ function EntranceSyncPfp({ avatarUrl }: { avatarUrl?: string }) {
           height: 22,
           borderRadius: 11,
           borderWidth: 1.5,
-          borderColor: "#38bdf8",
+          borderColor: "#f43f5e",
           overflow: "hidden",
-          backgroundColor: "rgba(56, 189, 248, 0.15)",
+          backgroundColor: "rgba(244, 63, 94, 0.15)",
           alignItems: "center",
           justifyContent: "center",
-          ...(Platform.OS === "web" ? ({ boxShadow: "0 0 10px rgba(56, 189, 248, 0.5)" } as any) : {}),
+          ...(Platform.OS === "web" ? ({ boxShadow: "0 0 10px rgba(244, 63, 94, 0.5)" } as any) : {}),
         }}
       >
-        {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={{ width: 22, height: 22, borderRadius: 11 }} />
-        ) : (
-          <User size={12} color="#38bdf8" />
-        )}
+        <RNAnimated.View style={{ transform: [{ rotate: spin }] }}>
+          <Navigation size={11} color="#f43f5e" />
+        </RNAnimated.View>
       </View>
     </RNAnimated.View>
   );
@@ -3701,8 +3700,8 @@ export default function ChatScreen() {
                       ) : null}
                     </View>
 
-                    {/* Entrance Smooth Sync Badge on right edge of pill */}
-                    <EntranceSyncPfp avatarUrl={(targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url || (typeof avatar === "string" ? avatar : undefined)} />
+                    {/* Entrance Smooth Location Sync Badge on right edge of pill */}
+                    <EntranceLocationSyncBadge />
 
                     {/* Dynamic Island Animated Indicator on the Right Side */}
                     {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying && (

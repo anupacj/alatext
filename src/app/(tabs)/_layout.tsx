@@ -1,19 +1,87 @@
-import { Tabs } from 'expo-router';
-import { MessageCircle, User } from 'lucide-react-native';
-import { Platform, View, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
+import { MessageCircle, User, MessageSquare, Phone, CircleDot, Plus } from 'lucide-react-native';
+import { Platform, View, StyleSheet, TouchableOpacity, Text, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { TabsLoadingProvider, useTabsLoading } from '../../context/TabsLoadingContext';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const { theme } = useTheme();
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
   const isWebMobile = Platform.OS === 'web' && width < 768;
   const { isTabsLoading } = useTabsLoading();
   const currentRoute = state.routes[state.index]?.name;
 
-  // Never show tab bar on web desktop, and on web mobile index manages its own integrated 4-tab bar
-  if (isDesktop || (isWebMobile && currentRoute === 'index') || (currentRoute === 'index' && isTabsLoading)) {
+  // Never show tab bar on web desktop
+  if (isDesktop) {
+    return null;
+  }
+
+  // On web mobile, index manages its own integrated 4-tab bar (Chats, Call, Updates, Profile)
+  if (isWebMobile) {
+    if (currentRoute === 'index') {
+      return null;
+    }
+
+    // On profile screen on web mobile, render the EXACT SAME new floating 4-tab bar
+    return (
+      <View style={webNavStyles.floatingNavContainer} pointerEvents="box-none">
+        <View style={[webNavStyles.navPill, { backgroundColor: "rgba(24, 20, 18, 0.92)", borderColor: "rgba(255,255,255,0.12)" }]}>
+          {/* 1. Chats */}
+          <TouchableOpacity
+            style={webNavStyles.navItemBtn}
+            onPress={() => router.replace({ pathname: "/", params: { tab: "chats" } })}
+            activeOpacity={0.7}
+          >
+            <MessageSquare size={19} color={theme.textMuted} />
+            <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Chats</Text>
+          </TouchableOpacity>
+
+          {/* 2. Call */}
+          <TouchableOpacity
+            style={webNavStyles.navItemBtn}
+            onPress={() => router.replace({ pathname: "/", params: { tab: "calls" } })}
+            activeOpacity={0.7}
+          >
+            <Phone size={19} color={theme.textMuted} />
+            <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Call</Text>
+          </TouchableOpacity>
+
+          {/* 3. Updates */}
+          <TouchableOpacity
+            style={webNavStyles.navItemBtn}
+            onPress={() => router.replace({ pathname: "/", params: { tab: "updates" } })}
+            activeOpacity={0.7}
+          >
+            <CircleDot size={19} color={theme.textMuted} />
+            <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Updates</Text>
+          </TouchableOpacity>
+
+          {/* 4. Profile (Active) */}
+          <TouchableOpacity
+            style={[webNavStyles.navItemBtn, webNavStyles.navItemBtnActive]}
+            activeOpacity={0.7}
+          >
+            <User size={19} color={theme.accent || "#f97316"} />
+            <Text style={[webNavStyles.navItemText, { color: theme.accent || "#f97316" }]}>Profile</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Floating + Button */}
+        <TouchableOpacity
+          style={[webNavStyles.floatingPlusBtn, { backgroundColor: theme.accent || "#f97316" }]}
+          onPress={() => router.replace({ pathname: "/", params: { newChat: "true" } })}
+          activeOpacity={0.85}
+        >
+          <Plus size={24} color="#fff" strokeWidth={2.5} />
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Native Mobile Tab Bar (Android / iOS) - UNTOUCHED
+  if (currentRoute === 'index' && isTabsLoading) {
     return null;
   }
 
@@ -71,6 +139,71 @@ export default function TabsLayout() {
     </TabsLoadingProvider>
   );
 }
+
+const webNavStyles = StyleSheet.create({
+  floatingNavContainer: {
+    position: "absolute",
+    bottom: 19,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+    zIndex: 9999,
+  },
+  navPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 1,
+    width: 280,
+    ...(Platform.OS === "web"
+      ? ({
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+        } as any)
+      : {}),
+  },
+  navItemBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+    gap: 2,
+    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+  },
+  navItemBtnActive: {
+    transform: [{ scale: 1.05 }],
+  },
+  navItemText: {
+    fontSize: 10,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+  },
+  floatingPlusBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    ...(Platform.OS === "web"
+      ? ({
+          cursor: "pointer",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+        } as any)
+      : {}),
+  },
+});
 
 const styles = StyleSheet.create({
   floatingWrapper: {

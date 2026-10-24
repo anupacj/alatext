@@ -4,7 +4,7 @@ import {
   SafeAreaView, Platform, ActivityIndicator, Modal, TextInput, ScrollView,
   useWindowDimensions, Pressable,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import {
   User, Search, MessageSquare, Plus, Users, X, Check, Settings,
   Maximize2, Minimize2, Lock, RotateCcw, Phone, PhoneIncoming,
@@ -58,17 +58,34 @@ export default function Home() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Web Mobile State
+  const localParams = useLocalSearchParams<{ tab?: string; newChat?: string }>();
   const [webTab, setWebTab] = useState<"chats" | "calls" | "updates">("chats");
   const [pinnedChatIds, setPinnedChatIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [themeModalOpen, setThemeModalOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshToast, setRefreshToast] = useState(false);
   const [callLogs, setCallLogs] = useState<CallLogEntry[]>([]);
   const [stories, setStories] = useState<StoryItem[]>([]);
   const [activeStory, setActiveStory] = useState<StoryItem | null>(null);
   const [startCallModalOpen, setStartCallModalOpen] = useState(false);
   const [chatMenuModalItem, setChatMenuModalItem] = useState<any | null>(null);
+
+  // Sync tab navigation & new chat from route params (e.g. from Profile tab bar)
+  useEffect(() => {
+    if (localParams.tab === "calls") {
+      setWebTab("calls");
+    } else if (localParams.tab === "updates") {
+      setWebTab("updates");
+    } else if (localParams.tab === "chats") {
+      setWebTab("chats");
+    }
+    if (localParams.newChat === "true") {
+      setModalVisible(true);
+    }
+  }, [localParams.tab, localParams.newChat]);
 
   // Load pinned chats
   useEffect(() => {
@@ -286,6 +303,24 @@ export default function Home() {
       import("../../lib/push").then((m) => m.registerPushNotifications(user.id));
     }
   }, [fetchChats, user]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setMoreMenuOpen(false);
+    try {
+      await Promise.all([
+        fetchChats(),
+        getStoredCallLogs().then(setCallLogs),
+        getStoredStories().then(setStories),
+      ]);
+      setRefreshToast(true);
+      setTimeout(() => setRefreshToast(false), 2200);
+    } catch (e) {
+      console.error("Refresh error:", e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const displayedChats = isDecoyMode ? [] : chats;
 
@@ -725,10 +760,7 @@ export default function Home() {
                 {/* 3. Reload / Refresh */}
                 <TouchableOpacity
                   style={webStyles.moreMenuItem}
-                  onPress={() => {
-                    setMoreMenuOpen(false);
-                    fetchChats();
-                  }}
+                  onPress={handleRefresh}
                   activeOpacity={0.7}
                 >
                   <View style={[webStyles.moreMenuIconCircle, { backgroundColor: "rgba(56, 189, 248, 0.15)" }]}>
@@ -736,8 +768,11 @@ export default function Home() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[webStyles.moreMenuItemTitle, { color: theme.text }]}>Refresh</Text>
-                    <Text style={[webStyles.moreMenuItemSubtitle, { color: theme.textMuted }]}>Sync messages</Text>
+                    <Text style={[webStyles.moreMenuItemSubtitle, { color: theme.textMuted }]}>
+                      {isRefreshing ? "Syncing now..." : "Sync messages & data"}
+                    </Text>
                   </View>
+                  {isRefreshing && <ActivityIndicator size="small" color="#38bdf8" />}
                 </TouchableOpacity>
 
                 {/* 4. Profile & Account */}
@@ -782,6 +817,16 @@ export default function Home() {
           </View>
         )}
 
+        {/* Sync Toast Notification */}
+        {refreshToast && (
+          <View style={{ position: "absolute", top: 68, alignSelf: "center", zIndex: 99999, backgroundColor: "#10b981", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, flexDirection: "row", alignItems: "center", gap: 6, elevation: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }}>
+            <Check size={14} color="#fff" strokeWidth={2.5} />
+            <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600", fontFamily: "Josefin Sans" }}>
+              Messages & data updated
+            </Text>
+          </View>
+        )}
+
         {/* TAB 1: CHATS (Dribbble Card Feed) */}
         {webTab === "chats" && (
           <View style={{ flex: 1 }}>
@@ -799,6 +844,8 @@ export default function Home() {
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={{ paddingTop: 8, paddingBottom: 120 }}
                 showsVerticalScrollIndicator={false}
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
                 renderItem={({ item }) => {
                   const isPinned = pinnedChatIds.includes(item.id);
                   return (
