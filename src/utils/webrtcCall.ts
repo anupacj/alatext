@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import {
   startOutgoingRingtone,
@@ -26,6 +27,17 @@ export interface WebRTCCallState {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   audioVolume: number; // 0.0 to 1.0 for live equalizer
+}
+
+export interface CallLogEntry {
+  id: string;
+  partnerId: string;
+  partnerName: string;
+  partnerAvatar?: string | null;
+  callType: "audio" | "video";
+  direction: "incoming" | "outgoing" | "missed";
+  duration: number;
+  timestamp: number;
 }
 
 const DEFAULT_CALL_STATE: WebRTCCallState = {
@@ -60,6 +72,7 @@ let storedIncomingOffer: any = null;
 let audioAnalyserNode: AnalyserNode | null = null;
 let audioMeterInterval: any = null;
 let remoteAudioElement: HTMLAudioElement | null = null;
+let callStartTimeRef = 0;
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
@@ -106,6 +119,36 @@ export function formatCallDuration(sec: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Call History Storage Helpers
+// ---------------------------------------------------------------------------
+const RECENT_CALLS_KEY = "@recent_calls";
+
+export async function getStoredCallLogs(): Promise<CallLogEntry[]> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENT_CALLS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function addCallLogEntry(entry: CallLogEntry): Promise<void> {
+  try {
+    const logs = await getStoredCallLogs();
+    const updated = [entry, ...logs.filter((l) => l.id !== entry.id)].slice(0, 50);
+    await AsyncStorage.setItem(RECENT_CALLS_KEY, JSON.stringify(updated));
+  } catch {}
+}
+
+export async function clearCallLogs(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(RECENT_CALLS_KEY);
+  } catch {}
+}
+
+// ---------------------------------------------------------------------------
 // Audio Metering for Live Island Equalizer Waves
 // ---------------------------------------------------------------------------
 function setupAudioVolumeMeter(stream: MediaStream) {
@@ -114,6 +157,9 @@ function setupAudioVolumeMeter(stream: MediaStream) {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 64;
@@ -148,28 +194,59 @@ function stopAudioMeter() {
   audioAnalyserNode = null;
 }
 
-// Ensure audio element exists to route remote voice
-function ensureRemoteAudioElement(stream: MediaStream) {
-  if (Platform.OS !== "web" || typeof document === "undefined") return;
+// ---------------------------------------------------------------------------
+// Audio Element Autoplay & Routing
+// ---------------------------------------------------------------------------
+function getOrCreateRemoteAudio(): HTMLAudioElement | null {
+  if (Platform.OS !== "web" || typeof document === "undefined") return null;
   try {
-    if (!remoteAudioElement) {
-      const el = document.createElement("audio");
+    let el = document.getElementById("webrtc_remote_audio_stream") as HTMLAudioElement;
+    if (!el) {
+      el = document.createElement("audio");
       el.id = "webrtc_remote_audio_stream";
       el.autoplay = true;
       (el as any).playsInline = true;
+      el.setAttribute("playsinline", "true");
+      el.setAttribute("webkit-playsinline", "true");
+      el.style.display = "none";
       document.body.appendChild(el);
-      remoteAudioElement = el;
     }
-    remoteAudioElement.srcObject = stream;
-    remoteAudioElement.play().catch(() => {});
+    el.muted = false;
+    el.volume = 1.0;
+    remoteAudioElement = el;
+    return el;
+  } catch {
+    return null;
+  }
+}
+
+function ensureRemoteAudioElement(stream: MediaStream) {
+  const el = getOrCreateRemoteAudio();
+  if (!el) return;
+  try {
+    el.srcObject = stream;
+    const playPromise = el.play();
+    if (playPromise) {
+      playPromise.catch(() => {
+        const unlock = () => {
+          el.play().catch(() => {});
+          window.removeEventListener("click", unlock);
+          window.removeEventListener("touchstart", unlock);
+        };
+        window.addEventListener("click", unlock, { once: true });
+        window.addEventListener("touchstart", unlock, { once: true });
+      });
+    }
   } catch (e) {}
 }
 
 function startDurationTimer() {
   stopDurationTimer();
+  callStartTimeRef = Date.now();
   updateState({ duration: 0 });
   callDurationTimer = setInterval(() => {
-    updateState({ duration: currentState.duration + 1 });
+    const elapsed = Math.floor((Date.now() - callStartTimeRef) / 1000);
+    updateState({ duration: elapsed });
   }, 1000);
 }
 
@@ -178,6 +255,30 @@ function stopDurationTimer() {
     clearInterval(callDurationTimer);
     callDurationTimer = null;
   }
+}
+
+// Wait for candidate gathering up to maxMs to bundle candidates directly into SDP
+function waitForIceGathering(pc: RTCPeerConnection, maxMs = 700): Promise<void> {
+  if (pc.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve) => {
+    let finished = false;
+    const timer = setTimeout(() => {
+      if (!finished) {
+        finished = true;
+        resolve();
+      }
+    }, maxMs);
+
+    const onStateChange = () => {
+      if (pc.iceGatheringState === "complete" && !finished) {
+        finished = true;
+        clearTimeout(timer);
+        pc.removeEventListener("icegatheringstatechange", onStateChange);
+        resolve();
+      }
+    };
+    pc.addEventListener("icegatheringstatechange", onStateChange);
+  });
 }
 
 // Helper to ensure channel is subscribed before broadcasting
@@ -242,37 +343,44 @@ function createPeerConnection(chatId: string, callId: string, partnerId: string,
   };
 
   pc.ontrack = (event) => {
-    let stream = currentState.remoteStream;
-    let updatedStream: MediaStream;
-    if (!stream) {
-      updatedStream = event.streams[0] || new MediaStream([event.track]);
-    } else {
-      updatedStream = new MediaStream(stream.getTracks());
-      if (!updatedStream.getTracks().some((t) => t.id === event.track.id)) {
-        updatedStream.addTrack(event.track);
+    const incomingStream = event.streams[0] || new MediaStream([event.track]);
+    updateState({ remoteStream: incomingStream });
+    ensureRemoteAudioElement(incomingStream);
+    setupAudioVolumeMeter(incomingStream);
+  };
+
+  const handleConnectionSuccess = () => {
+    stopOutgoingRingtone();
+    stopIncomingRingtone();
+    if (currentState.status !== "connected") {
+      updateState({ status: "connected" });
+      playCallConnectedTone();
+      if (!callDurationTimer) {
+        startDurationTimer();
       }
     }
-    updateState({ remoteStream: updatedStream });
-    ensureRemoteAudioElement(updatedStream);
-    setupAudioVolumeMeter(updatedStream);
   };
 
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === "connected") {
-      stopOutgoingRingtone();
-      stopIncomingRingtone();
-      updateState({ status: "connected" });
-      if (!callDurationTimer) {
-        startDurationTimer();
-      }
+      handleConnectionSuccess();
     } else if (
-      pc.connectionState === "disconnected" ||
       pc.connectionState === "failed" ||
       pc.connectionState === "closed"
     ) {
       if (currentState.status === "connected") {
         endActiveCall();
       }
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      handleConnectionSuccess();
+    } else if (pc.iceConnectionState === "failed") {
+      try {
+        (pc as any).restartIce?.();
+      } catch (e) {}
     }
   };
 
@@ -283,9 +391,6 @@ function createPeerConnection(chatId: string, callId: string, partnerId: string,
 // Public Calling API
 // ---------------------------------------------------------------------------
 
-/**
- * Handle incoming call invite payload (shared between inbox and chat channels)
- */
 export function handleIncomingCallInvite(payload: {
   callId: string;
   chatId: string;
@@ -297,10 +402,8 @@ export function handleIncomingCallInvite(payload: {
 }) {
   if (!payload || !payload.callId) return;
 
-  // If already in a call or already ringing for this callId
   if (currentState.status !== "idle") {
-    if (currentState.callId === payload.callId) return; // duplicate invite, ignore
-    // Send busy response
+    if (currentState.callId === payload.callId) return;
     const chan = supabase.channel(`call_channel_${payload.callId}`);
     broadcastSafely(chan, "call_busy", { callId: payload.callId, callerId: payload.callerId });
     return;
@@ -320,9 +423,6 @@ export function handleIncomingCallInvite(payload: {
   });
 }
 
-/**
- * Register the current logged-in user to receive incoming calls across the entire app
- */
 export function registerUserForIncomingCalls(
   currentUserId: string,
   onIncomingCallPrompt?: (caller: {
@@ -361,6 +461,18 @@ export function registerUserForIncomingCalls(
     if (currentState.status === "ringing" && (!payload?.callId || payload.callId === currentState.callId)) {
       stopIncomingRingtone();
       playCallEndedTone();
+      if (currentState.partnerId) {
+        addCallLogEntry({
+          id: `log_${Date.now()}`,
+          partnerId: currentState.partnerId,
+          partnerName: currentState.partnerName || "Unknown",
+          partnerAvatar: currentState.partnerAvatar,
+          callType: currentState.callType,
+          direction: "missed",
+          duration: 0,
+          timestamp: Date.now(),
+        });
+      }
       cleanupMedia();
       updateState({ ...DEFAULT_CALL_STATE, status: "idle" });
     }
@@ -404,6 +516,9 @@ export async function initiateCall({
 }): Promise<void> {
   if (currentState.status !== "idle") return;
 
+  // Unlock audio element on user tap
+  getOrCreateRemoteAudio();
+
   const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   localGatheredIceCandidates = [];
   pendingIceCandidates = [];
@@ -431,8 +546,7 @@ export async function initiateCall({
     let localStream: MediaStream;
     try {
       localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-    } catch (mediaErr) {
-      // Fallback to audio if video camera was denied/unavailable
+    } catch {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     }
 
@@ -455,15 +569,12 @@ export async function initiateCall({
       stopOutgoingRingtone();
       if (pc.signalingState !== "closed" && payload?.answer) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-        updateState({ status: "connected" });
-        playCallConnectedTone();
-        startDurationTimer();
-        // Flush pending ICE candidates received before answer
+        // Flush pending ICE candidates
         while (pendingIceCandidates.length > 0) {
           const cand = pendingIceCandidates.shift();
           if (cand) await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
         }
-        // Resend all locally gathered candidates to make sure callee received them
+        // Resend all gathered candidates
         for (const cand of localGatheredIceCandidates) {
           signalChannel.send({
             type: "broadcast",
@@ -502,13 +613,15 @@ export async function initiateCall({
 
     signalChannel.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
-        // Create Offer
+        // Create Offer & bundle ICE candidates
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
           offerToReceiveVideo: callType === "video",
         });
         await pc.setLocalDescription(offer);
+        await waitForIceGathering(pc, 700);
 
+        const fullOffer = pc.localDescription || offer;
         const invitePayload = {
           callId,
           chatId,
@@ -516,15 +629,12 @@ export async function initiateCall({
           callerName,
           callerAvatar,
           callType,
-          offer: { type: offer.type, sdp: offer.sdp },
+          offer: { type: fullOffer.type, sdp: fullOffer.sdp },
         };
 
-        // Dual delivery:
-        // A. Send to partner's personal call inbox
         const partnerInbox = supabase.channel(`call_inbox_${partnerId}`);
         broadcastSafely(partnerInbox, "incoming_call_invite", invitePayload);
 
-        // B. Send to chat's broadcast channel (if active chat)
         if (chatId) {
           const chatBroadcast = supabase.channel(`chat_broadcast_${chatId}`, { config: { broadcast: { self: false } } });
           broadcastSafely(chatBroadcast, "incoming_call_invite", invitePayload);
@@ -532,7 +642,7 @@ export async function initiateCall({
       }
     });
 
-    // 4. Timeout after 38s if no answer
+    // Timeout after 38s
     setTimeout(() => {
       if (currentState.status === "calling" && currentState.callId === callId) {
         stopOutgoingRingtone();
@@ -555,6 +665,7 @@ export async function acceptIncomingCall(): Promise<void> {
   if (currentState.status !== "ringing" || !currentState.callId) return;
 
   stopIncomingRingtone();
+  getOrCreateRemoteAudio();
 
   const callId = currentState.callId;
   const partnerId = currentState.partnerId!;
@@ -566,7 +677,6 @@ export async function acceptIncomingCall(): Promise<void> {
   pendingIceCandidates = [];
 
   try {
-    // 1. Acquire Local Media
     const mediaConstraints: MediaStreamConstraints = {
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       video: callType === "video" ? { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } : false,
@@ -575,16 +685,13 @@ export async function acceptIncomingCall(): Promise<void> {
     let localStream: MediaStream;
     try {
       localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-    } catch (mediaErr) {
+    } catch {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     }
 
-    updateState({ localStream, status: "connected" });
+    updateState({ localStream });
     setupAudioVolumeMeter(localStream);
-    playCallConnectedTone();
-    startDurationTimer();
 
-    // 2. Setup PeerConnection & Signaling
     const pc = createPeerConnection(chatId, callId, partnerId, myUserId);
     peerConnection = pc;
 
@@ -613,7 +720,7 @@ export async function acceptIncomingCall(): Promise<void> {
       if (status === "SUBSCRIBED") {
         if (storedIncomingOffer) {
           await pc.setRemoteDescription(new RTCSessionDescription(storedIncomingOffer));
-          // Flush pending candidates
+
           while (pendingIceCandidates.length > 0) {
             const cand = pendingIceCandidates.shift();
             if (cand) await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
@@ -621,17 +728,18 @@ export async function acceptIncomingCall(): Promise<void> {
 
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
+          await waitForIceGathering(pc, 700);
 
+          const fullAnswer = pc.localDescription || answer;
           signalChannel.send({
             type: "broadcast",
             event: "call_answered",
             payload: {
               callId,
-              answer: { type: answer.type, sdp: answer.sdp },
+              answer: { type: fullAnswer.type, sdp: fullAnswer.sdp },
             },
           });
 
-          // Resend any candidates gathered so far
           for (const cand of localGatheredIceCandidates) {
             signalChannel.send({
               type: "broadcast",
@@ -648,12 +756,22 @@ export async function acceptIncomingCall(): Promise<void> {
   }
 }
 
-/**
- * Callee rejects the incoming call
- */
 export function rejectIncomingCall(reason: string = "declined"): void {
   stopIncomingRingtone();
   playCallEndedTone();
+
+  if (currentState.partnerId) {
+    addCallLogEntry({
+      id: `log_${Date.now()}`,
+      partnerId: currentState.partnerId,
+      partnerName: currentState.partnerName || "Unknown",
+      partnerAvatar: currentState.partnerAvatar,
+      callType: currentState.callType,
+      direction: "missed",
+      duration: 0,
+      timestamp: Date.now(),
+    });
+  }
 
   if (activeSignalingChannel) {
     activeSignalingChannel.send({
@@ -663,7 +781,6 @@ export function rejectIncomingCall(reason: string = "declined"): void {
     });
   }
 
-  // Also notify partner on user inbox
   if (currentState.partnerId) {
     const partnerInbox = supabase.channel(`call_inbox_${currentState.partnerId}`);
     partnerInbox.send({
@@ -677,15 +794,26 @@ export function rejectIncomingCall(reason: string = "declined"): void {
   updateState({ ...DEFAULT_CALL_STATE, status: "idle" });
 }
 
-/**
- * Hangs up active call (both caller and callee)
- */
 export function endActiveCall(): void {
   stopOutgoingRingtone();
   stopIncomingRingtone();
   playCallEndedTone();
   stopDurationTimer();
   stopAudioMeter();
+
+  if (currentState.partnerId) {
+    const direction = currentState.isCaller ? "outgoing" : "incoming";
+    addCallLogEntry({
+      id: `log_${Date.now()}`,
+      partnerId: currentState.partnerId,
+      partnerName: currentState.partnerName || "Partner",
+      partnerAvatar: currentState.partnerAvatar,
+      callType: currentState.callType,
+      direction: currentState.duration > 0 ? direction : (currentState.isCaller ? "outgoing" : "missed"),
+      duration: currentState.duration,
+      timestamp: Date.now(),
+    });
+  }
 
   if (activeSignalingChannel) {
     activeSignalingChannel.send({
@@ -695,7 +823,6 @@ export function endActiveCall(): void {
     });
   }
 
-  // If we were calling and caller cancelled before callee answered
   if (currentState.status === "calling" && currentState.partnerId) {
     const partnerInbox = supabase.channel(`call_inbox_${currentState.partnerId}`);
     partnerInbox.send({
@@ -744,9 +871,6 @@ function cleanupMedia() {
   storedIncomingOffer = null;
 }
 
-/**
- * Toggles microphone mute state during active call
- */
 export function toggleMicMute(): boolean {
   if (!currentState.localStream) return false;
   const audioTracks = currentState.localStream.getAudioTracks();
@@ -760,9 +884,6 @@ export function toggleMicMute(): boolean {
   return newMuted;
 }
 
-/**
- * Toggles video camera on/off during call
- */
 export function toggleVideoCamera(): boolean {
   if (!currentState.localStream) return false;
   const videoTracks = currentState.localStream.getVideoTracks();

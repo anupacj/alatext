@@ -8,11 +8,12 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
+  const isWebMobile = Platform.OS === 'web' && width < 768;
   const { isTabsLoading } = useTabsLoading();
   const currentRoute = state.routes[state.index]?.name;
 
-  // Never show tab bar on web desktop, and hide during initial loading screen on mobile
-  if (isDesktop || (currentRoute === 'index' && isTabsLoading)) {
+  // Never show tab bar on web desktop, and on web mobile index manages its own integrated 4-tab bar
+  if (isDesktop || (isWebMobile && currentRoute === 'index') || (currentRoute === 'index' && isTabsLoading)) {
     return null;
   }
 
