@@ -10,6 +10,7 @@ import {
   Maximize2, Minimize2, Lock, RotateCcw, Phone, PhoneIncoming,
   PhoneOutgoing, PhoneMissed, Video, Pin, Camera, Palette, Sparkles,
   CircleDot, CheckCheck, Clock, ChevronRight, MessageCircle, AlertCircle,
+  MoreVertical, RefreshCw,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -62,6 +63,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [themeModalOpen, setThemeModalOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [callLogs, setCallLogs] = useState<CallLogEntry[]>([]);
   const [stories, setStories] = useState<StoryItem[]>([]);
   const [activeStory, setActiveStory] = useState<StoryItem | null>(null);
@@ -666,26 +668,99 @@ export default function Home() {
               <Camera size={18} color={theme.text} />
             </TouchableOpacity>
 
-            {/* Theme Selector Palette */}
+            {/* 3-Dot More Menu */}
             <TouchableOpacity
-              style={[webStyles.circleIconBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
-              onPress={() => setThemeModalOpen(true)}
+              style={[webStyles.circleIconBtn, { backgroundColor: moreMenuOpen ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)" }]}
+              onPress={() => setMoreMenuOpen((prev) => !prev)}
               activeOpacity={0.7}
             >
-              <Palette size={18} color={theme.accent || "#f97316"} />
+              <MoreVertical size={18} color={theme.text} />
             </TouchableOpacity>
-
-            {/* Lock / Wipe Cache */}
-            {isPinEnabled && !!realPin && (
-              <TouchableOpacity
-                style={[webStyles.circleIconBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
-                onPress={lockNow}
-              >
-                <Lock size={17} color="#f43f5e" />
-              </TouchableOpacity>
-            )}
           </View>
         </View>
+
+        {/* 3-Dot Dropdown Menu Modal */}
+        {moreMenuOpen && (
+          <Modal transparent animationType="fade" visible={moreMenuOpen} onRequestClose={() => setMoreMenuOpen(false)}>
+            <Pressable style={webStyles.moreMenuBackdrop} onPress={() => setMoreMenuOpen(false)}>
+              <View style={[webStyles.moreMenuCard, { backgroundColor: isAmoled ? "#161616" : theme.surface, borderColor: theme.border }]}>
+                {/* 1. Change Theme */}
+                <TouchableOpacity
+                  style={webStyles.moreMenuItem}
+                  onPress={() => {
+                    setMoreMenuOpen(false);
+                    setThemeModalOpen(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[webStyles.moreMenuIconCircle, { backgroundColor: "rgba(249, 115, 22, 0.15)" }]}>
+                    <Palette size={16} color={theme.accent || "#f97316"} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[webStyles.moreMenuItemTitle, { color: theme.text }]}>Change Theme</Text>
+                    <Text style={[webStyles.moreMenuItemSubtitle, { color: theme.textMuted }]}>{theme.name}</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* 2. Lock App (if PIN enabled) */}
+                {isPinEnabled && !!realPin && (
+                  <TouchableOpacity
+                    style={webStyles.moreMenuItem}
+                    onPress={() => {
+                      setMoreMenuOpen(false);
+                      lockNow();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[webStyles.moreMenuIconCircle, { backgroundColor: "rgba(244, 63, 94, 0.15)" }]}>
+                      <Lock size={16} color="#f43f5e" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[webStyles.moreMenuItemTitle, { color: theme.text }]}>Lock App</Text>
+                      <Text style={[webStyles.moreMenuItemSubtitle, { color: theme.textMuted }]}>Require PIN</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
+                {/* 3. Reload / Refresh */}
+                <TouchableOpacity
+                  style={webStyles.moreMenuItem}
+                  onPress={() => {
+                    setMoreMenuOpen(false);
+                    fetchChats();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[webStyles.moreMenuIconCircle, { backgroundColor: "rgba(56, 189, 248, 0.15)" }]}>
+                    <RefreshCw size={16} color="#38bdf8" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[webStyles.moreMenuItemTitle, { color: theme.text }]}>Refresh</Text>
+                    <Text style={[webStyles.moreMenuItemSubtitle, { color: theme.textMuted }]}>Sync messages</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* 4. Profile & Account */}
+                <TouchableOpacity
+                  style={[webStyles.moreMenuItem, { borderBottomWidth: 0 }]}
+                  onPress={() => {
+                    setMoreMenuOpen(false);
+                    router.push("/profile");
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[webStyles.moreMenuIconCircle, { backgroundColor: "rgba(255, 255, 255, 0.08)" }]}>
+                    <User size={16} color={theme.text} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[webStyles.moreMenuItemTitle, { color: theme.text }]}>Profile & Account</Text>
+                    <Text style={[webStyles.moreMenuItemSubtitle, { color: theme.textMuted }]}>Settings and radar</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Modal>
+        )}
 
         {/* Inline Search Bar */}
         {isSearchOpen && (
@@ -739,7 +814,7 @@ export default function Home() {
                       }}
                       onLongPress={() => setChatMenuModalItem(item)}
                     >
-                      {/* Avatar with Online Dot */}
+                      {/* Avatar */}
                       <View style={webStyles.avatarWrap}>
                         {item.avatar ? (
                           <Image source={{ uri: item.avatar }} style={webStyles.chatAvatarImg} />
@@ -748,8 +823,6 @@ export default function Home() {
                             {item.isGroup ? <Users size={22} color="#fff" /> : <User size={22} color="#fff" />}
                           </View>
                         )}
-                        {/* Glowing Online Indicator */}
-                        <View style={webStyles.onlineDot} />
                       </View>
 
                       {/* Chat Main Info */}
@@ -946,24 +1019,36 @@ export default function Home() {
               <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textMuted, textTransform: "uppercase", letterSpacing: 0.8, fontFamily: "Josefin Sans", marginBottom: 12 }}>
                 Recent Moments
               </Text>
-              {stories.map((s) => (
-                <TouchableOpacity
-                  key={`list_${s.id}`}
-                  style={[webStyles.chatRow, { borderBottomColor: "rgba(255,255,255,0.04)" }]}
-                  onPress={() => setActiveStory(s)}
-                >
-                  <View style={[webStyles.avatarWrap, { borderColor: theme.accent || "#f97316", borderWidth: 2, padding: 2, borderRadius: 28 }]}>
-                    <Image source={{ uri: s.userAvatar || s.mediaUrl }} style={{ width: 48, height: 48, borderRadius: 24 }} />
-                  </View>
-                  <View style={webStyles.chatInfoCol}>
-                    <Text style={[webStyles.contactNameText, { color: theme.text }]}>{s.userName}</Text>
-                    <Text style={[webStyles.previewText, { color: theme.textMuted }]}>{s.caption || "Tap to view update"}</Text>
-                  </View>
-                  <Text style={[webStyles.timeAgoText, { color: theme.textMuted }]}>
-                    {new Date(s.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              {stories.length === 0 ? (
+                <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 40, opacity: 0.7 }}>
+                  <Sparkles size={28} color={theme.textMuted} style={{ marginBottom: 8 }} />
+                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: "600", fontFamily: "Josefin Sans", textAlign: "center" }}>
+                    No status updates yet
                   </Text>
-                </TouchableOpacity>
-              ))}
+                  <Text style={{ color: theme.textMuted, fontSize: 12, fontFamily: "Josefin Sans", textAlign: "center", marginTop: 4 }}>
+                    Tap + to share a photo or update!
+                  </Text>
+                </View>
+              ) : (
+                stories.map((s) => (
+                  <TouchableOpacity
+                    key={`list_${s.id}`}
+                    style={[webStyles.chatRow, { borderBottomColor: "rgba(255,255,255,0.04)" }]}
+                    onPress={() => setActiveStory(s)}
+                  >
+                    <View style={[webStyles.avatarWrap, { borderColor: theme.accent || "#f97316", borderWidth: 2, padding: 2, borderRadius: 28 }]}>
+                      <Image source={{ uri: s.userAvatar || s.mediaUrl }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+                    </View>
+                    <View style={webStyles.chatInfoCol}>
+                      <Text style={[webStyles.contactNameText, { color: theme.text }]}>{s.userName}</Text>
+                      <Text style={[webStyles.previewText, { color: theme.textMuted }]}>{s.caption || "Tap to view update"}</Text>
+                    </View>
+                    <Text style={[webStyles.timeAgoText, { color: theme.textMuted }]}>
+                      {new Date(s.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
             </View>
           </ScrollView>
         )}
@@ -1694,7 +1779,7 @@ const webStyles = StyleSheet.create({
   },
   floatingNavContainer: {
     position: "absolute",
-    bottom: 24,
+    bottom: 19,
     left: 0,
     right: 0,
     flexDirection: "row",
@@ -1840,5 +1925,55 @@ const webStyles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Josefin Sans",
     textAlign: "center",
+  },
+  moreMenuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  moreMenuCard: {
+    position: "absolute",
+    top: 64,
+    right: 16,
+    width: 220,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    zIndex: 10000,
+    ...(Platform.OS === "web"
+      ? ({
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          boxShadow: "0 12px 32px rgba(0,0,0,0.6)",
+        } as any)
+      : {}),
+  },
+  moreMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+  },
+  moreMenuIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  moreMenuItemTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: "Josefin Sans",
+  },
+  moreMenuItemSubtitle: {
+    fontSize: 11,
+    fontFamily: "Josefin Sans",
+    marginTop: 1,
   },
 });

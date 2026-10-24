@@ -161,6 +161,94 @@ function SendingDots() {
   return <>{dots}</>;
 }
 
+function EntranceSyncPfp({ avatarUrl }: { avatarUrl?: string }) {
+  const [visible, setVisible] = useState(true);
+  const opacityAnim = useRef(new RNAnimated.Value(0)).current;
+  const scaleAnim = useRef(new RNAnimated.Value(0.3)).current;
+  const rotateAnim = useRef(new RNAnimated.Value(0)).current;
+
+  useEffect(() => {
+    const isWeb = Platform.OS === "web";
+    const useNativeDriver = !isWeb;
+
+    const anim = RNAnimated.parallel([
+      // Smooth 360 degree rotation
+      RNAnimated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 2100,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver,
+      }),
+      // Entrance -> Blink twice -> Hold -> Smooth exit
+      RNAnimated.sequence([
+        // Enter smoothly
+        RNAnimated.parallel([
+          RNAnimated.timing(scaleAnim, { toValue: 1, duration: 300, easing: Easing.out(Easing.back(1.5)), useNativeDriver }),
+          RNAnimated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver }),
+        ]),
+        // Blink 1
+        RNAnimated.timing(opacityAnim, { toValue: 0.2, duration: 250, useNativeDriver }),
+        RNAnimated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver }),
+        // Blink 2
+        RNAnimated.timing(opacityAnim, { toValue: 0.2, duration: 250, useNativeDriver }),
+        RNAnimated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver }),
+        // Brief pause
+        RNAnimated.delay(200),
+        // Smooth exit
+        RNAnimated.parallel([
+          RNAnimated.timing(opacityAnim, { toValue: 0, duration: 350, useNativeDriver }),
+          RNAnimated.timing(scaleAnim, { toValue: 0.3, duration: 350, useNativeDriver }),
+        ]),
+      ]),
+    ]);
+
+    anim.start(() => {
+      setVisible(false);
+    });
+
+    return () => anim.stop();
+  }, []);
+
+  if (!visible) return null;
+
+  const spin = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
+  return (
+    <RNAnimated.View
+      style={{
+        marginRight: 6,
+        opacity: opacityAnim,
+        transform: [{ scale: scaleAnim }, { rotate: spin }],
+      }}
+      pointerEvents="none"
+    >
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          borderWidth: 1.5,
+          borderColor: "#38bdf8",
+          overflow: "hidden",
+          backgroundColor: "rgba(56, 189, 248, 0.15)",
+          alignItems: "center",
+          justifyContent: "center",
+          ...(Platform.OS === "web" ? ({ boxShadow: "0 0 10px rgba(56, 189, 248, 0.5)" } as any) : {}),
+        }}
+      >
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={{ width: 22, height: 22, borderRadius: 11 }} />
+        ) : (
+          <User size={12} color="#38bdf8" />
+        )}
+      </View>
+    </RNAnimated.View>
+  );
+}
+
 export default function ChatScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
@@ -3584,7 +3672,7 @@ export default function ChatScreen() {
                           >
                             {formatLastSeenText(targetUser, isTargetOnline)}
                           </Text>
-                          {Platform.OS === "web" && (
+                          {Platform.OS === "web" && radarDistanceKm !== null && radarDistanceKm !== undefined && !isNaN(radarDistanceKm) && !!formatCoupleDistance(radarDistanceKm) && (
                             <TouchableOpacity
                               onPress={(e) => {
                                 e?.stopPropagation?.();
@@ -3612,6 +3700,9 @@ export default function ChatScreen() {
                         </View>
                       ) : null}
                     </View>
+
+                    {/* Entrance Smooth Sync Badge on right edge of pill */}
+                    <EntranceSyncPfp avatarUrl={(targetUser?.id && chatAvatars[targetUser.id]) || targetUser?.avatar_url || (typeof avatar === "string" ? avatar : undefined)} />
 
                     {/* Dynamic Island Animated Indicator on the Right Side */}
                     {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying && (

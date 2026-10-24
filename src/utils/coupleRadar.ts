@@ -56,7 +56,7 @@ export function calculateBearing(lat1: number, lon1: number, lat2: number, lon2:
  */
 export function formatCoupleDistance(distKm: number | null): string {
   if (distKm === null || distKm === undefined || isNaN(distKm)) {
-    return "Syncing...";
+    return "";
   }
   if (distKm < 0.05) {
     return "Together 💕 (< 50m)";

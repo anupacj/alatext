@@ -625,7 +625,7 @@ export default function ChatInfoModal({
       )}
       <Text style={styles.hugeHandle}>@{targetUser?.username}</Text>
 
-      {radarDistanceKm !== undefined && (
+      {radarDistanceKm !== undefined && radarDistanceKm !== null && !isNaN(radarDistanceKm) && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(244, 63, 94, 0.12)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginTop: 10, borderWidth: 1, borderColor: "rgba(244, 63, 94, 0.3)", alignSelf: "center" }}>
           <Navigation size={14} color="#f43f5e" />
           <Text style={{ color: "#f43f5e", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" }}>
