@@ -161,93 +161,6 @@ function SendingDots() {
   return <>{dots}</>;
 }
 
-function EntranceLocationSyncBadge() {
-  const [visible, setVisible] = useState(true);
-  const opacityAnim = useRef(new RNAnimated.Value(0)).current;
-  const scaleAnim = useRef(new RNAnimated.Value(0.3)).current;
-  const rotateAnim = useRef(new RNAnimated.Value(0)).current;
-
-  useEffect(() => {
-    const isWeb = Platform.OS === "web";
-    const useNativeDriver = !isWeb;
-
-    const anim = RNAnimated.parallel([
-      // Smooth 180-degree sweep to hint location sync / refresh
-      RNAnimated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 1800,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver,
-      }),
-      // Entrance -> Blink twice -> Hold -> Smooth exit
-      RNAnimated.sequence([
-        // Enter smoothly
-        RNAnimated.parallel([
-          RNAnimated.timing(scaleAnim, { toValue: 1, duration: 250, easing: Easing.out(Easing.back(1.5)), useNativeDriver }),
-          RNAnimated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver }),
-        ]),
-        // Blink 1
-        RNAnimated.timing(opacityAnim, { toValue: 0.25, duration: 250, useNativeDriver }),
-        RNAnimated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver }),
-        // Blink 2
-        RNAnimated.timing(opacityAnim, { toValue: 0.25, duration: 250, useNativeDriver }),
-        RNAnimated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver }),
-        // Brief pause
-        RNAnimated.delay(200),
-        // Smooth exit
-        RNAnimated.parallel([
-          RNAnimated.timing(opacityAnim, { toValue: 0, duration: 300, useNativeDriver }),
-          RNAnimated.timing(scaleAnim, { toValue: 0.3, duration: 300, useNativeDriver }),
-        ]),
-      ]),
-    ]);
-
-    anim.start(() => {
-      setVisible(false);
-    });
-
-    return () => anim.stop();
-  }, []);
-
-  if (!visible) return null;
-
-  // Rotate 180 degrees only (not a full 360 circle)
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "180deg"],
-  });
-
-  return (
-    <RNAnimated.View
-      style={{
-        marginRight: 6,
-        opacity: opacityAnim,
-        transform: [{ scale: scaleAnim }],
-      }}
-      pointerEvents="none"
-    >
-      <View
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 11,
-          borderWidth: 1.5,
-          borderColor: "#f43f5e",
-          overflow: "hidden",
-          backgroundColor: "rgba(244, 63, 94, 0.15)",
-          alignItems: "center",
-          justifyContent: "center",
-          ...(Platform.OS === "web" ? ({ boxShadow: "0 0 10px rgba(244, 63, 94, 0.5)" } as any) : {}),
-        }}
-      >
-        <RNAnimated.View style={{ transform: [{ rotate: spin }] }}>
-          <Navigation size={11} color="#f43f5e" />
-        </RNAnimated.View>
-      </View>
-    </RNAnimated.View>
-  );
-}
-
 export default function ChatScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
@@ -3671,37 +3584,9 @@ export default function ChatScreen() {
                           >
                             {formatLastSeenText(targetUser, isTargetOnline)}
                           </Text>
-                          {Platform.OS === "web" && radarDistanceKm !== null && radarDistanceKm !== undefined && !isNaN(radarDistanceKm) && !!formatCoupleDistance(radarDistanceKm) && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e?.stopPropagation?.();
-                                refreshRadarLocation(true);
-                              }}
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                gap: 3,
-                                backgroundColor: "rgba(244, 63, 94, 0.12)",
-                                paddingHorizontal: 6,
-                                paddingVertical: 1.5,
-                                borderRadius: 8,
-                                borderWidth: 1,
-                                borderColor: "rgba(244, 63, 94, 0.25)",
-                              }}
-                              activeOpacity={0.7}
-                            >
-                              <Navigation size={10} color="#f43f5e" />
-                              <Text style={{ fontSize: 11, fontWeight: "600", color: "#f43f5e", fontFamily: "Josefin Sans" }}>
-                                {formatCoupleDistance(radarDistanceKm)}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
                         </View>
                       ) : null}
                     </View>
-
-                    {/* Entrance Smooth Location Sync Badge on right edge of pill */}
-                    <EntranceLocationSyncBadge />
 
                     {/* Dynamic Island Animated Indicator on the Right Side */}
                     {isDynamicIslandActive && notchConfig.dynamicAnimationsEnabled && audioState.isPlaying && (
@@ -4508,17 +4393,20 @@ export default function ChatScreen() {
                 <VoiceRecorder onSendAudio={handleSendVoiceMessage} onCancel={() => setIsRecordingVoice(false)} />
               ) : (
                 <>
-                  <View style={[
-                    styles.inputWrapper,
-                    isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
-                    showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.5)', borderColor: 'rgba(255,255,255,0.18)' } :
-                    theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
-                    theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
-                    { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
-                    inputText.includes("\n") ? { height: undefined, minHeight: 46, maxHeight: 120 } : { height: 46 },
-                    { overflow: "hidden" }
-                  ]}>
-                    <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} />
+                  <Pressable 
+                    onPress={() => textInputRef.current?.focus()}
+                    style={[
+                      styles.inputWrapper,
+                      isAmoled ? { backgroundColor: 'rgba(0,0,0,0.85)', borderColor: '#222' } :
+                      showWallpaper ? { backgroundColor: 'rgba(20,20,30,0.5)', borderColor: 'rgba(255,255,255,0.18)' } :
+                      theme.id === 'light' ? { backgroundColor: 'rgba(255,255,255,0.88)', borderColor: 'rgba(0,0,0,0.08)' } :
+                      theme.id === 'pink' ? { backgroundColor: 'rgba(252,231,243,0.88)', borderColor: 'rgba(131,24,67,0.12)' } :
+                      { backgroundColor: 'rgba(43,45,49,0.88)', borderColor: 'rgba(255,255,255,0.08)' },
+                      inputText.includes("\n") ? { height: undefined, minHeight: 46, maxHeight: 120 } : { height: 46 },
+                      { overflow: "hidden" }
+                    ]}
+                  >
+                    <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
                     <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                       {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
                     </TouchableOpacity>
@@ -4585,8 +4473,8 @@ export default function ChatScreen() {
                     )}
                     <TextInput 
                       ref={textInputRef}
-                      showSoftInputOnFocus={!isGlassKeyboardOpen}
-                      inputMode={isGlassKeyboardOpen ? "none" : "text"}
+                      showSoftInputOnFocus={Platform.OS === "web" ? true : !isGlassKeyboardOpen}
+                      inputMode={isGlassKeyboardOpen && Platform.OS !== "web" ? "none" : "text"}
                       style={[
                         styles.textInput, 
                         (messageFont && messageFont !== "system") 
@@ -4600,13 +4488,6 @@ export default function ChatScreen() {
                       onChangeText={handleInputChange}
                       onFocus={() => {
                         tabTitleManager.clearUnread();
-                        if (Platform.OS === "web" && typeof window !== "undefined") {
-                          setTimeout(() => {
-                            window.scrollTo(0, 0);
-                            document.documentElement.scrollTop = 0;
-                            document.body.scrollTop = 0;
-                          }, 50);
-                        }
                       }}
                       onKeyPress={(e: any) => {
                         if (emojiMatches.length > 0) {
@@ -4641,7 +4522,7 @@ export default function ChatScreen() {
                         }
                       }}
                       multiline />
-                  </View>
+                  </Pressable>
                   <TouchableOpacity
                     style={[
                       styles.circularSendBtn,
@@ -4660,7 +4541,7 @@ export default function ChatScreen() {
                       }
                     }}
                   >
-                    <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} />
+                    <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
                     <RNAnimated.View
                       style={{
                         transform: [
@@ -5426,7 +5307,7 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     left: 0,
     right: 0,
     backgroundColor: "transparent",
-    zIndex: 50,
+    zIndex: 100,
   },
   inputAreaRow: {
     flexDirection: "row",
@@ -5477,7 +5358,8 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     color: isAmoled ? "#ffffff" : (theme.id === "pink" ? "#ffffff" : theme.text),
     fontSize: 15,
     lineHeight: 20,
-    height: 24,
+    height: "100%",
+    minHeight: 36,
     alignSelf: "center",
     paddingTop: 0,
     paddingBottom: 0,
