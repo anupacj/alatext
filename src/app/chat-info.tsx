@@ -1520,10 +1520,33 @@ export default function ChatInfoScreen() {
         {!isGroup ? (
           <>
             {/* ========================================================= */}
-            {/* HERO BANNER SECTION (Doctor / Partner Profile Redesign)    */}
+            {/* HERO BANNER SECTION (Full Cover Image + Gradient Overlay)  */}
             {/* ========================================================= */}
             <View style={styles.oceanHeroContainer}>
-              {/* Dynamic Island / Top Nav icons */}
+              {/* Full Cover Partner Photo */}
+              <Image
+                source={{
+                  uri:
+                    customAvatar ||
+                    partnerUser?.avatar_url ||
+                    targetAvatarParam ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      partnerNickname ||
+                        partnerUser?.display_name ||
+                        partnerUser?.username ||
+                        targetDisplayNameParam ||
+                        targetUsernameParam ||
+                        "User"
+                    )}&background=0d5c66&color=fff&size=512`,
+                }}
+                style={styles.heroCoverImage}
+                resizeMode="cover"
+              />
+
+              {/* Bottom to Top Fade Gradient Overlay */}
+              <View style={styles.heroGradientOverlay} />
+
+              {/* Top Liquid Glass Nav Bar */}
               <View style={styles.heroTopNavBar}>
                 <TouchableOpacity
                   style={styles.heroCircleGlassBtn}
@@ -1553,34 +1576,14 @@ export default function ChatInfoScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Center Portrait / Avatar */}
-              <View style={styles.heroPortraitContainer}>
-                <Image
-                  source={{
-                    uri:
-                      customAvatar ||
-                      partnerUser?.avatar_url ||
-                      targetAvatarParam ||
-                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                        partnerNickname ||
-                          partnerUser?.display_name ||
-                          partnerUser?.username ||
-                          targetDisplayNameParam ||
-                          targetUsernameParam ||
-                          "User"
-                      )}&background=0d5c66&color=fff&size=256`,
-                  }}
-                  style={styles.heroPortraitImage}
-                />
-                {customAvatar && (
-                  <View style={styles.heroSecretBadge}>
-                    <Lock size={11} color="#ffffff" style={{ marginRight: 3 }} />
-                    <Text style={styles.heroSecretBadgeText}>Secret PFP</Text>
-                  </View>
-                )}
-              </View>
+              {customAvatar && (
+                <View style={styles.heroSecretBadge}>
+                  <Lock size={11} color="#ffffff" style={{ marginRight: 3 }} />
+                  <Text style={styles.heroSecretBadgeText}>Secret PFP</Text>
+                </View>
+              )}
 
-              {/* Bottom of Hero Card: Name on Left, Call Buttons on Right */}
+              {/* Bottom of Hero Card: Name on Left, Call Buttons on Right (sits over the gradient) */}
               <View style={styles.heroBottomRow}>
                 <View style={styles.heroNameCol}>
                   {/* Nickname (or Real Name if no nickname set) */}
@@ -1597,7 +1600,7 @@ export default function ChatInfoScreen() {
                   </Text>
                 </View>
 
-                {/* 3 Circular Action Buttons */}
+                {/* 3 Circular White Action Buttons */}
                 <View style={styles.heroCallActionRow}>
                   {/* 1. Chat */}
                   <TouchableOpacity
@@ -1633,59 +1636,61 @@ export default function ChatInfoScreen() {
             </View>
 
             {/* ========================================================= */}
-            {/* 3 STATS BADGES CARD (Messages, Media, Distance)            */}
+            {/* 3 STATS BADGES CARD (Horizontal Row: Icon + Value/Label)   */}
             {/* ========================================================= */}
             <View
               style={[
                 styles.statsCardContainer,
                 {
-                  backgroundColor: isAmoled ? "#121214" : (theme.isDark !== false ? "#181820" : "#ffffff"),
+                  backgroundColor: isAmoled ? "#121214" : (theme.isDark !== false ? "#161820" : "#ffffff"),
                   borderColor: isAmoled ? "#242428" : (theme.isDark !== false ? "rgba(255,255,255,0.08)" : "#e2e8f0"),
                 },
               ]}
             >
-              {/* Stat 1: Messages Milestone */}
+              {/* Stat 1: Messages */}
               <View style={styles.statCol}>
                 <View style={[styles.statIconCircle, { backgroundColor: isAmoled ? "#1e1e24" : "rgba(13,92,102,0.12)" }]}>
-                  <Clock size={18} color="#0d5c66" />
+                  <Clock size={17} color="#0d5c66" />
                 </View>
-                <Text style={[styles.statValueText, { color: theme.text }]}>
-                  {totalMessagesCount >= 100
-                    ? `${(Math.floor(totalMessagesCount / 100) * 100).toLocaleString()}+`
-                    : (totalMessagesCount > 0 ? `${totalMessagesCount}` : "100+")}
-                </Text>
-                <Text style={[styles.statLabelText, { color: theme.textMuted }]}>Messages</Text>
+                <View style={styles.statTextCol}>
+                  <Text style={[styles.statValueText, { color: theme.text }]} numberOfLines={1}>
+                    {totalMessagesCount >= 100
+                      ? `${(Math.floor(totalMessagesCount / 100) * 100).toLocaleString()}+`
+                      : (totalMessagesCount > 0 ? `${totalMessagesCount}` : "100+")}
+                  </Text>
+                  <Text style={[styles.statLabelText, { color: theme.textMuted }]} numberOfLines={1}>Messages</Text>
+                </View>
               </View>
-
-              <View style={[styles.statDivider, { backgroundColor: isAmoled ? "#242428" : (theme.isDark !== false ? "rgba(255,255,255,0.06)" : "#e2e8f0") }]} />
 
               {/* Stat 2: Media Shared */}
               <View style={styles.statCol}>
                 <View style={[styles.statIconCircle, { backgroundColor: isAmoled ? "#1e1e24" : "rgba(13,92,102,0.12)" }]}>
-                  <ImageIcon size={18} color="#0d5c66" />
+                  <ImageIcon size={17} color="#0d5c66" />
                 </View>
-                <Text style={[styles.statValueText, { color: theme.text }]}>
-                  {sharedMedia.length > 0 ? `${sharedMedia.length}+` : "0"}
-                </Text>
-                <Text style={[styles.statLabelText, { color: theme.textMuted }]}>Shared Media</Text>
+                <View style={styles.statTextCol}>
+                  <Text style={[styles.statValueText, { color: theme.text }]} numberOfLines={1}>
+                    {sharedMedia.length > 0 ? `${sharedMedia.length}+` : "0"}
+                  </Text>
+                  <Text style={[styles.statLabelText, { color: theme.textMuted }]} numberOfLines={1}>Shared</Text>
+                </View>
               </View>
 
-              <View style={[styles.statDivider, { backgroundColor: isAmoled ? "#242428" : (theme.isDark !== false ? "rgba(255,255,255,0.06)" : "#e2e8f0") }]} />
-
-              {/* Stat 3: Distance */}
+              {/* Stat 3: Distance (Clean value, no truncation) */}
               <View style={styles.statCol}>
                 <View style={[styles.statIconCircle, { backgroundColor: isAmoled ? "#1e1e24" : "rgba(13,92,102,0.12)" }]}>
-                  <Navigation size={18} color="#0d5c66" />
+                  <Navigation size={17} color="#0d5c66" />
                 </View>
-                <Text style={[styles.statValueText, { color: theme.text }]} numberOfLines={1}>
-                  {accurateDistance || "Nearby"}
-                </Text>
-                <Text style={[styles.statLabelText, { color: theme.textMuted }]}>Distance</Text>
+                <View style={styles.statTextCol}>
+                  <Text style={[styles.statValueText, { color: theme.text }]} numberOfLines={1}>
+                    {accurateDistance ? accurateDistance.replace(" away", "").replace("Together 💕", "Nearby") : "Nearby"}
+                  </Text>
+                  <Text style={[styles.statLabelText, { color: theme.textMuted }]} numberOfLines={1}>Distance</Text>
+                </View>
               </View>
             </View>
 
             {/* ========================================================= */}
-            {/* 4 ACTION TABS (Replacing Book Appointment)                */}
+            {/* 4 ACTION TABS (Row 1: Uniform Segmented Cards)            */}
             {/* ========================================================= */}
             <View style={styles.actionPillsContainer}>
               <TouchableOpacity
@@ -1693,8 +1698,8 @@ export default function ChatInfoScreen() {
                 onPress={() => setActiveTab("media")}
                 activeOpacity={0.8}
               >
-                <ImageIcon size={15} color={activeTab === "media" ? "#ffffff" : theme.textMuted} />
-                <Text style={[styles.actionPillText, activeTab === "media" && styles.actionPillTextActive]}>
+                <ImageIcon size={14} color={activeTab === "media" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.actionPillText, activeTab === "media" && styles.actionPillTextActive]} numberOfLines={1}>
                   Media ({sharedMedia.length})
                 </Text>
               </TouchableOpacity>
@@ -1704,9 +1709,9 @@ export default function ChatInfoScreen() {
                 onPress={() => setActiveTab("memories")}
                 activeOpacity={0.8}
               >
-                <Heart size={15} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
-                <Text style={[styles.actionPillText, activeTab === "memories" && styles.actionPillTextActive]}>
-                  Memories ({memories.length})
+                <Heart size={14} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.actionPillText, activeTab === "memories" && styles.actionPillTextActive]} numberOfLines={1}>
+                  Memories
                 </Text>
               </TouchableOpacity>
 
@@ -1715,14 +1720,14 @@ export default function ChatInfoScreen() {
                 onPress={() => setActiveTab("notes")}
                 activeOpacity={0.8}
               >
-                <FileText size={15} color={activeTab === "notes" ? "#ffffff" : theme.textMuted} />
-                <Text style={[styles.actionPillText, activeTab === "notes" && styles.actionPillTextActive]}>
+                <FileText size={14} color={activeTab === "notes" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.actionPillText, activeTab === "notes" && styles.actionPillTextActive]} numberOfLines={1}>
                   Notes ({notes.length})
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.actionPillBtn, activeTab === "vault" && styles.actionPillBtnActiveVault]}
+                style={[styles.actionPillBtn, activeTab === "vault" && styles.actionPillBtnActive]}
                 onPress={() => {
                   if (!vaultUnlocked) {
                     handleTriggerUnlockVault();
@@ -1732,8 +1737,8 @@ export default function ChatInfoScreen() {
                 }}
                 activeOpacity={0.8}
               >
-                {vaultUnlocked ? <Unlock size={15} color="#10b981" /> : <Lock size={15} color="#a855f7" />}
-                <Text style={[styles.actionPillText, activeTab === "vault" && styles.actionPillTextActive]}>
+                {vaultUnlocked ? <Unlock size={14} color="#ffffff" /> : <Lock size={14} color={theme.textMuted} />}
+                <Text style={[styles.actionPillText, activeTab === "vault" && styles.actionPillTextActive]} numberOfLines={1}>
                   {vaultUnlocked ? "Vault" : "Locked"}
                 </Text>
               </TouchableOpacity>
@@ -3126,38 +3131,67 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     // OCEAN HERO BANNER & PARTNER PROFILE (Doctor UI Match)
     // -------------------------------------------------------------
     oceanHeroContainer: {
+      width: "100%",
+      maxWidth: isDesktop ? 680 : "100%",
+      height: 380,
       backgroundColor: "#0d5c66",
-      borderBottomLeftRadius: 36,
-      borderBottomRightRadius: 36,
+      borderBottomLeftRadius: 32,
+      borderBottomRightRadius: 32,
       paddingTop: Platform.OS === "web" ? 20 : 52,
-      paddingBottom: 24,
+      paddingBottom: 22,
       paddingHorizontal: 20,
       overflow: "hidden",
+      position: "relative",
+      justifyContent: "space-between",
       ...(Platform.OS === "web"
         ? ({
             boxShadow: "0 12px 36px rgba(13, 92, 102, 0.35)",
           } as any)
         : {}),
     },
+    heroCoverImage: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: "100%",
+      height: "100%",
+      ...(Platform.OS === "web" ? ({ objectFit: "cover" } as any) : {}),
+    },
+    heroGradientOverlay: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: 220,
+      ...(Platform.OS === "web"
+        ? ({
+            background: "linear-gradient(to top, rgba(6, 45, 52, 0.98) 0%, rgba(6, 45, 52, 0.65) 45%, transparent 100%)",
+          } as any)
+        : {
+            backgroundColor: "rgba(6, 45, 52, 0.75)",
+          }),
+    },
     heroTopNavBar: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginBottom: 16,
+      zIndex: 5,
     },
     heroCircleGlassBtn: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      backgroundColor: "rgba(255, 255, 255, 0.2)",
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "rgba(255, 255, 255, 0.12)",
       borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.3)",
+      borderColor: "rgba(255, 255, 255, 0.2)",
       alignItems: "center",
       justifyContent: "center",
       ...(Platform.OS === "web"
         ? ({
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
             cursor: "pointer",
           } as any)
         : {}),
@@ -3168,23 +3202,8 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       borderRadius: 3,
       backgroundColor: "rgba(255, 255, 255, 0.25)",
     },
-    heroPortraitContainer: {
-      alignItems: "center",
-      justifyContent: "center",
-      marginVertical: 12,
-      position: "relative",
-    },
-    heroPortraitImage: {
-      width: 136,
-      height: 136,
-      borderRadius: 68,
-      borderWidth: 4,
-      borderColor: "rgba(255, 255, 255, 0.35)",
-      backgroundColor: "#164e63",
-    },
     heroSecretBadge: {
-      position: "absolute",
-      bottom: -6,
+      alignSelf: "flex-start",
       flexDirection: "row",
       alignItems: "center",
       backgroundColor: "#a855f7",
@@ -3193,6 +3212,8 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       borderRadius: 12,
       borderWidth: 1.5,
       borderColor: "#ffffff",
+      zIndex: 5,
+      marginTop: 4,
     },
     heroSecretBadgeText: {
       color: "#ffffff",
@@ -3201,27 +3222,27 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     },
     heroBottomRow: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-end",
       justifyContent: "space-between",
-      marginTop: 14,
+      zIndex: 5,
       paddingHorizontal: 2,
     },
     heroNameCol: {
       flex: 1,
-      paddingRight: 12,
+      paddingRight: 14,
     },
     heroBigTitle: {
       color: "#ffffff",
-      fontSize: 22,
+      fontSize: 24,
       fontWeight: "800",
       letterSpacing: -0.3,
       fontFamily: "Josefin Sans",
     },
     heroSubtitle: {
-      color: "rgba(255, 255, 255, 0.8)",
-      fontSize: 13,
+      color: "rgba(255, 255, 255, 0.85)",
+      fontSize: 14,
       fontWeight: "500",
-      marginTop: 2,
+      marginTop: 3,
       fontFamily: "Josefin Sans",
     },
     heroCallActionRow: {
@@ -3245,76 +3266,85 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     },
 
     // -------------------------------------------------------------
-    // STATS BADGES CARD (Messages, Media, Distance)
+    // STATS BADGES CARD (Full Width Horizontal Row: Icon + Value/Label)
     // -------------------------------------------------------------
     statsCardContainer: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginHorizontal: 16,
-      marginTop: -16,
-      borderRadius: 22,
-      borderWidth: 1,
+      width: isDesktop ? 680 : "92%",
+      marginTop: 14,
+      marginBottom: 6,
       paddingVertical: 14,
-      paddingHorizontal: 10,
+      paddingHorizontal: 14,
+      borderRadius: 20,
+      borderWidth: 1,
       zIndex: 10,
       ...(Platform.OS === "web"
         ? ({
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
           } as any)
         : {}),
     },
     statCol: {
       flex: 1,
+      flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 4,
+      gap: 8,
     },
     statIconCircle: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       alignItems: "center",
+      justifyContent: "center",
+    },
+    statTextCol: {
+      flexDirection: "column",
       justifyContent: "center",
     },
     statValueText: {
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: "800",
       fontFamily: "Josefin Sans",
+      ...(Platform.OS === "web" ? ({ whiteSpace: "nowrap" } as any) : {}),
     },
     statLabelText: {
       fontSize: 11,
       fontWeight: "600",
       fontFamily: "Josefin Sans",
+      ...(Platform.OS === "web" ? ({ whiteSpace: "nowrap" } as any) : {}),
     },
     statDivider: {
       width: 1,
-      height: 36,
+      height: 28,
     },
 
     // -------------------------------------------------------------
-    // ACTION PILLS CONTAINER (4 Core Tabs)
+    // ACTION PILLS CONTAINER (Row 1: Uniform Segmented Cards)
     // -------------------------------------------------------------
     actionPillsContainer: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginHorizontal: 16,
-      marginTop: 18,
+      width: isDesktop ? 680 : "92%",
+      marginTop: 8,
       marginBottom: 6,
-      gap: 6,
+      gap: 8,
     },
     actionPillBtn: {
       flex: 1,
+      height: 40,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 4,
-      paddingVertical: 10,
-      borderRadius: 16,
+      gap: 5,
+      borderRadius: 14,
       backgroundColor: isAmoled ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
       borderWidth: 1,
       borderColor: borderCol,
+      paddingHorizontal: 4,
       ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
     },
     actionPillBtnActive: {
@@ -3322,14 +3352,15 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       borderColor: "#0d5c66",
     },
     actionPillBtnActiveVault: {
-      backgroundColor: "#7c3aed",
-      borderColor: "#7c3aed",
+      backgroundColor: "#0d5c66",
+      borderColor: "#0d5c66",
     },
     actionPillText: {
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: "600",
       color: theme.textMuted,
       fontFamily: "Josefin Sans",
+      ...(Platform.OS === "web" ? ({ whiteSpace: "nowrap" } as any) : {}),
     },
     actionPillTextActive: {
       color: "#ffffff",
@@ -3664,8 +3695,8 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       WebkitBackdropFilter: "blur(16px)",
     } as any,
     filterChipActive: {
-      backgroundColor: theme.accent || "#5865F2",
-      borderColor: theme.accent || "#5865F2",
+      backgroundColor: "#0d5c66",
+      borderColor: "rgba(20, 184, 166, 0.6)",
     },
     filterChipText: {
       color: isAmoled ? "#a1a1aa" : theme.textMuted,
@@ -3681,12 +3712,20 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     mediaGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 10,
+      gap: 8,
+      width: "100%",
+      ...(Platform.OS === "web"
+        ? ({
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 8,
+          } as any)
+        : {}),
     },
     mediaThumbCard: {
-      width: isDesktop ? "31.8%" : "31%",
+      width: Platform.OS === "web" ? "100%" : (isDesktop ? "31.8%" : "31%"),
       aspectRatio: 1,
-      borderRadius: 14,
+      borderRadius: 12,
       overflow: "hidden",
       backgroundColor: isAmoled ? "#161618" : "#2a2b2f",
       borderWidth: 1,
@@ -3696,11 +3735,12 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       width: "100%",
       height: "100%",
       resizeMode: "cover",
+      ...(Platform.OS === "web" ? ({ objectFit: "cover" } as any) : {}),
     },
     mediaVideoCard: {
-      width: isDesktop ? "31.8%" : "31%",
+      width: Platform.OS === "web" ? "100%" : (isDesktop ? "31.8%" : "31%"),
       aspectRatio: 1,
-      borderRadius: 14,
+      borderRadius: 12,
       backgroundColor: "#18181b",
       alignItems: "center",
       justifyContent: "center",
