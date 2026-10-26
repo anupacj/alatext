@@ -56,13 +56,24 @@ import {
   Compass,
   Clock,
   Navigation,
+  Phone,
+  Download,
+  Link as LinkIcon,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import { supabase } from "../lib/supabase";
-import { uploadImageToR2, deleteFileFromR2ByUrl, getThumbnailUrl } from "../lib/r2";
+import { uploadImageToR2, deleteFileFromR2ByUrl, getThumbnailUrl, uploadBlobToR2 } from "../lib/r2";
+import { initiateCall } from "../utils/webrtcCall";
+import {
+  getCurrentDeviceLocation,
+  syncLocationToCloud,
+  fetchPartnerLocationFromCloud,
+  calculateDistanceKm,
+  formatCoupleDistance,
+} from "../utils/coupleRadar";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useAlaPin } from "../context/AlaPinContext";
@@ -82,8 +93,8 @@ import {
   toggleChecklistItem,
 } from "../utils/memoriesAndNotes";
 
-type ActiveTab = "media" | "memories" | "notes" | "members" | "settings";
-type MediaFilter = "all" | "images" | "videos" | "audio";
+type ActiveTab = "media" | "memories" | "notes" | "vault" | "members" | "settings";
+type MediaFilter = "all" | "images" | "videos" | "audio" | "links" | "documents";
 type MemoryViewMode = "timeline" | "map" | "milestones";
 type MemoryFilter = "all" | "photos" | "voice" | "places" | "vault";
 
@@ -261,6 +272,14 @@ export default function ChatInfoScreen() {
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [selectedViewerImage, setSelectedViewerImage] = useState<string | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+
+  // Optimized Message Count (cached with 15s session delay check)
+  const [totalMessagesCount, setTotalMessagesCount] = useState<number>(0);
+  // Accurate Geodesic Distance
+  const [accurateDistance, setAccurateDistance] = useState<string>("");
+  // Document uploading
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const docInputRef = useRef<any>(null);
 
   // Vault Unlock Modal State
   const [vaultModalVisible, setVaultModalVisible] = useState(false);
@@ -493,21 +512,27 @@ export default function ChatInfoScreen() {
         return false;
       }
 
-      // Explicit media types (image, video, audio)
-      if (m.type === "image" || m.type === "video" || m.type === "audio") {
+      // Explicit media types (image, video, audio, document, file)
+      if (m.type === "image" || m.type === "video" || m.type === "audio" || m.type === "document" || m.type === "file") {
         return true;
       }
 
-      // URL patterns for media files
+      // URL patterns for media files & documents
       if (
         str.includes("/chat-images/") ||
         str.includes("/chat-videos/") ||
+        str.includes("/chat-docs/") ||
         str.includes("/audio-messages/") ||
         str.includes("/voice-messages/") ||
         str.startsWith("data:image/") ||
         str.startsWith("blob:") ||
-        str.match(/\.(jpeg|jpg|png|webp|gif|mp4|webm|mov|m4a|mp3|ogg|wav)(\?.*)?$/i)
+        str.match(/\.(jpeg|jpg|png|webp|gif|mp4|webm|mov|m4a|mp3|ogg|wav|pdf|doc|docx|txt|zip|csv)(\?.*)?$/i)
       ) {
+        return true;
+      }
+
+      // Detect links in message
+      if (str.match(/https?:\/\/[^\s]+/i)) {
         return true;
       }
       return false;
@@ -517,9 +542,12 @@ export default function ChatInfoScreen() {
       if (m.type === "video") return "video";
       if (m.type === "audio") return "audio";
       if (m.type === "image") return "image";
+      if (m.type === "document" || m.type === "file") return "document";
       const str = (typeof m.content === "string" ? m.content : typeof m.text === "string" ? m.text : "") || "";
       if (str.includes("/chat-videos/") || str.match(/\.(mp4|webm|mov)(\?.*)?$/i)) return "video";
       if (str.includes("/audio-messages/") || str.includes("/voice-messages/") || str.match(/\.(m4a|mp3|ogg|wav)(\?.*)?$/i)) return "audio";
+      if (str.includes("/chat-docs/") || str.match(/\.(pdf|doc|docx|txt|zip|csv)(\?.*)?$/i)) return "document";
+      if (str.match(/https?:\/\/[^\s]+/i)) return "link";
       return "image";
     };
 
@@ -573,7 +601,7 @@ export default function ChatInfoScreen() {
           .from("messages")
           .select("id, content, type, created_at, sender_id")
           .eq("chat_id", chatId)
-          .in("type", ["image", "video", "audio"])
+          .in("type", ["image", "video", "audio", "document", "file"])
           .order("created_at", { ascending: false })
           .range(from, from + CHUNK_SIZE - 1);
 
@@ -595,7 +623,7 @@ export default function ChatInfoScreen() {
           .from("messages")
           .select("id, content, type, created_at, sender_id")
           .eq("chat_id", chatId)
-          .or("content.ilike.%/chat-images/%,content.ilike.%/chat-videos/%,content.ilike.%/audio-messages/%,content.ilike.%/voice-messages/%,content.ilike.%.jpg%,content.ilike.%.jpeg%,content.ilike.%.png%,content.ilike.%.webp%,content.ilike.%.gif%,content.ilike.%.mp4%,content.ilike.%.mov%,content.ilike.%.m4a%,content.ilike.%.mp3%")
+          .or("content.ilike.%http%,content.ilike.%.pdf%,content.ilike.%.doc%,content.ilike.%/chat-docs/%,content.ilike.%/chat-images/%,content.ilike.%/chat-videos/%,content.ilike.%/audio-messages/%,content.ilike.%/voice-messages/%,content.ilike.%.jpg%,content.ilike.%.jpeg%,content.ilike.%.png%,content.ilike.%.webp%,content.ilike.%.gif%,content.ilike.%.mp4%,content.ilike.%.mov%,content.ilike.%.m4a%,content.ilike.%.mp3%")
           .order("created_at", { ascending: false })
           .limit(1000);
 
@@ -632,13 +660,22 @@ export default function ChatInfoScreen() {
 
       const formattedRemote = remoteMediaRaw
         .filter(isMediaMsg)
-        .map((m: any) => ({
-          id: m.id,
-          content: (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "",
-          type: resolveType(m),
-          created_at: m.created_at || new Date().toISOString(),
-          sender_id: m.sender_id || "",
-        }))
+        .map((m: any) => {
+          const raw = (typeof m.content === "string" && m.content) || (typeof m.text === "string" && m.text) || "";
+          const t = resolveType(m);
+          let finalContent = raw;
+          if (t === "link") {
+            const match = raw.match(/https?:\/\/[^\s]+/i);
+            if (match) finalContent = match[0];
+          }
+          return {
+            id: m.id,
+            content: finalContent,
+            type: t,
+            created_at: m.created_at || new Date().toISOString(),
+            sender_id: m.sender_id || "",
+          };
+        })
         .filter((m: any) => !!m.content);
 
       // Merge local cache and remote messages by ID without duplicates
@@ -1124,6 +1161,8 @@ export default function ChatInfoScreen() {
     if (mediaFilter === "images") return sharedMedia.filter(m => m.type === "image");
     if (mediaFilter === "videos") return sharedMedia.filter(m => m.type === "video");
     if (mediaFilter === "audio") return sharedMedia.filter(m => m.type === "audio");
+    if (mediaFilter === "links") return sharedMedia.filter(m => m.type === "link");
+    if (mediaFilter === "documents") return sharedMedia.filter(m => m.type === "document");
     return sharedMedia;
   }, [sharedMedia, mediaFilter]);
 
@@ -1198,6 +1237,227 @@ export default function ChatInfoScreen() {
   }, [visibleMemories]);
 
   // -------------------------------------------------------------
+  // MESSAGE COUNT OPTIMIZED CACHING (15s Session Timer)
+  // -------------------------------------------------------------
+  useEffect(() => {
+    if (!chatId) return;
+
+    let isMounted = true;
+    const cacheKey = `@chat_msg_count_${chatId}`;
+    const today = new Date().toISOString().slice(0, 10);
+
+    AsyncStorage.getItem(cacheKey).then((raw) => {
+      if (!isMounted) return;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed?.count === "number") {
+            setTotalMessagesCount(parsed.count);
+          }
+          if (parsed?.lastCheckDate === today) {
+            return; // Already checked today: do not query DB!
+          }
+        } catch {}
+      }
+
+      // Check DB after 15 seconds to minimize usage
+      const timer = setTimeout(async () => {
+        if (!isMounted) return;
+        try {
+          const rawLatest = await AsyncStorage.getItem(cacheKey);
+          let prevCount = 0;
+          let lastCreatedAt: string | null = null;
+          if (rawLatest) {
+            try {
+              const p = JSON.parse(rawLatest);
+              prevCount = typeof p?.count === "number" ? p.count : 0;
+              lastCreatedAt = p?.lastMsgCreatedAt || null;
+            } catch {}
+          }
+
+          let finalCount = prevCount;
+          if (lastCreatedAt && prevCount > 0) {
+            const { count: deltaCount, error: deltaErr } = await supabase
+              .from("messages")
+              .select("id", { count: "exact", head: true })
+              .eq("chat_id", chatId)
+              .gt("created_at", lastCreatedAt);
+
+            if (!deltaErr && typeof deltaCount === "number") {
+              finalCount = prevCount + deltaCount;
+            }
+          } else {
+            const { count: fullCount, error: fullErr } = await supabase
+              .from("messages")
+              .select("id", { count: "exact", head: true })
+              .eq("chat_id", chatId);
+
+            if (!fullErr && typeof fullCount === "number") {
+              finalCount = fullCount;
+            }
+          }
+
+          if (isMounted) {
+            setTotalMessagesCount(finalCount);
+          }
+          await AsyncStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              count: finalCount,
+              lastCheckDate: today,
+              lastMsgCreatedAt: new Date().toISOString(),
+            })
+          );
+        } catch (e) {
+          console.warn("[chat-info] message count background sync error:", e);
+        }
+      }, 15000);
+
+      return () => clearTimeout(timer);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [chatId]);
+
+  // -------------------------------------------------------------
+  // ACCURATE GEODESIC DISTANCE CALCULATION
+  // -------------------------------------------------------------
+  useEffect(() => {
+    let isMounted = true;
+    async function updateDistance() {
+      const partnerId = partnerUser?.id || targetUserIdParam;
+      if (!partnerId) return;
+
+      try {
+        const myLoc = await getCurrentDeviceLocation();
+        if (user?.id && myLoc) {
+          syncLocationToCloud(user.id, myLoc);
+        }
+
+        const partnerLoc = await fetchPartnerLocationFromCloud(partnerId);
+
+        if (myLoc && partnerLoc && typeof myLoc.lat === "number" && typeof partnerLoc.lat === "number") {
+          const distKm = calculateDistanceKm(myLoc.lat, myLoc.lng, partnerLoc.lat, partnerLoc.lng);
+          if (isMounted) {
+            const formatted = formatCoupleDistance(distKm);
+            setAccurateDistance(formatted || "Nearby");
+          }
+        } else {
+          if (isMounted) {
+            setAccurateDistance("Nearby");
+          }
+        }
+      } catch (e) {
+        if (isMounted) setAccurateDistance("Nearby");
+      }
+    }
+
+    updateDistance();
+    return () => {
+      isMounted = false;
+    };
+  }, [partnerUser?.id, targetUserIdParam, user?.id]);
+
+  // -------------------------------------------------------------
+  // CALL BUTTON HANDLER (Audio & Video)
+  // -------------------------------------------------------------
+  const handleStartCall = useCallback(
+    (callType: "audio" | "video") => {
+      const partnerId = partnerUser?.id || targetUserIdParam;
+      if (!partnerId || !user?.id) return;
+
+      const pName =
+        partnerNickname ||
+        partnerUser?.display_name ||
+        partnerUser?.username ||
+        targetDisplayNameParam ||
+        targetUsernameParam ||
+        "Partner";
+
+      const pAvatar =
+        customAvatar ||
+        partnerUser?.avatar_url ||
+        targetAvatarParam ||
+        undefined;
+
+      const myName =
+        (user.user_metadata as any)?.nickname ||
+        user.user_metadata?.display_name ||
+        user.user_metadata?.username ||
+        user.email?.split("@")[0] ||
+        "Me";
+
+      initiateCall({
+        chatId: chatId,
+        callerId: user.id,
+        callerName: myName,
+        callerAvatar: user.user_metadata?.avatar_url,
+        partnerId: partnerId,
+        partnerName: pName,
+        partnerAvatar: pAvatar,
+        callType: callType,
+      });
+    },
+    [
+      partnerUser,
+      targetUserIdParam,
+      user,
+      partnerNickname,
+      targetDisplayNameParam,
+      targetUsernameParam,
+      customAvatar,
+      targetAvatarParam,
+      chatId,
+    ]
+  );
+
+  // -------------------------------------------------------------
+  // DOCUMENT UPLOAD HANDLER
+  // -------------------------------------------------------------
+  const handleUploadDocumentWeb = useCallback(async (e: any) => {
+    const file = e.target?.files?.[0];
+    if (!file || !chatId || !user?.id) return;
+    setUploadingDoc(true);
+    try {
+      const safeName = file.name || "document.pdf";
+      const prefix = `chat-docs/${chatId}-${Date.now()}-${safeName}`;
+      const url = await uploadBlobToR2(prefix, file);
+
+      const newDocMsg = {
+        chat_id: chatId,
+        sender_id: user.id,
+        content: url,
+        type: "document",
+      };
+
+      const { data: inserted, error: insErr } = await supabase
+        .from("messages")
+        .insert([newDocMsg])
+        .select("id, content, type, created_at, sender_id");
+
+      if (!insErr && inserted && inserted.length > 0) {
+        setSharedMedia((prev) => [
+          {
+            id: inserted[0].id,
+            content: url,
+            type: "document",
+            created_at: inserted[0].created_at,
+            sender_id: user.id,
+          },
+          ...prev,
+        ]);
+      }
+    } catch (err: any) {
+      alert("Failed to upload document: " + (err.message || err));
+    } finally {
+      setUploadingDoc(false);
+      if (docInputRef.current) docInputRef.current.value = "";
+    }
+  }, [chatId, user?.id]);
+
+  // -------------------------------------------------------------
   // RENDER SECTIONS
   // -------------------------------------------------------------
   return (
@@ -1234,57 +1494,254 @@ export default function ChatInfoScreen() {
         ]}
       />
 
-      {/* Top Header - Safe from mobile notch */}
-      <View style={styles.topHeader}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleGoBack}
-          activeOpacity={0.7}
-        >
-          <ArrowLeft size={18} color={isAmoled ? "#ffffff" : theme.text} />
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
+      {/* If group, render standard group top header */}
+      {isGroup && (
+        <View style={styles.topHeader}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleGoBack}
+            activeOpacity={0.7}
+          >
+            <ArrowLeft size={18} color={isAmoled ? "#ffffff" : theme.text} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
 
-        <View style={styles.topHeaderCenter}>
-          <Text style={styles.topHeaderTitle} numberOfLines={1}>
-            {isGroup ? (chatData?.name || "Group Details") : (partnerNickname || partnerUser?.display_name || partnerUser?.username || "Contact Info")}
-          </Text>
-        </View>
+          <View style={styles.topHeaderCenter}>
+            <Text style={styles.topHeaderTitle} numberOfLines={1}>
+              {chatData?.name || "Group Details"}
+            </Text>
+          </View>
 
-        <View style={styles.topHeaderRight}>
-          {!isGroup && !isDecoyMode && (
-            <TouchableOpacity
-              style={[
-                styles.panicHeaderBtn,
-                vaultUnlocked && styles.panicHeaderBtnUnlocked,
-              ]}
-              onPress={vaultUnlocked ? handlePanicLock : handleTriggerUnlockVault}
-              activeOpacity={0.75}
-            >
-              {vaultUnlocked ? (
-                <>
-                  <ShieldAlert size={14} color="#f43f5e" />
-                  <Text style={[styles.panicHeaderBtnText, { color: "#f43f5e" }]}>Lock</Text>
-                </>
-              ) : (
-                <>
-                  <Shield size={14} color="#a855f7" />
-                  {isBiometricSupported ? (
-                    <Fingerprint size={13} color="#a855f7" />
-                  ) : (
-                    <Text style={[styles.panicHeaderBtnText, { color: "#a855f7" }]}>Vault</Text>
-                  )}
-                </>
-              )}
-            </TouchableOpacity>
-          )}
+          <View style={styles.topHeaderRight} />
         </View>
-      </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Sleek Floating Glass Profile / Group Card */}
-        <View style={styles.heroCard}>
-          {isGroup ? (
+        {!isGroup ? (
+          <>
+            {/* ========================================================= */}
+            {/* HERO BANNER SECTION (Doctor / Partner Profile Redesign)    */}
+            {/* ========================================================= */}
+            <View style={styles.oceanHeroContainer}>
+              {/* Dynamic Island / Top Nav icons */}
+              <View style={styles.heroTopNavBar}>
+                <TouchableOpacity
+                  style={styles.heroCircleGlassBtn}
+                  onPress={handleGoBack}
+                  activeOpacity={0.75}
+                  accessibilityLabel="Back"
+                >
+                  <ArrowLeft size={19} color="#ffffff" />
+                </TouchableOpacity>
+
+                <View style={styles.heroTopCenterPill} />
+
+                <TouchableOpacity
+                  style={[
+                    styles.heroCircleGlassBtn,
+                    vaultUnlocked && { backgroundColor: "rgba(244,63,94,0.35)", borderColor: "#f43f5e" },
+                  ]}
+                  onPress={vaultUnlocked ? handlePanicLock : handleTriggerUnlockVault}
+                  activeOpacity={0.75}
+                  accessibilityLabel="Lock / Vault"
+                >
+                  {vaultUnlocked ? (
+                    <ShieldAlert size={19} color="#f43f5e" />
+                  ) : (
+                    <Heart size={19} color="#ffffff" fill="rgba(255,255,255,0.2)" />
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Center Portrait / Avatar */}
+              <View style={styles.heroPortraitContainer}>
+                <Image
+                  source={{
+                    uri:
+                      customAvatar ||
+                      partnerUser?.avatar_url ||
+                      targetAvatarParam ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        partnerNickname ||
+                          partnerUser?.display_name ||
+                          partnerUser?.username ||
+                          targetDisplayNameParam ||
+                          targetUsernameParam ||
+                          "User"
+                      )}&background=0d5c66&color=fff&size=256`,
+                  }}
+                  style={styles.heroPortraitImage}
+                />
+                {customAvatar && (
+                  <View style={styles.heroSecretBadge}>
+                    <Lock size={11} color="#ffffff" style={{ marginRight: 3 }} />
+                    <Text style={styles.heroSecretBadgeText}>Secret PFP</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Bottom of Hero Card: Name on Left, Call Buttons on Right */}
+              <View style={styles.heroBottomRow}>
+                <View style={styles.heroNameCol}>
+                  {/* Nickname (or Real Name if no nickname set) */}
+                  <Text style={styles.heroBigTitle} numberOfLines={1}>
+                    {partnerNickname
+                      ? partnerNickname
+                      : (partnerUser?.display_name || partnerUser?.username || targetDisplayNameParam || targetUsernameParam || "Partner")}
+                  </Text>
+                  {/* Real Name (or @handle if no nickname set) */}
+                  <Text style={styles.heroSubtitle} numberOfLines={1}>
+                    {partnerNickname
+                      ? (partnerUser?.display_name || partnerUser?.username || targetDisplayNameParam || "Partner")
+                      : `@${partnerUser?.username || targetUsernameParam || "user"}`}
+                  </Text>
+                </View>
+
+                {/* 3 Circular Action Buttons */}
+                <View style={styles.heroCallActionRow}>
+                  {/* 1. Chat */}
+                  <TouchableOpacity
+                    style={styles.heroWhiteActionBtn}
+                    onPress={handleGoBack}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Chat"
+                  >
+                    <MessageSquare size={19} color="#0d5c66" />
+                  </TouchableOpacity>
+
+                  {/* 2. Audio Call */}
+                  <TouchableOpacity
+                    style={styles.heroWhiteActionBtn}
+                    onPress={() => handleStartCall("audio")}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Audio Call"
+                  >
+                    <Phone size={19} color="#0d5c66" />
+                  </TouchableOpacity>
+
+                  {/* 3. Video Call */}
+                  <TouchableOpacity
+                    style={styles.heroWhiteActionBtn}
+                    onPress={() => handleStartCall("video")}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Video Call"
+                  >
+                    <Video size={19} color="#0d5c66" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* ========================================================= */}
+            {/* 3 STATS BADGES CARD (Messages, Media, Distance)            */}
+            {/* ========================================================= */}
+            <View
+              style={[
+                styles.statsCardContainer,
+                {
+                  backgroundColor: isAmoled ? "#121214" : (theme.isDark !== false ? "#181820" : "#ffffff"),
+                  borderColor: isAmoled ? "#242428" : (theme.isDark !== false ? "rgba(255,255,255,0.08)" : "#e2e8f0"),
+                },
+              ]}
+            >
+              {/* Stat 1: Messages Milestone */}
+              <View style={styles.statCol}>
+                <View style={[styles.statIconCircle, { backgroundColor: isAmoled ? "#1e1e24" : "rgba(13,92,102,0.12)" }]}>
+                  <Clock size={18} color="#0d5c66" />
+                </View>
+                <Text style={[styles.statValueText, { color: theme.text }]}>
+                  {totalMessagesCount >= 100
+                    ? `${(Math.floor(totalMessagesCount / 100) * 100).toLocaleString()}+`
+                    : (totalMessagesCount > 0 ? `${totalMessagesCount}` : "100+")}
+                </Text>
+                <Text style={[styles.statLabelText, { color: theme.textMuted }]}>Messages</Text>
+              </View>
+
+              <View style={[styles.statDivider, { backgroundColor: isAmoled ? "#242428" : (theme.isDark !== false ? "rgba(255,255,255,0.06)" : "#e2e8f0") }]} />
+
+              {/* Stat 2: Media Shared */}
+              <View style={styles.statCol}>
+                <View style={[styles.statIconCircle, { backgroundColor: isAmoled ? "#1e1e24" : "rgba(13,92,102,0.12)" }]}>
+                  <ImageIcon size={18} color="#0d5c66" />
+                </View>
+                <Text style={[styles.statValueText, { color: theme.text }]}>
+                  {sharedMedia.length > 0 ? `${sharedMedia.length}+` : "0"}
+                </Text>
+                <Text style={[styles.statLabelText, { color: theme.textMuted }]}>Shared Media</Text>
+              </View>
+
+              <View style={[styles.statDivider, { backgroundColor: isAmoled ? "#242428" : (theme.isDark !== false ? "rgba(255,255,255,0.06)" : "#e2e8f0") }]} />
+
+              {/* Stat 3: Distance */}
+              <View style={styles.statCol}>
+                <View style={[styles.statIconCircle, { backgroundColor: isAmoled ? "#1e1e24" : "rgba(13,92,102,0.12)" }]}>
+                  <Navigation size={18} color="#0d5c66" />
+                </View>
+                <Text style={[styles.statValueText, { color: theme.text }]} numberOfLines={1}>
+                  {accurateDistance || "Nearby"}
+                </Text>
+                <Text style={[styles.statLabelText, { color: theme.textMuted }]}>Distance</Text>
+              </View>
+            </View>
+
+            {/* ========================================================= */}
+            {/* 4 ACTION TABS (Replacing Book Appointment)                */}
+            {/* ========================================================= */}
+            <View style={styles.actionPillsContainer}>
+              <TouchableOpacity
+                style={[styles.actionPillBtn, activeTab === "media" && styles.actionPillBtnActive]}
+                onPress={() => setActiveTab("media")}
+                activeOpacity={0.8}
+              >
+                <ImageIcon size={15} color={activeTab === "media" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.actionPillText, activeTab === "media" && styles.actionPillTextActive]}>
+                  Media ({sharedMedia.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionPillBtn, activeTab === "memories" && styles.actionPillBtnActive]}
+                onPress={() => setActiveTab("memories")}
+                activeOpacity={0.8}
+              >
+                <Heart size={15} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.actionPillText, activeTab === "memories" && styles.actionPillTextActive]}>
+                  Memories ({memories.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionPillBtn, activeTab === "notes" && styles.actionPillBtnActive]}
+                onPress={() => setActiveTab("notes")}
+                activeOpacity={0.8}
+              >
+                <FileText size={15} color={activeTab === "notes" ? "#ffffff" : theme.textMuted} />
+                <Text style={[styles.actionPillText, activeTab === "notes" && styles.actionPillTextActive]}>
+                  Notes ({notes.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionPillBtn, activeTab === "vault" && styles.actionPillBtnActiveVault]}
+                onPress={() => {
+                  if (!vaultUnlocked) {
+                    handleTriggerUnlockVault();
+                  } else {
+                    setActiveTab("vault");
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                {vaultUnlocked ? <Unlock size={15} color="#10b981" /> : <Lock size={15} color="#a855f7" />}
+                <Text style={[styles.actionPillText, activeTab === "vault" && styles.actionPillTextActive]}>
+                  {vaultUnlocked ? "Vault" : "Locked"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          /* Sleek Group Card */
+          <View style={styles.heroCard}>
             <TouchableOpacity
               style={styles.heroAvatarContainer}
               onPress={handlePickGroupAvatar}
@@ -1310,36 +1767,8 @@ export default function ChatInfoScreen() {
                 )}
               </View>
             </TouchableOpacity>
-          ) : (
-            <View style={styles.heroAvatarContainer}>
-              <Image
-                source={{
-                  uri:
-                    customAvatar ||
-                    partnerUser?.avatar_url ||
-                    targetAvatarParam ||
-                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                      partnerNickname ||
-                        partnerUser?.display_name ||
-                        partnerUser?.username ||
-                        targetDisplayNameParam ||
-                        targetUsernameParam ||
-                        "Chat"
-                    )}&background=5865F2&color=fff`,
-                }}
-                style={styles.heroAvatar}
-              />
-              {customAvatar && (
-                <View style={styles.secretAvatarBadge}>
-                  <Lock size={11} color="#ffffff" style={{ marginRight: 3 }} />
-                  <Text style={styles.secretAvatarBadgeText}>Secret PFP</Text>
-                </View>
-              )}
-            </View>
-          )}
 
-          {isGroup ? (
-            isEditingGroupName ? (
+            {isEditingGroupName ? (
               <View style={styles.inlineEditNameRow}>
                 <TextInput
                   style={styles.inlineEditInput}
@@ -1372,46 +1801,16 @@ export default function ChatInfoScreen() {
                   <Edit3 size={15} color={theme.textMuted} />
                 </TouchableOpacity>
               </View>
-            )
-          ) : (
-            <Text style={styles.heroDisplayName} numberOfLines={1}>
-              {partnerNickname ||
-                partnerUser?.display_name ||
-                partnerUser?.username ||
-                targetDisplayNameParam ||
-                targetUsernameParam ||
-                "Chat Partner"}
-            </Text>
-          )}
+            )}
 
-          {isGroup ? (
             <Text style={styles.groupMemberCountSubtitle}>
               {groupParticipants.length} {groupParticipants.length === 1 ? "member" : "members"}
             </Text>
-          ) : (
-            <>
-              {(partnerUser?.username || targetUsernameParam) ? (
-                <View style={styles.handleBadge}>
-                  <Text style={styles.heroHandle}>@{partnerUser?.username || targetUsernameParam}</Text>
-                </View>
-              ) : null}
+          </View>
+        )}
 
-              {(partnerUser?.bio || targetBioParam) ? (
-                <Text style={styles.heroBio}>"{partnerUser?.bio || targetBioParam}"</Text>
-              ) : null}
-
-              {daysTogether !== null && (
-                <View style={styles.anniversaryPill}>
-                  <Heart size={13} color="#ec4899" fill="#ec4899" />
-                  <Text style={styles.anniversaryPillText}>{daysTogether} Days Together</Text>
-                </View>
-              )}
-            </>
-          )}
-        </View>
-
-        {/* Main Floating Glass Segmented Tabs */}
-        {isGroup ? (
+        {/* Group Tabs Bar */}
+        {isGroup && (
           <View style={styles.tabBar}>
             <TouchableOpacity
               style={[styles.tabButton, activeTab === "members" && styles.tabButtonActiveMedia]}
@@ -1454,56 +1853,6 @@ export default function ChatInfoScreen() {
               <Text style={[styles.tabButtonText, activeTab === "settings" && styles.tabButtonTextActive]}>
                 Settings
               </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.tabBar}>
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "media" && styles.tabButtonActiveMedia]}
-              onPress={() => setActiveTab("media")}
-              activeOpacity={0.8}
-            >
-              <ImageIcon size={16} color={activeTab === "media" ? "#ffffff" : theme.textMuted} />
-              <Text style={[styles.tabButtonText, activeTab === "media" && styles.tabButtonTextActive]}>
-                Media
-              </Text>
-              <View style={[styles.tabBadge, activeTab === "media" && styles.tabBadgeActive]}>
-                <Text style={[styles.tabBadgeText, activeTab === "media" && styles.tabBadgeTextActive]}>
-                  {sharedMedia.length}
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "memories" && styles.tabButtonActiveMemories]}
-              onPress={() => setActiveTab("memories")}
-              activeOpacity={0.8}
-            >
-              <Heart size={16} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
-              <Text style={[styles.tabButtonText, activeTab === "memories" && styles.tabButtonTextActive]}>
-                Memories
-              </Text>
-              <View style={[styles.tabBadge, activeTab === "memories" && styles.tabBadgeActive]}>
-                <Text style={[styles.tabBadgeText, activeTab === "memories" && styles.tabBadgeTextActive]}>
-                  {memories.length}
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "notes" && styles.tabButtonActiveNotes]}
-              onPress={() => setActiveTab("notes")}
-              activeOpacity={0.8}
-            >
-              <FileText size={16} color={activeTab === "notes" ? "#ffffff" : theme.textMuted} />
-              <Text style={[styles.tabButtonText, activeTab === "notes" && styles.tabButtonTextActive]}>
-                Notes & Vault
-              </Text>
-              <View style={[styles.tabBadge, activeTab === "notes" && styles.tabBadgeActive]}>
-                <Text style={[styles.tabBadgeText, activeTab === "notes" && styles.tabBadgeTextActive]}>
-                  {notes.length}
-                </Text>
-              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -1612,21 +1961,65 @@ export default function ChatInfoScreen() {
         {/* ========================================================= */}
         {activeTab === "media" && (
           <View style={styles.tabContentContainer}>
+            {/* Hidden file input for web document uploading */}
+            {Platform.OS === "web" && (
+              <input
+                ref={docInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,.zip,.csv"
+                style={{ display: "none" } as any}
+                onChange={handleUploadDocumentWeb}
+              />
+            )}
+
             {/* Sub-filter chips */}
-            <View style={styles.filterChipRow}>
-              {(["all", "images", "videos", "audio"] as MediaFilter[]).map((filter) => (
-                <TouchableOpacity
-                  key={filter}
-                  style={[styles.filterChip, mediaFilter === filter && styles.filterChipActive]}
-                  onPress={() => setMediaFilter(filter)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.filterChipText, mediaFilter === filter && styles.filterChipTextActive]}>
-                    {filter === "all" ? "All Media" : filter === "images" ? "Photos" : filter === "videos" ? "Videos" : "Voice Notes"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.filterChipScrollWrapper}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipRow}>
+                {(["all", "images", "videos", "audio", "links", "documents"] as MediaFilter[]).map((filter) => (
+                  <TouchableOpacity
+                    key={filter}
+                    style={[styles.filterChip, mediaFilter === filter && styles.filterChipActive]}
+                    onPress={() => setMediaFilter(filter)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.filterChipText, mediaFilter === filter && styles.filterChipTextActive]}>
+                      {filter === "all"
+                        ? "All Media"
+                        : filter === "images"
+                        ? "Photos"
+                        : filter === "videos"
+                        ? "Videos"
+                        : filter === "audio"
+                        ? "Voice Notes"
+                        : filter === "links"
+                        ? "Links"
+                        : "Documents"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
+
+            {/* Quick Upload Button when Documents filter is selected */}
+            {mediaFilter === "documents" && (
+              <TouchableOpacity
+                style={styles.uploadDocBtn}
+                onPress={() => {
+                  if (docInputRef.current) docInputRef.current.click();
+                }}
+                activeOpacity={0.8}
+                disabled={uploadingDoc}
+              >
+                {uploadingDoc ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Plus size={16} color="#fff" />
+                )}
+                <Text style={styles.uploadDocBtnText}>
+                  {uploadingDoc ? "Uploading..." : "Upload Document / PDF"}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {loadingMedia ? (
               <View style={styles.emptyState}>
@@ -1635,11 +2028,17 @@ export default function ChatInfoScreen() {
             ) : filteredMedia.length === 0 ? (
               <View style={styles.emptyState}>
                 <ImageIcon size={48} color={theme.textMuted} />
-                <Text style={styles.emptyStateTitle}>No shared media found</Text>
-                <Text style={styles.emptyStateSub}>Photos, videos, and voice notes sent in chat appear here.</Text>
+                <Text style={styles.emptyStateTitle}>No items found</Text>
+                <Text style={styles.emptyStateSub}>
+                  {mediaFilter === "links"
+                    ? "Shared links sent in chat appear here."
+                    : mediaFilter === "documents"
+                    ? "Shared documents and PDFs appear here."
+                    : "Photos, videos, and voice notes appear here."}
+                </Text>
               </View>
             ) : (
-              <View style={styles.mediaGrid}>
+              <View style={mediaFilter === "links" || mediaFilter === "documents" ? styles.mediaListCol : styles.mediaGrid}>
                 {filteredMedia.map((item) => {
                   if (item.type === "image") {
                     return (
@@ -1684,6 +2083,68 @@ export default function ChatInfoScreen() {
                           <Text style={styles.mediaDateText}>{new Date(item.created_at).toLocaleDateString()}</Text>
                         </View>
                       </View>
+                    );
+                  }
+
+                  if (item.type === "link") {
+                    let domain = "Link";
+                    try {
+                      domain = new URL(item.content).hostname.replace(/^www\./, "");
+                    } catch {}
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.mediaLinkCard}
+                        onPress={() => {
+                          if (Platform.OS === "web" && typeof window !== "undefined") {
+                            window.open(item.content, "_blank");
+                          }
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <View style={styles.mediaLinkIconCircle}>
+                          <LinkIcon size={18} color="#0d5c66" />
+                        </View>
+                        <View style={{ flex: 1, marginHorizontal: 10 }}>
+                          <Text style={styles.mediaLinkDomain} numberOfLines={1}>
+                            {domain}
+                          </Text>
+                          <Text style={styles.mediaLinkUrl} numberOfLines={1}>
+                            {item.content}
+                          </Text>
+                        </View>
+                        <ExternalLink size={15} color={theme.textMuted} />
+                      </TouchableOpacity>
+                    );
+                  }
+
+                  if (item.type === "document") {
+                    const fileName = item.content.split("/").pop()?.split("?")[0] || "Document";
+                    const isPdf = fileName.toLowerCase().endsWith(".pdf");
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.mediaDocCard}
+                        onPress={() => {
+                          if (Platform.OS === "web" && typeof window !== "undefined") {
+                            window.open(item.content, "_blank");
+                          }
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <View style={[styles.mediaDocIconCircle, { backgroundColor: isPdf ? "rgba(239,68,68,0.15)" : "rgba(13,92,102,0.15)" }]}>
+                          <FileText size={20} color={isPdf ? "#ef4444" : "#0d5c66"} />
+                        </View>
+                        <View style={{ flex: 1, marginHorizontal: 10 }}>
+                          <Text style={styles.mediaDocName} numberOfLines={1}>
+                            {decodeURIComponent(fileName)}
+                          </Text>
+                          <Text style={styles.mediaDocSub}>
+                            {isPdf ? "PDF Document" : "Document"} • {new Date(item.created_at).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <Download size={16} color={theme.textMuted} />
+                      </TouchableOpacity>
                     );
                   }
 
@@ -2122,7 +2583,7 @@ export default function ChatInfoScreen() {
         {/* ========================================================= */}
         {/* TAB 3: NOTES & VAULT (1-ON-1 ONLY)                        */}
         {/* ========================================================= */}
-        {!isGroup && activeTab === "notes" && (
+        {!isGroup && (activeTab === "notes" || activeTab === "vault") && (
           <View style={styles.tabContentContainer}>
             {/* Notes Control Bar */}
             <View style={styles.vaultActionBar}>
@@ -2659,6 +3120,308 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     screenContainer: {
       flex: 1,
       backgroundColor: isAmoled ? "#000000" : theme.background,
+    },
+
+    // -------------------------------------------------------------
+    // OCEAN HERO BANNER & PARTNER PROFILE (Doctor UI Match)
+    // -------------------------------------------------------------
+    oceanHeroContainer: {
+      backgroundColor: "#0d5c66",
+      borderBottomLeftRadius: 36,
+      borderBottomRightRadius: 36,
+      paddingTop: Platform.OS === "web" ? 20 : 52,
+      paddingBottom: 24,
+      paddingHorizontal: 20,
+      overflow: "hidden",
+      ...(Platform.OS === "web"
+        ? ({
+            boxShadow: "0 12px 36px rgba(13, 92, 102, 0.35)",
+          } as any)
+        : {}),
+    },
+    heroTopNavBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 16,
+    },
+    heroCircleGlassBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: "rgba(255, 255, 255, 0.2)",
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.3)",
+      alignItems: "center",
+      justifyContent: "center",
+      ...(Platform.OS === "web"
+        ? ({
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            cursor: "pointer",
+          } as any)
+        : {}),
+    },
+    heroTopCenterPill: {
+      width: 64,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "rgba(255, 255, 255, 0.25)",
+    },
+    heroPortraitContainer: {
+      alignItems: "center",
+      justifyContent: "center",
+      marginVertical: 12,
+      position: "relative",
+    },
+    heroPortraitImage: {
+      width: 136,
+      height: 136,
+      borderRadius: 68,
+      borderWidth: 4,
+      borderColor: "rgba(255, 255, 255, 0.35)",
+      backgroundColor: "#164e63",
+    },
+    heroSecretBadge: {
+      position: "absolute",
+      bottom: -6,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#a855f7",
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: "#ffffff",
+    },
+    heroSecretBadgeText: {
+      color: "#ffffff",
+      fontSize: 10,
+      fontWeight: "700",
+    },
+    heroBottomRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 14,
+      paddingHorizontal: 2,
+    },
+    heroNameCol: {
+      flex: 1,
+      paddingRight: 12,
+    },
+    heroBigTitle: {
+      color: "#ffffff",
+      fontSize: 22,
+      fontWeight: "800",
+      letterSpacing: -0.3,
+      fontFamily: "Josefin Sans",
+    },
+    heroSubtitle: {
+      color: "rgba(255, 255, 255, 0.8)",
+      fontSize: 13,
+      fontWeight: "500",
+      marginTop: 2,
+      fontFamily: "Josefin Sans",
+    },
+    heroCallActionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    heroWhiteActionBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "#ffffff",
+      alignItems: "center",
+      justifyContent: "center",
+      ...(Platform.OS === "web"
+        ? ({
+            boxShadow: "0 6px 18px rgba(0,0,0,0.2)",
+            cursor: "pointer",
+          } as any)
+        : {}),
+    },
+
+    // -------------------------------------------------------------
+    // STATS BADGES CARD (Messages, Media, Distance)
+    // -------------------------------------------------------------
+    statsCardContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginHorizontal: 16,
+      marginTop: -16,
+      borderRadius: 22,
+      borderWidth: 1,
+      paddingVertical: 14,
+      paddingHorizontal: 10,
+      zIndex: 10,
+      ...(Platform.OS === "web"
+        ? ({
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+          } as any)
+        : {}),
+    },
+    statCol: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+    },
+    statIconCircle: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    statValueText: {
+      fontSize: 15,
+      fontWeight: "800",
+      fontFamily: "Josefin Sans",
+    },
+    statLabelText: {
+      fontSize: 11,
+      fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+    statDivider: {
+      width: 1,
+      height: 36,
+    },
+
+    // -------------------------------------------------------------
+    // ACTION PILLS CONTAINER (4 Core Tabs)
+    // -------------------------------------------------------------
+    actionPillsContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginHorizontal: 16,
+      marginTop: 18,
+      marginBottom: 6,
+      gap: 6,
+    },
+    actionPillBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+      paddingVertical: 10,
+      borderRadius: 16,
+      backgroundColor: isAmoled ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+      borderWidth: 1,
+      borderColor: borderCol,
+      ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+    },
+    actionPillBtnActive: {
+      backgroundColor: "#0d5c66",
+      borderColor: "#0d5c66",
+    },
+    actionPillBtnActiveVault: {
+      backgroundColor: "#7c3aed",
+      borderColor: "#7c3aed",
+    },
+    actionPillText: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: theme.textMuted,
+      fontFamily: "Josefin Sans",
+    },
+    actionPillTextActive: {
+      color: "#ffffff",
+      fontWeight: "700",
+    },
+    filterChipScrollWrapper: {
+      marginVertical: 10,
+    },
+    uploadDocBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 14,
+      backgroundColor: "#0d5c66",
+      marginBottom: 12,
+      alignSelf: "flex-start",
+      ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+    },
+    uploadDocBtnText: {
+      color: "#ffffff",
+      fontSize: 13,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    mediaListCol: {
+      flexDirection: "column",
+      gap: 8,
+      width: "100%",
+    },
+    mediaDocCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: isAmoled ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+      borderWidth: 1,
+      borderColor: borderCol,
+      width: "100%",
+      ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+    },
+    mediaDocIconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    mediaDocName: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: isAmoled ? "#ffffff" : theme.text,
+      fontFamily: "Josefin Sans",
+    },
+    mediaDocSub: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 2,
+      fontFamily: "Josefin Sans",
+    },
+    mediaLinkCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: isAmoled ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+      borderWidth: 1,
+      borderColor: borderCol,
+      width: "100%",
+      ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+    },
+    mediaLinkIconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: "rgba(13,92,102,0.15)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    mediaLinkDomain: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: "#0284c7",
+      fontFamily: "Josefin Sans",
+    },
+    mediaLinkUrl: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 2,
+      fontFamily: "Josefin Sans",
     },
     topHeader: {
       paddingTop: Platform.OS === "ios" ? 54 : Platform.OS === "android" ? 44 : 20,

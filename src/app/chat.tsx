@@ -2692,15 +2692,21 @@ export default function ChatScreen() {
 
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
+        const fileName = (file as any).name || "";
         const isVideo = file.type?.startsWith("video");
-        const prefix = isVideo ? `chat-videos/${id}-${Date.now()}-${i}` : `chat-images/${id}-${Date.now()}-${i}`;
+        const isDoc = file.type?.startsWith("application/") || file.type?.startsWith("text/") || !!fileName.match(/\.(pdf|doc|docx|xls|xlsx|txt|zip|csv)$/i);
+        const prefix = isVideo
+          ? `chat-videos/${id}-${Date.now()}-${i}`
+          : isDoc
+          ? `chat-docs/${id}-${Date.now()}-${fileName || i}`
+          : `chat-images/${id}-${Date.now()}-${i}`;
         const url = await uploadBlobToR2(prefix, file, (pct) => updateOverallProgress(i, pct));
         updateOverallProgress(i, 100);
         msgs.push({
           chat_id: id,
           sender_id: user?.id,
           content: url,
-          type: isVideo ? "video" : "image",
+          type: isVideo ? "video" : (isDoc ? "document" : "image"),
           reply_to_id: replyingTo?.id || null,
           reply_to_content: replyingTo?.text || null,
           reply_to_sender: replyingTo?.sender || null,
@@ -4411,7 +4417,7 @@ export default function ChatScreen() {
                       {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
                     </TouchableOpacity>
                     {Platform.OS === "web" && (
-                      <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                      <input ref={fileInputRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.txt,.zip,.csv" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
                     )}
                     {isDesktop && isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
                       <TouchableOpacity 
@@ -6139,17 +6145,83 @@ const MessageRowComponent = ({ item, index, messages, targetUser, chatSettings, 
     if (item.type === "video") {
       return <VideoPlayerBubble videoUrl={item.text} isMe={item.isMe} />;
     }
+    if (item.type === "document" || item.type === "file") {
+      const rawUrl = typeof item.text === "string" ? item.text : "";
+      const fileName = rawUrl.split("/").pop()?.split("?")[0] || "Document";
+      const isPdf = fileName.toLowerCase().endsWith(".pdf");
+      return (
+        <TouchableOpacity
+          onPress={() => {
+            if (Platform.OS === "web" && typeof window !== "undefined") {
+              window.open(rawUrl, "_blank");
+            }
+          }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            padding: 10,
+            borderRadius: 14,
+            backgroundColor: isAmoled ? "rgba(255,255,255,0.08)" : (item.isMe ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.14)"),
+            gap: 10,
+            minWidth: 190,
+            maxWidth: 280,
+          }}
+          activeOpacity={0.8}
+        >
+          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isPdf ? "#ef4444" : "#0d5c66", justifyContent: "center", alignItems: "center" }}>
+            <FileText size={20} color="#ffffff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "700" }} numberOfLines={1}>
+              {decodeURIComponent(fileName)}
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, marginTop: 2 }}>
+              {isPdf ? "PDF Document" : "Document"} • Tap to view
+            </Text>
+          </View>
+        </TouchableOpacity>
+      );
+    }
     const loveTextColor = isLove ? "#ffffff" : bubbleTextColor;
-    return renderFormattedContent(
-      typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : ""),
-      {
-        isShimmer,
-        baseStyle: [styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft],
-        textColor: loveTextColor,
-        isMe: item.isMe,
-        fontFamily: activeFont,
-        isLove,
-      }
+    const urlMatch = typeof item.text === "string" ? item.text.match(/https?:\/\/[^\s]+/i) : null;
+    return (
+      <View>
+        {renderFormattedContent(
+          typeof item.text === "string" ? item.text : (item.text ? JSON.stringify(item.text) : ""),
+          {
+            isShimmer,
+            baseStyle: [styles.messageText, item.isMe ? styles.messageTextRight : styles.messageTextLeft],
+            textColor: loveTextColor,
+            isMe: item.isMe,
+            fontFamily: activeFont,
+            isLove,
+          }
+        )}
+        {urlMatch && (
+          <TouchableOpacity
+            style={{
+              marginTop: 6,
+              padding: 8,
+              borderRadius: 10,
+              backgroundColor: isAmoled ? "rgba(255,255,255,0.08)" : (item.isMe ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.15)"),
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+            onPress={() => {
+              if (Platform.OS === "web" && typeof window !== "undefined") {
+                window.open(urlMatch[0], "_blank");
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <ExternalLink size={14} color="#38bdf8" />
+            <Text style={{ color: "#38bdf8", fontSize: 12, fontWeight: "600", textDecorationLine: "underline" }} numberOfLines={1}>
+              {urlMatch[0]}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
     );
   };
 

@@ -27,7 +27,15 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
     // On profile screen on web mobile, render the EXACT SAME new floating 4-tab bar
     return (
       <View style={webNavStyles.floatingNavContainer} pointerEvents="box-none">
-        <View style={[webNavStyles.navPill, { backgroundColor: "rgba(24, 20, 18, 0.92)", borderColor: "rgba(255,255,255,0.12)" }]}>
+        <View
+          style={[
+            webNavStyles.navPill,
+            {
+              backgroundColor: theme.isDark !== false ? "rgba(20, 20, 28, 0.62)" : "rgba(255, 255, 255, 0.72)",
+              borderColor: theme.isDark !== false ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)",
+            },
+          ]}
+        >
           {/* 1. Chats */}
           <TouchableOpacity
             style={webNavStyles.navItemBtn}
@@ -163,9 +171,9 @@ const webNavStyles = StyleSheet.create({
     width: 280,
     ...(Platform.OS === "web"
       ? ({
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          backdropFilter: "blur(24px) saturate(190%)",
+          WebkitBackdropFilter: "blur(24px) saturate(190%)",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.18)",
         } as any)
       : {}),
   },
