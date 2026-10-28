@@ -9,125 +9,78 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
-  const isWebMobile = Platform.OS === 'web' && width < 768;
-  const { isTabsLoading } = useTabsLoading();
   const currentRoute = state.routes[state.index]?.name;
 
-  // Never show tab bar on web desktop
+  // Never show tab bar on desktop
   if (isDesktop) {
     return null;
   }
 
-  // On web mobile, index manages its own integrated 4-tab bar (Chats, Call, Updates, Profile)
-  if (isWebMobile) {
-    if (currentRoute === 'index') {
-      return null;
-    }
-
-    // On profile screen on web mobile, render the EXACT SAME new floating 4-tab bar
-    return (
-      <View style={webNavStyles.floatingNavContainer} pointerEvents="box-none">
-        <View
-          style={[
-            webNavStyles.navPill,
-            {
-              backgroundColor: theme.isDark !== false ? "rgba(20, 20, 28, 0.62)" : "rgba(255, 255, 255, 0.72)",
-              borderColor: theme.isDark !== false ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)",
-            },
-          ]}
-        >
-          {/* 1. Chats */}
-          <TouchableOpacity
-            style={webNavStyles.navItemBtn}
-            onPress={() => router.replace({ pathname: "/", params: { tab: "chats" } })}
-            activeOpacity={0.7}
-          >
-            <MessageSquare size={19} color={theme.textMuted} />
-            <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Chats</Text>
-          </TouchableOpacity>
-
-          {/* 2. Call */}
-          <TouchableOpacity
-            style={webNavStyles.navItemBtn}
-            onPress={() => router.replace({ pathname: "/", params: { tab: "calls" } })}
-            activeOpacity={0.7}
-          >
-            <Phone size={19} color={theme.textMuted} />
-            <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Call</Text>
-          </TouchableOpacity>
-
-          {/* 3. Updates */}
-          <TouchableOpacity
-            style={webNavStyles.navItemBtn}
-            onPress={() => router.replace({ pathname: "/", params: { tab: "updates" } })}
-            activeOpacity={0.7}
-          >
-            <CircleDot size={19} color={theme.textMuted} />
-            <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Updates</Text>
-          </TouchableOpacity>
-
-          {/* 4. Profile (Active) */}
-          <TouchableOpacity
-            style={[webNavStyles.navItemBtn, webNavStyles.navItemBtnActive]}
-            activeOpacity={0.7}
-          >
-            <User size={19} color={theme.accent || "#f97316"} />
-            <Text style={[webNavStyles.navItemText, { color: theme.accent || "#f97316" }]}>Profile</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Floating + Button */}
-        <TouchableOpacity
-          style={[webNavStyles.floatingPlusBtn, { backgroundColor: theme.accent || "#f97316" }]}
-          onPress={() => router.replace({ pathname: "/", params: { newChat: "true" } })}
-          activeOpacity={0.85}
-        >
-          <Plus size={24} color="#fff" strokeWidth={2.5} />
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // Native Mobile Tab Bar (Android / iOS) - UNTOUCHED
-  if (currentRoute === 'index' && isTabsLoading) {
+  // On index screen (both mobile web & native mobile), index manages its own integrated 4-tab bar
+  if (currentRoute === 'index') {
     return null;
   }
 
+  // On other screens like profile, render the unified modern floating 4-tab bar
   return (
-    <View style={styles.floatingWrapper} pointerEvents="box-none">
-      <View style={[styles.pillContainer, { backgroundColor: theme.border }]}>
-        {state.routes.map((route: any, index: number) => {
-          const isFocused = state.index === index;
+    <View style={webNavStyles.floatingNavContainer} pointerEvents="box-none">
+      <View
+        style={[
+          webNavStyles.navPill,
+          {
+            backgroundColor: theme.isDark !== false ? "rgba(20, 20, 28, 0.62)" : "rgba(255, 255, 255, 0.72)",
+            borderColor: theme.isDark !== false ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)",
+          },
+        ]}
+      >
+        {/* 1. Chats */}
+        <TouchableOpacity
+          style={webNavStyles.navItemBtn}
+          onPress={() => router.replace({ pathname: "/", params: { tab: "chats" } })}
+          activeOpacity={0.7}
+        >
+          <MessageSquare size={19} color={theme.textMuted} />
+          <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Chats</Text>
+        </TouchableOpacity>
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
+        {/* 2. Call */}
+        <TouchableOpacity
+          style={webNavStyles.navItemBtn}
+          onPress={() => router.replace({ pathname: "/", params: { tab: "calls" } })}
+          activeOpacity={0.7}
+        >
+          <Phone size={19} color={theme.textMuted} />
+          <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Call</Text>
+        </TouchableOpacity>
 
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
-          };
+        {/* 3. Updates */}
+        <TouchableOpacity
+          style={webNavStyles.navItemBtn}
+          onPress={() => router.replace({ pathname: "/", params: { tab: "updates" } })}
+          activeOpacity={0.7}
+        >
+          <CircleDot size={19} color={theme.textMuted} />
+          <Text style={[webNavStyles.navItemText, { color: theme.textMuted }]}>Updates</Text>
+        </TouchableOpacity>
 
-          const Icon = route.name === 'profile' ? User : MessageCircle;
-          const color = isFocused ? theme.text : theme.textMuted;
-
-          return (
-            <TouchableOpacity
-              key={route.key}
-              onPress={onPress}
-              activeOpacity={0.7}
-              style={styles.tabBtn}
-            >
-              <View style={[styles.iconCircle, isFocused && { backgroundColor: theme.surface }]}>
-                <Icon size={22} color={color} strokeWidth={isFocused ? 2.5 : 2} />
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+        {/* 4. Profile (Active) */}
+        <TouchableOpacity
+          style={[webNavStyles.navItemBtn, webNavStyles.navItemBtnActive]}
+          activeOpacity={0.7}
+        >
+          <User size={19} color={theme.accent || "#f97316"} />
+          <Text style={[webNavStyles.navItemText, { color: theme.accent || "#f97316" }]}>Profile</Text>
+        </TouchableOpacity>
       </View>
+
+      {/* Floating + Button */}
+      <TouchableOpacity
+        style={[webNavStyles.floatingPlusBtn, { backgroundColor: theme.accent || "#f97316" }]}
+        onPress={() => router.replace({ pathname: "/", params: { newChat: "true" } })}
+        activeOpacity={0.85}
+      >
+        <Plus size={24} color="#fff" strokeWidth={2.5} />
+      </TouchableOpacity>
     </View>
   );
 }

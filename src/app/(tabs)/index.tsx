@@ -31,7 +31,6 @@ import { uploadImageToR2 } from "../../lib/r2";
 export default function Home() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === "web" && width >= 768;
-  const isWebMobile = Platform.OS === "web" && width < 768;
 
   const { theme, setTheme } = useTheme();
   const isAmoled = theme.id === "black";
@@ -109,17 +108,15 @@ export default function Home() {
     setChatMenuModalItem(null);
   };
 
-  // Load call logs & stories on Web Mobile
+  // Load call logs & stories on Mobile
   const refreshCallsAndStories = useCallback(() => {
     getStoredCallLogs().then(setCallLogs);
     getStoredStories().then(setStories);
   }, []);
 
   useEffect(() => {
-    if (isWebMobile) {
-      refreshCallsAndStories();
-    }
-  }, [isWebMobile, webTab, refreshCallsAndStories]);
+    refreshCallsAndStories();
+  }, [webTab, refreshCallsAndStories]);
 
   useEffect(() => {
     if (Platform.OS === "web" && typeof document !== "undefined") {
@@ -541,46 +538,6 @@ export default function Home() {
     router.push({ pathname: "/chat", params: { id: contact.id, name: contact.name } });
   };
 
-  // Native Mobile Item Renderer (PRESERVED EXACTLY AS ORIGINAL)
-  const renderNativeItem = useCallback(
-    ({ item }: { item: any }) => (
-      <TouchableOpacity
-        style={styles.chatItem}
-        activeOpacity={0.7}
-        onPress={() => {
-          tryEnterFullscreen();
-          router.push({
-            pathname: "/chat",
-            params: { id: item.id, name: item.name, isGroup: item.isGroup ? "true" : "false" },
-          });
-        }}
-      >
-        {item.avatar ? (
-          <Image source={{ uri: item.avatar }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            {item.isGroup ? <Users size={24} color={theme.textMuted} /> : <User size={24} color={theme.textMuted} />}
-          </View>
-        )}
-        <View style={styles.chatContent}>
-          <View style={styles.chatHeader}>
-            <Text style={[styles.chatName, item.unread > 0 && styles.chatNameUnread]}>{item.name}</Text>
-            <Text style={[styles.chatTime, item.unread > 0 && { color: theme.text, fontWeight: "bold" }]}>
-              {item.time}
-            </Text>
-          </View>
-          <View style={styles.messageRow}>
-            <Text style={[styles.lastMessage, item.unread > 0 && styles.lastMessageUnread]} numberOfLines={1}>
-              {item.lastMessage}
-            </Text>
-            {item.unread > 0 && <View style={styles.badge} />}
-          </View>
-        </View>
-      </TouchableOpacity>
-    ),
-    [styles, theme, router]
-  );
-
   // Loading Screen
   if (loading) {
     return (
@@ -630,68 +587,8 @@ export default function Home() {
     );
   }
 
-  // 2. Mobile Native App View (PRESERVED UNTOUCHED)
-  if (!isWebMobile) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.container}>
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.headerLeft} activeOpacity={0.8}>
-              <View style={styles.userAvatarMini}>
-                <User size={16} color="#fff" />
-              </View>
-              <Text style={styles.headerTitle}>AlaThing</Text>
-              {isPreAnniversary && (
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: "#fbbf24",
-                    marginLeft: 4,
-                    textShadowColor: "#fbbf24",
-                    textShadowRadius: 6,
-                    textShadowOffset: { width: 0, height: 0 },
-                  }}
-                >
-                  ✦
-                </Text>
-              )}
-            </TouchableOpacity>
-            <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-              {isPinEnabled && !!realPin && (
-                <TouchableOpacity style={styles.iconButton} onPress={lockNow} accessibilityLabel="Lock App Now">
-                  <Lock size={18} color="#f43f5e" />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.iconButton}>
-                <Search size={20} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-          </View>
-          {displayedChats.length === 0 ? (
-            <View style={styles.centerContainer}>
-              <MessageSquare size={64} color={theme.textMuted} />
-              <Text style={styles.emptyText}>No chats yet</Text>
-              <Text style={styles.emptySubtext}>Tap the + button to start texting!</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={displayedChats}
-              keyExtractor={(item) => item.id}
-              renderItem={renderNativeItem}
-              contentContainerStyle={styles.listContainer}
-              showsVerticalScrollIndicator={false}
-            />
-          )}
-          <TouchableOpacity style={styles.fab} activeOpacity={0.8} onPress={() => setModalVisible(true)}>
-            <Plus size={32} color="#ffffff" />
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   // -------------------------------------------------------------------------
-  // 3. Web Mobile Experience (Dribbble-inspired UI)
+  // 2. Mobile Experience (Unified across Native Mobile & Mobile Web)
   // -------------------------------------------------------------------------
   const totalUnreadCount = displayedChats.reduce((acc, c) => acc + (c.unread || 0), 0);
 
