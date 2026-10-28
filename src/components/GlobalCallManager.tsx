@@ -112,9 +112,10 @@ export default function GlobalCallManager() {
 
   if (callState.status === "idle") return null;
 
-  // If user is inside the chat screen, the Dynamic Island in chat handles all call states
+  // If user is inside the direct chat screen, the Dynamic Island in chat handles all call states
   // (ringing, calling, connected) directly with custom notch curvature and spring physics!
-  const isDirectChatOpen = pathname === "/chat" || pathname?.includes("chat");
+  // Note: Only strictly match "/chat" and NOT "/chat-info" or profile screens.
+  const isDirectChatOpen = pathname === "/chat" || pathname === "/(tabs)/chat";
   if (isDirectChatOpen) {
     return null;
   }

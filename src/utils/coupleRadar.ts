@@ -181,16 +181,16 @@ export async function fetchPartnerLocationFromCloud(partnerId: string): Promise<
 }
 
 /**
- * Request device location safely with native GPS, browser geolocation & IP fallbacks
+ * Request device location safely with high-accuracy native GPS, browser geolocation & cached fallbacks
  */
 export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> {
-  // 1. Native Android / iOS via expo-location
+  // 1. Native Android / iOS via expo-location (High Accuracy GPS)
   if (Platform.OS !== "web") {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+          accuracy: Location.Accuracy.High,
         });
         if (pos && pos.coords) {
           const loc: RadarLocation = {
@@ -204,11 +204,11 @@ export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> 
         }
       }
     } catch (e) {
-      // Fall through to fallback
+      // Fall through to cache/fallback
     }
   }
 
-  // 2. Web browser navigator.geolocation
+  // 2. Web browser navigator.geolocation (High Accuracy GPS / Wi-Fi trilateration)
   if (typeof navigator !== "undefined" && navigator.geolocation) {
     try {
       const webLoc = await new Promise<RadarLocation | null>((resolve) => {
@@ -222,7 +222,7 @@ export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> 
             });
           },
           () => resolve(null),
-          { enableHighAccuracy: false, timeout: 5000, maximumAge: 10 * 60 * 1000 }
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
         );
       });
       if (webLoc) {
@@ -232,7 +232,13 @@ export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> 
     } catch {}
   }
 
-  // 3. Fast lightweight IP geolocation fallbacks for Web
+  // 3. Prioritize previously saved accurate device GPS over coarse ISP network estimates
+  const cached = await getStoredMyLocation();
+  if (cached && typeof cached.lat === "number" && typeof cached.lng === "number") {
+    return cached;
+  }
+
+  // 4. Last-resort lightweight IP geolocation fallback for Web when GPS is unavailable
   try {
     const res = await fetch("https://ipwho.is/");
     if (res.ok) {
@@ -242,7 +248,7 @@ export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> 
           lat: data.latitude,
           lng: data.longitude,
           timestamp: Date.now(),
-          accuracy: 5000,
+          accuracy: 10000,
         };
         saveMyLocation(ipLoc);
         return ipLoc;
@@ -259,7 +265,7 @@ export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> 
           lat: data.latitude,
           lng: data.longitude,
           timestamp: Date.now(),
-          accuracy: 5000,
+          accuracy: 10000,
         };
         saveMyLocation(ipLoc);
         return ipLoc;
@@ -267,6 +273,5 @@ export async function getCurrentDeviceLocation(): Promise<RadarLocation | null> 
     }
   } catch {}
 
-  // 4. Return cached location
-  return await getStoredMyLocation();
+  return null;
 }

@@ -1523,7 +1523,28 @@ export default function ChatInfoScreen() {
             {/* HERO BANNER SECTION (Full Cover Image + Gradient Overlay)  */}
             {/* ========================================================= */}
             <View style={styles.oceanHeroContainer}>
-              {/* Full Cover Partner Photo */}
+              {/* Layer 1: Ambient Blurred Backdrop to eliminate any side gaps / pillarbox */}
+              <Image
+                source={{
+                  uri:
+                    customAvatar ||
+                    partnerUser?.avatar_url ||
+                    targetAvatarParam ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      partnerNickname ||
+                        partnerUser?.display_name ||
+                        partnerUser?.username ||
+                        targetDisplayNameParam ||
+                        targetUsernameParam ||
+                        "User"
+                    )}&background=0d5c66&color=fff&size=512`,
+                }}
+                style={styles.heroBlurredBackdrop}
+                resizeMode="cover"
+                blurRadius={Platform.OS === "web" ? undefined : 20}
+              />
+
+              {/* Layer 2: Full Cover Partner Photo with Zoom */}
               <Image
                 source={{
                   uri:
@@ -1682,7 +1703,11 @@ export default function ChatInfoScreen() {
                 </View>
                 <View style={styles.statTextCol}>
                   <Text style={[styles.statValueText, { color: theme.text }]} numberOfLines={1}>
-                    {accurateDistance ? accurateDistance.replace(" away", "").replace("Together 💕", "Nearby") : "Nearby"}
+                    {accurateDistance
+                      ? (accurateDistance.includes("Together")
+                          ? "< 50 m"
+                          : accurateDistance.replace(" away", "").trim())
+                      : "Nearby"}
                   </Text>
                   <Text style={[styles.statLabelText, { color: theme.textMuted }]} numberOfLines={1}>Distance</Text>
                 </View>
@@ -3149,6 +3174,23 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
           } as any)
         : {}),
     },
+    heroBlurredBackdrop: {
+      position: "absolute",
+      top: -30,
+      left: -30,
+      right: -30,
+      bottom: -30,
+      width: "120%",
+      height: "120%",
+      opacity: 0.65,
+      ...(Platform.OS === "web"
+        ? ({
+            filter: "blur(24px)",
+            transform: "scale(1.2)",
+            objectFit: "cover",
+          } as any)
+        : {}),
+    },
     heroCoverImage: {
       position: "absolute",
       top: 0,
@@ -3157,7 +3199,13 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       bottom: 0,
       width: "100%",
       height: "100%",
-      ...(Platform.OS === "web" ? ({ objectFit: "cover" } as any) : {}),
+      transform: [{ scale: 1.08 }],
+      ...(Platform.OS === "web"
+        ? ({
+            objectFit: "cover",
+            objectPosition: "center 25%",
+          } as any)
+        : {}),
     },
     heroGradientOverlay: {
       position: "absolute",

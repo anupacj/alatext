@@ -26,6 +26,7 @@ import { useTabsLoading } from "../../context/TabsLoadingContext";
 import { isFullscreenActive, tryEnterFullscreen, exitFullscreen } from "../../lib/fullscreen";
 import { getStoredCallLogs, CallLogEntry, initiateCall } from "../../utils/webrtcCall";
 import { getStoredStories, addStory, StoryItem } from "../../utils/userStories";
+import { uploadImageToR2 } from "../../lib/r2";
 
 export default function Home() {
   const { width } = useWindowDimensions();
@@ -479,17 +480,41 @@ export default function Home() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         quality: 0.85,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets[0]?.uri) {
+        const asset = result.assets[0];
+        let mediaUrl = asset.uri;
+
+        // Auto upload to Cloudflare R2
+        if (asset.base64) {
+          try {
+            const uploadedUrl = await uploadImageToR2(
+              `stories/${user?.id || "anon"}-${Date.now()}`,
+              asset.base64,
+              asset.mimeType || "image/jpeg"
+            );
+            if (uploadedUrl) {
+              mediaUrl = uploadedUrl;
+            }
+          } catch (upErr) {
+            console.warn("Failed to upload story to R2, using local URI:", upErr);
+          }
+        }
+
         const newStory: StoryItem = {
           id: `story_${Date.now()}`,
           userId: user?.id || "me",
-          userName: "You",
-          userAvatar: undefined,
-          mediaUrl: result.assets[0].uri,
+          userName:
+            (user?.user_metadata as any)?.nickname ||
+            user?.user_metadata?.display_name ||
+            user?.user_metadata?.username ||
+            "You",
+          userAvatar: user?.user_metadata?.avatar_url,
+          mediaUrl: mediaUrl,
           timestamp: Date.now(),
-          caption: "My new moment ✨",
+          caption: "My moment ✨",
         };
         await addStory(newStory);
         refreshCallsAndStories();
