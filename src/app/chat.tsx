@@ -743,18 +743,18 @@ export default function ChatScreen() {
     const byeCountInNewMsg = countByesInText(newMsgText);
     if (byeCountInNewMsg <= 0) return;
 
-    // 3. Must be a live message created within the last 2 minutes
+    // 3. Must not be an old historical message from hours ago
     const msgTime = newMsg.created_at_ts || (newMsg.created_at ? new Date(newMsg.created_at).getTime() : Date.now());
-    if (Math.abs(Date.now() - msgTime) > 120 * 1000) return;
+    if (msgTime > 0 && (Date.now() - msgTime) > 10 * 60 * 1000) return;
 
     // 4. If currently active block is running, do not re-trigger
     if (chatBlockedUntil && new Date(chatBlockedUntil).getTime() > Date.now()) return;
 
-    // 5. Cooldown shield: If chat was recently blocked or in cooldown, protect conversation from endless loops
+    // 5. Cooldown shield: prevent immediate rapid re-triggering (60s cooldown)
     if (cooldownUntilRef.current > Date.now()) return;
 
     const listToTest = [newMsg, ...allMsgs.filter(m => m.id !== newMsg.id)];
-    const detection = detectEndlessByes(listToTest, 5 * 60 * 1000, 3, lastBlockTimeRef.current);
+    const detection = detectEndlessByes(listToTest, 5 * 60 * 1000, 2, lastBlockTimeRef.current);
     if (!detection.shouldTrigger || !detection.triggeringMsgId) return;
 
     // ANTI-LOOP SHIELD:
@@ -763,7 +763,7 @@ export default function ChatScreen() {
     Keyboard.dismiss();
 
     const now = Date.now();
-    const COOLDOWN_DURATION = 15 * 60 * 1000; // 15 minutes cooldown
+    const COOLDOWN_DURATION = 60 * 1000; // 60s cooldown instead of 15 minutes!
     const newBlockedUntil = new Date(now + 120_000).toISOString();
     const newQuote = getDailyByeQuote();
     const triggeringId = detection.triggeringMsgId;
@@ -1645,7 +1645,11 @@ export default function ChatScreen() {
 
         // If block is already expired in DB, clean it up so it never causes stale false triggers
         if (chatData.blocked_until && !isStillBlocked) {
-          supabase.from("chats").update({ blocked_until: null }).eq("id", id).then(() => {}, () => {});
+          supabase.from("chats").update({
+            blocked_until: null,
+            block_quote: null,
+            blocked_by_msg_id: null,
+          }).eq("id", id).then(() => {}, () => {});
           if (Platform.OS === "web" && typeof window !== "undefined") {
             window.localStorage.removeItem(`@sleepy_bye_block_${id}`);
           }
@@ -3252,11 +3256,13 @@ export default function ChatScreen() {
         targetUsername={myProfile?.display_name || myProfile?.username || user?.user_metadata?.username || user?.user_metadata?.name || "sleepyhead"}
         onUnlocked={() => {
           setChatBlockedUntil(null);
-          // Maintain cooldown so unlocking or dismissing doesn't immediately re-trap users
+          setChatBlockQuote(null);
+          setChatBlockedByMsgId(null);
+          // 60s cooldown so unlocking or dismissing doesn't immediately re-trap users while allowing re-testing
           const now = Date.now();
-          const COOLDOWN_DURATION = 15 * 60 * 1000;
+          const COOLDOWN_DURATION = 60 * 1000;
           lastBlockTimeRef.current = now;
-          cooldownUntilRef.current = Math.max(cooldownUntilRef.current, now + COOLDOWN_DURATION);
+          cooldownUntilRef.current = now + COOLDOWN_DURATION;
           const cdRecord = { cooldownUntil: cooldownUntilRef.current, lastBlockedAt: now };
 
           if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -3266,7 +3272,11 @@ export default function ChatScreen() {
           AsyncStorage.removeItem(`@sleepy_bye_block_${currentChatId}`).catch(() => {});
           AsyncStorage.setItem(`@sleepy_bye_cooldown_${currentChatId}`, JSON.stringify(cdRecord)).catch(() => {});
 
-          supabase.from("chats").update({ blocked_until: null }).eq("id", currentChatId).then(() => {}, () => {});
+          supabase.from("chats").update({
+            blocked_until: null,
+            block_quote: null,
+            blocked_by_msg_id: null,
+          }).eq("id", currentChatId).then(() => {}, () => {});
         }}
       />
       {showWallpaper && (

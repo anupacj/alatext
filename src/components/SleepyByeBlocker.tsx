@@ -107,8 +107,8 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
         }
       }
 
-      // 2. Check local persistence if prop is not set yet
-      if (!candidateExp) {
+      // 2. Check local persistence ONLY IF blockedUntil prop was NOT provided (undefined)
+      if (!candidateExp && blockedUntil === undefined) {
         try {
           let raw: string | null = null;
           if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -133,7 +133,7 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
         } catch {}
       }
 
-      if (candidateExp > Date.now()) {
+      if (candidateExp > Date.now() && (visible || visible === undefined)) {
         const safeName = targetUsername?.trim() || "sleepyhead";
         let q = candidateQuote;
         if (q && q.includes("[username]")) {
@@ -158,18 +158,22 @@ export const SleepyByeBlocker: React.FC<SleepyByeBlockerProps> = ({
           useNativeDriver: Platform.OS !== "web",
         }).start();
       } else {
-        if (isActive) {
-          Animated.timing(fadeAnim, {
-            toValue: 0,
-            duration: 600,
-            useNativeDriver: Platform.OS !== "web",
-          }).start(() => setIsActive(false));
-        }
+        setIsActive((wasActive) => {
+          if (wasActive) {
+            Animated.timing(fadeAnim, {
+              toValue: 0,
+              duration: 600,
+              useNativeDriver: Platform.OS !== "web",
+            }).start(() => setIsActive(false));
+            return true;
+          }
+          return false;
+        });
       }
     };
 
     checkState();
-  }, [chatId, blockedUntil, quote, targetUsername, isActive, fadeAnim]);
+  }, [chatId, visible, blockedUntil, quote, targetUsername, fadeAnim]);
 
   // Handle clean dismissal
   const handleDismiss = useCallback(async () => {
