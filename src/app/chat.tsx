@@ -11,7 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText, Lock, Navigation } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText, Lock, Navigation, Camera } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
@@ -1050,6 +1050,7 @@ export default function ChatScreen() {
   const typingChannelRef = useRef<any>(null);
   const profileCache = useRef<Map<string, any>>(new Map());
   const fileInputRef = useRef<any>(null);
+  const cameraInputRef = useRef<any>(null);
   const textInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -4428,6 +4429,29 @@ export default function ChatScreen() {
                     </TouchableOpacity>
                     {Platform.OS === "web" && (
                       <input ref={fileInputRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.txt,.zip,.csv" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
+                    )}
+                    {Platform.OS === "web" && !isDesktop && (
+                      <>
+                        <TouchableOpacity
+                          style={styles.inputIconButton}
+                          onPress={() => cameraInputRef.current?.click()}
+                          disabled={uploadingImage}
+                          accessibilityLabel="Take Photo with Camera"
+                        >
+                          <Camera
+                            size={20}
+                            color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)}
+                          />
+                        </TouchableOpacity>
+                        <input
+                          ref={cameraInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          style={{ display: "none" } as any}
+                          onChange={handleWebFileChange}
+                        />
+                      </>
                     )}
                     {isDesktop && isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
                       <TouchableOpacity 
