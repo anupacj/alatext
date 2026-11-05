@@ -1078,6 +1078,8 @@ export default function ChatScreen() {
   }, [isGlassKeyboardOpen]);
 
   const [viewportBottom, setViewportBottom] = useState(0);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [visualViewportHeight, setVisualViewportHeight] = useState<number | null>(null);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
@@ -1093,20 +1095,25 @@ export default function ChatScreen() {
     const handleViewport = () => {
       resetScroll();
       if (window.visualViewport) {
-        const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
-        const visualHeight = window.visualViewport.height;
-        const offsetTop = window.visualViewport.offsetTop || 0;
+        const visualHeight = Math.round(window.visualViewport.height);
+        const layoutHeight = Math.round(document.documentElement.clientHeight || window.innerHeight);
+        const offsetTop = Math.round(window.visualViewport.offsetTop || 0);
+        const diff = layoutHeight - (visualHeight + offsetTop);
+        const isNarrowOrMobile = window.innerWidth < 768;
+        const keyboardActive = diff > 40 || (isNarrowOrMobile && window.screen && visualHeight < window.screen.height * 0.75);
 
-        let diff = layoutHeight - (visualHeight + offsetTop);
-        const keyboardHeight = (diff > 40 && diff < 450) ? Math.min(diff, 320) : 0;
+        setIsKeyboardOpen(keyboardActive);
+        setVisualViewportHeight(keyboardActive ? visualHeight : null);
+        setViewportBottom(0);
 
-        setViewportBottom(keyboardHeight);
-        if (keyboardHeight > 0) {
+        if (keyboardActive) {
           setTimeout(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           }, 100);
         }
       } else {
+        setIsKeyboardOpen(false);
+        setVisualViewportHeight(null);
         setViewportBottom(0);
       }
     };
@@ -1117,6 +1124,9 @@ export default function ChatScreen() {
     };
 
     if (isDesktop) return;
+
+    // Run initial viewport calculation
+    handleViewport();
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", handleViewport);
@@ -3237,8 +3247,11 @@ export default function ChatScreen() {
   const chatViewContent = (
     <RNAnimated.View
       style={{
-        flex: 1,
-        height: "100%",
+        flex: (!isDesktop && Platform.OS === "web" && visualViewportHeight) ? undefined : 1,
+        flexGrow: (!isDesktop && Platform.OS === "web" && visualViewportHeight) ? 0 : 1,
+        flexShrink: 0,
+        height: (!isDesktop && Platform.OS === "web" && visualViewportHeight) ? visualViewportHeight : "100%",
+        maxHeight: (!isDesktop && Platform.OS === "web" && visualViewportHeight) ? visualViewportHeight : "100%",
         backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background),
         overflow: "hidden",
         borderRadius: screenRadius,
@@ -4107,7 +4120,7 @@ export default function ChatScreen() {
             contentContainerStyle={[
               styles.listContainer,
               !isDesktop && {
-                paddingTop: (Platform.OS === "web" ? 82 : 98) + (notchConfig.topOffset || 0) + (notchConfig.mode === "floating_breathe" ? 16 : 0),
+                paddingTop: (Platform.OS === "web" ? (isKeyboardOpen ? 66 : 82) : 98) + (notchConfig.topOffset || 0) + (notchConfig.mode === "floating_breathe" ? 16 : 0),
               },
               isGlassKeyboardOpen && !isDesktop && {
                 paddingTop: (Platform.OS === "web" ? (isDesktop ? 74 : 82) : 98) + 290,
@@ -4131,8 +4144,8 @@ export default function ChatScreen() {
           <View style={[
             styles.inputArea,
             {
-              bottom: viewportBottom,
-              paddingBottom: isGlassKeyboardOpen ? 0 : (viewportBottom > 0 ? 6 : (Platform.OS === "web" ? (isDesktop ? 16 : 22) : (Platform.OS === "ios" ? 28 : 19)))
+              bottom: (!isDesktop && Platform.OS === "web") ? 0 : viewportBottom,
+              paddingBottom: isGlassKeyboardOpen ? 0 : (isKeyboardOpen ? 6 : (Platform.OS === "web" ? (isDesktop ? 16 : 22) : (Platform.OS === "ios" ? 28 : 19)))
             },
             showWallpaper && { backgroundColor: "transparent" }
           ]}>
