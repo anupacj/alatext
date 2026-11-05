@@ -4466,25 +4466,15 @@ export default function ChatScreen() {
                         <Type size={20} color={fontPickerOpen || isShimmerActive ? (theme.id === "pink" ? "#f43f5e" : "#c084fc") : (theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted))} />
                       </TouchableOpacity>
                     )}
-                    {isDesktop && (
-                      <TouchableOpacity 
-                        style={styles.inputIconButton} 
-                        onPress={() => {
-                          if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
-                          setStickerPickerOpen(true);
-                        }}
-                      >
-                        <Sticker size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
-                      </TouchableOpacity>
-                    )}
                     <TouchableOpacity 
                       style={styles.inputIconButton} 
                       onPress={() => {
                         if (isGlassKeyboardOpen) setIsGlassKeyboardOpen(false);
-                        setEmojiOpen(true);
+                        setStickerPickerOpen(true);
                       }}
+                      accessibilityLabel="Open Stickers and Emojis"
                     >
-                      <Smile size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
+                      <Sticker size={20} color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)} />
                     </TouchableOpacity>
                     {!isDesktop && isFeatureEnabled("glass_keyboard", myProfile, publicFeatures) && (
                       <TouchableOpacity 
@@ -4662,6 +4652,7 @@ export default function ChatScreen() {
             }).then();
             setReplyingTo(null);
           }} 
+          onSelectEmoji={(emoji) => setInputText(prev => prev + emoji)}
         />
       )}
       <CustomEmojiPicker 
