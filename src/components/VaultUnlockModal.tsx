@@ -11,13 +11,17 @@ import {
 } from "react-native";
 import { ShieldCheck, Lock, X, Fingerprint, KeyRound } from "lucide-react-native";
 import { useAlaPin } from "../context/AlaPinContext";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { fetchAccountMemoryPin } from "../utils/memoriesAndNotes";
 
 interface VaultUnlockModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
+
+type PinMode = "ENTER" | "CREATE" | "CONFIRM";
 
 export default function VaultUnlockModal({
   visible,
@@ -31,24 +35,47 @@ export default function VaultUnlockModal({
     isBiometricEnabled,
     unlockVaultWithPin,
     unlockVaultWithBiometrics,
+    setupRealPin,
   } = useAlaPin();
+  const { user } = useAuth();
   const { theme } = useTheme();
   const isAmoled = theme.id === "black";
 
+  const [mode, setMode] = useState<PinMode>("ENTER");
   const [pin, setPin] = useState("");
+  const [firstPin, setFirstPin] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [shakeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
     if (visible) {
       setPin("");
+      setFirstPin("");
       setErrorMsg("");
-      // Auto-trigger biometric prompt if enabled & supported
-      if (isBiometricSupported && isBiometricEnabled) {
-        handleBiometricPrompt();
+
+      if (realPin) {
+        setMode("ENTER");
+        // Auto-trigger biometric prompt if enabled & supported
+        if (isBiometricSupported && isBiometricEnabled) {
+          handleBiometricPrompt();
+        }
+      } else if (user?.id) {
+        // Double check if account has a PIN saved in Supabase
+        fetchAccountMemoryPin(user.id).then((cloudPin) => {
+          if (cloudPin) {
+            setupRealPin(cloudPin);
+            setMode("ENTER");
+          } else {
+            setMode("CREATE");
+          }
+        }).catch(() => {
+          setMode("CREATE");
+        });
+      } else {
+        setMode("CREATE");
       }
     }
-  }, [visible]);
+  }, [visible, realPin, user?.id]);
 
   const handleBiometricPrompt = async () => {
     try {
@@ -81,22 +108,37 @@ export default function VaultUnlockModal({
       setErrorMsg("");
 
       if (newPin.length === 4) {
-        setTimeout(() => {
-          // If no AlaPin configured yet, any 4-digit or standard entry unlocks
-          if (!realPin) {
-            onSuccess?.();
-            onClose();
-            return;
-          }
-
-          const result = unlockVaultWithPin(newPin);
-          if (result.success) {
-            onSuccess?.();
-            onClose();
-          } else {
-            triggerShake();
-            setErrorMsg("Incorrect PIN. Please try again.");
+        setTimeout(async () => {
+          if (mode === "CREATE") {
+            // Store first pin and ask for confirmation
+            setFirstPin(newPin);
             setPin("");
+            setMode("CONFIRM");
+            setErrorMsg("");
+          } else if (mode === "CONFIRM") {
+            if (newPin === firstPin) {
+              // PIN confirmed! Save to AlaPin context & Supabase cloud account
+              await setupRealPin(newPin);
+              onSuccess?.();
+              onClose();
+            } else {
+              triggerShake();
+              setErrorMsg("PINs do not match. Please try again.");
+              setPin("");
+              setFirstPin("");
+              setMode("CREATE");
+            }
+          } else {
+            // mode === "ENTER"
+            const result = unlockVaultWithPin(newPin);
+            if (result.success) {
+              onSuccess?.();
+              onClose();
+            } else {
+              triggerShake();
+              setErrorMsg("Incorrect PIN. Please try again.");
+              setPin("");
+            }
           }
         }, 120);
       }
@@ -115,6 +157,20 @@ export default function VaultUnlockModal({
     setErrorMsg("");
   };
 
+  const getHeaderTitle = () => {
+    if (mode === "CREATE") return "Set Memories PIN";
+    if (mode === "CONFIRM") return "Confirm Memories PIN";
+    return "Unlock Secret Vault";
+  };
+
+  const getHeaderSubtitle = () => {
+    if (mode === "CREATE") return "Create a 4-digit PIN linked to your account";
+    if (mode === "CONFIRM") return "Re-enter the 4-digit PIN to confirm";
+    return isBiometricSupported
+      ? "Enter 4-digit Memories PIN or use Fingerprint"
+      : "Enter your 4-digit Memories PIN to reveal secret memories and notes";
+  };
+
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -127,15 +183,17 @@ export default function VaultUnlockModal({
           {/* Icon & Title */}
           <View style={styles.header}>
             <View style={[styles.iconCircle, { backgroundColor: "rgba(168, 85, 247, 0.15)" }]}>
-              <Lock size={30} color="#a855f7" />
+              {mode === "CREATE" || mode === "CONFIRM" ? (
+                <KeyRound size={30} color="#a855f7" />
+              ) : (
+                <Lock size={30} color="#a855f7" />
+              )}
             </View>
             <Text style={[styles.title, { color: isAmoled ? "#ffffff" : theme.text }]}>
-              Unlock Secret Vault
+              {getHeaderTitle()}
             </Text>
             <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-              {isBiometricSupported
-                ? "Enter 4-digit AlaPin or use Fingerprint"
-                : "Enter 4-digit AlaPin to reveal secret memories and notes"}
+              {getHeaderSubtitle()}
             </Text>
           </View>
 
@@ -173,7 +231,7 @@ export default function VaultUnlockModal({
               </TouchableOpacity>
             ))}
 
-            {isBiometricSupported ? (
+            {mode === "ENTER" && isBiometricSupported ? (
               <TouchableOpacity
                 style={[styles.keyBtn, styles.actionKeyBtn, { backgroundColor: "rgba(168, 85, 247, 0.18)" }]}
                 onPress={handleBiometricPrompt}

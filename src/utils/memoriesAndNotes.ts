@@ -16,6 +16,7 @@ export interface MemoryItem {
   is_vault?: boolean;
   location_name?: string;
   milestone_tag?: string;
+  order_index?: number;
 }
 
 export interface ChecklistItem {
@@ -71,6 +72,43 @@ export async function saveNotesToLocal(chatId: string, notes: NoteItem[]): Promi
 }
 
 // -------------------------------------------------------------
+// ACCOUNT-LINKED MEMORIES PIN API (CLOUD-SYNCED)
+// -------------------------------------------------------------
+export async function fetchAccountMemoryPin(userId: string): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", `memory_pin_${userId}`)
+      .maybeSingle();
+    if (!error && data?.value?.pin) {
+      return String(data.value.pin);
+    }
+  } catch (e) {
+    console.warn("[MemoryPin] fetch error:", e);
+  }
+  return null;
+}
+
+export async function saveAccountMemoryPin(userId: string, pin: string): Promise<boolean> {
+  if (!userId || !pin) return false;
+  try {
+    const { error } = await supabase
+      .from("app_settings")
+      .upsert({
+        key: `memory_pin_${userId}`,
+        value: { pin, updated_at: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      });
+    if (!error) return true;
+  } catch (e) {
+    console.warn("[MemoryPin] save error:", e);
+  }
+  return false;
+}
+
+// -------------------------------------------------------------
 // MEMORIES API
 // -------------------------------------------------------------
 export async function fetchMemories(chatId: string): Promise<MemoryItem[]> {
@@ -83,8 +121,16 @@ export async function fetchMemories(chatId: string): Promise<MemoryItem[]> {
       .order("memory_date", { ascending: false });
 
     if (!error && Array.isArray(data)) {
-      await saveMemoriesToLocal(chatId, data);
-      return data;
+      const sorted = [...data].sort((a: any, b: any) => {
+        if (typeof a.order_index === "number" && typeof b.order_index === "number") {
+          return a.order_index - b.order_index;
+        }
+        if (typeof a.order_index === "number") return -1;
+        if (typeof b.order_index === "number") return 1;
+        return new Date(b.memory_date).getTime() - new Date(a.memory_date).getTime();
+      });
+      await saveMemoriesToLocal(chatId, sorted);
+      return sorted;
     }
   } catch (e) {}
   return local;
@@ -177,6 +223,81 @@ export async function deleteMemory(chatId: string, memoryId: string): Promise<vo
   try {
     await supabase.from("chat_memories").delete().eq("id", memoryId);
   } catch (e) {}
+
+  broadcastMemoriesUpdate(chatId);
+}
+
+export async function updateMemory(
+  chatId: string,
+  memoryId: string,
+  updates: {
+    title?: string;
+    caption?: string;
+    memory_date?: string;
+    location_name?: string;
+    milestone_tag?: string;
+    is_vault?: boolean;
+    order_index?: number;
+  }
+): Promise<MemoryItem | null> {
+  const current = await loadMemoriesFromLocal(chatId);
+  const existingIndex = current.findIndex(m => m.id === memoryId);
+  if (existingIndex === -1) return null;
+
+  const updatedMemory: MemoryItem = {
+    ...current[existingIndex],
+    ...updates,
+  };
+  current[existingIndex] = updatedMemory;
+  await saveMemoriesToLocal(chatId, current);
+
+  // Sync to Supabase
+  try {
+    const dbPayload: any = {};
+    if (updates.title !== undefined) dbPayload.title = updates.title;
+    if (updates.caption !== undefined) dbPayload.caption = updates.caption;
+    if (updates.memory_date !== undefined) dbPayload.memory_date = updates.memory_date;
+    if (updates.location_name !== undefined) dbPayload.location_name = updates.location_name;
+    if (updates.milestone_tag !== undefined) dbPayload.milestone_tag = updates.milestone_tag;
+    if (updates.is_vault !== undefined) dbPayload.is_vault = updates.is_vault;
+    if (updates.order_index !== undefined) dbPayload.order_index = updates.order_index;
+
+    let { error } = await supabase.from("chat_memories").update(dbPayload).eq("id", memoryId);
+    if (error) {
+      // If extra columns like location_name/milestone_tag don't exist
+      delete dbPayload.location_name;
+      delete dbPayload.milestone_tag;
+      delete dbPayload.order_index;
+      await supabase.from("chat_memories").update(dbPayload).eq("id", memoryId);
+    }
+  } catch (e) {
+    console.warn("updateMemory error:", e);
+  }
+
+  broadcastMemoriesUpdate(chatId);
+  return updatedMemory;
+}
+
+export async function reorderMemories(
+  chatId: string,
+  reorderedList: MemoryItem[]
+): Promise<void> {
+  const withOrder = reorderedList.map((m, idx) => ({ ...m, order_index: idx }));
+  await saveMemoriesToLocal(chatId, withOrder);
+
+  // Persist order indices to DB asynchronously
+  try {
+    await Promise.all(
+      withOrder.map(m =>
+        supabase
+          .from("chat_memories")
+          .update({ order_index: m.order_index })
+          .eq("id", m.id)
+      )
+    );
+  } catch (e) {
+    console.warn("reorderMemories error:", e);
+  }
 
   broadcastMemoriesUpdate(chatId);
 }

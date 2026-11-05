@@ -59,6 +59,8 @@ import {
   Phone,
   Download,
   Link as LinkIcon,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -86,6 +88,8 @@ import {
   ChecklistItem,
   fetchMemories,
   addMemory,
+  updateMemory,
+  reorderMemories,
   deleteMemory,
   fetchNotes,
   saveNote,
@@ -296,6 +300,17 @@ export default function ChatInfoScreen() {
   const [newMemoryMilestone, setNewMemoryMilestone] = useState("");
   const [newMemoryIsVault, setNewMemoryIsVault] = useState(false);
   const [savingMemory, setSavingMemory] = useState(false);
+
+  // Memory Edit & Reorder State
+  const [editMemoryModalVisible, setEditMemoryModalVisible] = useState(false);
+  const [editingMemory, setEditingMemory] = useState<MemoryItem | null>(null);
+  const [editMemoryTitle, setEditMemoryTitle] = useState("");
+  const [editMemoryCaption, setEditMemoryCaption] = useState("");
+  const [editMemoryDate, setEditMemoryDate] = useState("");
+  const [editMemoryLocation, setEditMemoryLocation] = useState("");
+  const [editMemoryMilestone, setEditMemoryMilestone] = useState("");
+  const [editMemoryIsVault, setEditMemoryIsVault] = useState(false);
+  const [savingEditMemory, setSavingEditMemory] = useState(false);
 
   // Memories Views & Privacy Veil
   const [memoryViewMode, setMemoryViewMode] = useState<MemoryViewMode>("timeline");
@@ -825,6 +840,64 @@ export default function ChatInfoScreen() {
     }
     await deleteMemory(chatId, memId);
     setMemories(prev => prev.filter(m => m.id !== memId));
+  };
+
+  const handleOpenEditMemory = (mem: MemoryItem) => {
+    setEditingMemory(mem);
+    setEditMemoryTitle(mem.title || "");
+    setEditMemoryCaption(mem.caption || "");
+    setEditMemoryDate(
+      mem.memory_date
+        ? new Date(mem.memory_date).toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0]
+    );
+    setEditMemoryLocation(mem.location_name || "");
+    setEditMemoryMilestone(mem.milestone_tag || "");
+    setEditMemoryIsVault(!!mem.is_vault);
+    setEditMemoryModalVisible(true);
+  };
+
+  const handleSaveEditedMemory = async () => {
+    if (!editingMemory || !editMemoryTitle.trim()) return;
+    setSavingEditMemory(true);
+    try {
+      await updateMemory(chatId, editingMemory.id, {
+        title: editMemoryTitle.trim(),
+        caption: editMemoryCaption.trim() || undefined,
+        memory_date: editMemoryDate || undefined,
+        location_name: editMemoryLocation.trim() || undefined,
+        milestone_tag: editMemoryMilestone.trim() || undefined,
+        is_vault: editMemoryIsVault,
+      });
+      setEditMemoryModalVisible(false);
+      setEditingMemory(null);
+      await loadMemoriesData();
+    } catch (e) {
+      console.error("Failed to update memory:", e);
+    } finally {
+      setSavingEditMemory(false);
+    }
+  };
+
+  const handleMoveMemory = async (memId: string, direction: "up" | "down") => {
+    const currentIndex = visibleMemories.findIndex((m) => m.id === memId);
+    if (currentIndex === -1) return;
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= visibleMemories.length) return;
+
+    // Swap in visible list
+    const newList = [...visibleMemories];
+    const [movedItem] = newList.splice(currentIndex, 1);
+    newList.splice(targetIndex, 0, movedItem);
+
+    // Optimistically update
+    setMemories(newList);
+
+    try {
+      await reorderMemories(chatId, newList);
+    } catch (err) {
+      console.error("Failed to save reordered memories:", err);
+    }
   };
 
   // -------------------------------------------------------------
@@ -2437,7 +2510,7 @@ export default function ChatInfoScreen() {
             ) : memoryViewMode === "timeline" ? (
               /* VIEW 1: TIMELINE FEED WITH HOLD-TO-PEEK PRIVACY VEIL */
               <View style={styles.memoriesTimeline}>
-                {visibleMemories.map((mem) => {
+                {visibleMemories.map((mem, memIndex) => {
                   const isPeeking = peekingMemoryId === mem.id;
                   const shouldBlur = privacyVeil && !isPeeking;
 
@@ -2493,10 +2566,43 @@ export default function ChatInfoScreen() {
                         </View>
 
                         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                          <Text style={styles.memoryCardTitle} numberOfLines={1}>{mem.title}</Text>
-                          <TouchableOpacity onPress={() => handleDeleteMemory(mem.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                            <Trash2 size={16} color="#f43f5e" />
-                          </TouchableOpacity>
+                          <Text style={[styles.memoryCardTitle, { flex: 1, marginRight: 8 }]} numberOfLines={1}>{mem.title}</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <TouchableOpacity
+                              disabled={memIndex === 0}
+                              onPress={() => handleMoveMemory(mem.id, "up")}
+                              style={{ opacity: memIndex === 0 ? 0.25 : 0.85, padding: 2 }}
+                              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                              accessibilityLabel="Move up"
+                            >
+                              <ChevronUp size={18} color={theme.text} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              disabled={memIndex === visibleMemories.length - 1}
+                              onPress={() => handleMoveMemory(mem.id, "down")}
+                              style={{ opacity: memIndex === visibleMemories.length - 1 ? 0.25 : 0.85, padding: 2 }}
+                              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                              accessibilityLabel="Move down"
+                            >
+                              <ChevronDown size={18} color={theme.text} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleOpenEditMemory(mem)}
+                              style={{ padding: 2 }}
+                              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                              accessibilityLabel="Edit memory"
+                            >
+                              <Edit3 size={16} color="#0d6e7a" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleDeleteMemory(mem.id)}
+                              style={{ padding: 2 }}
+                              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                              accessibilityLabel="Delete memory"
+                            >
+                              <Trash2 size={16} color="#f43f5e" />
+                            </TouchableOpacity>
+                          </View>
                         </View>
 
                         {mem.caption ? (
@@ -2865,6 +2971,120 @@ export default function ChatInfoScreen() {
                 disabled={savingMemory}
               >
                 {savingMemory ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveModalBtnText}>Save Memory</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================= */}
+      {/* MODAL: EDIT MEMORY                                        */}
+      {/* ========================================================= */}
+      <Modal visible={editMemoryModalVisible} transparent animationType="slide" onRequestClose={() => setEditMemoryModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Memory ✏️</Text>
+              <TouchableOpacity onPress={() => setEditMemoryModalVisible(false)}>
+                <X size={20} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ padding: 18 }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.inputLabel}>Memory Title</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. First Date, Beach Trip, Sweetest Message"
+                placeholderTextColor={theme.textMuted}
+                value={editMemoryTitle}
+                onChangeText={setEditMemoryTitle}
+              />
+
+              <Text style={styles.inputLabel}>Date (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={theme.textMuted}
+                value={editMemoryDate}
+                onChangeText={setEditMemoryDate}
+              />
+
+              <Text style={styles.inputLabel}>📍 Place / Location Tag (Optional)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Sunset Pier, Central Park, Favorite Cafe"
+                placeholderTextColor={theme.textMuted}
+                value={editMemoryLocation}
+                onChangeText={setEditMemoryLocation}
+              />
+
+              <Text style={styles.inputLabel}>🌟 Milestone Tag (Optional)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. First Date, Road Trip, Anniversary, Special Night"
+                placeholderTextColor={theme.textMuted}
+                value={editMemoryMilestone}
+                onChangeText={setEditMemoryMilestone}
+              />
+
+              {/* Quick Milestone Chips */}
+              <View style={styles.quickMilestonesRow}>
+                {["First Met", "First Date", "First Trip", "Anniversary", "Special Night"].map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[
+                      styles.quickMilestoneChip,
+                      editMemoryMilestone === m && styles.quickMilestoneChipActive,
+                    ]}
+                    onPress={() => setEditMemoryMilestone(m)}
+                  >
+                    <Text
+                      style={[
+                        styles.quickMilestoneChipText,
+                        editMemoryMilestone === m && styles.quickMilestoneChipTextActive,
+                      ]}
+                    >
+                      {m}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>Caption / Memory Story</Text>
+              <TextInput
+                style={[styles.textInput, { height: 80, textAlignVertical: "top" }]}
+                placeholder="What made this moment so special?"
+                placeholderTextColor={theme.textMuted}
+                multiline
+                value={editMemoryCaption}
+                onChangeText={setEditMemoryCaption}
+              />
+
+              {/* Secret Vault Toggle for Memory */}
+              <TouchableOpacity
+                style={[
+                  styles.togglePill,
+                  editMemoryIsVault && { borderColor: "#a855f7", backgroundColor: "rgba(168, 85, 247, 0.15)" },
+                  { marginTop: 14 },
+                ]}
+                onPress={() => setEditMemoryIsVault((prev) => !prev)}
+              >
+                <Lock size={15} color={editMemoryIsVault ? "#a855f7" : theme.textMuted} />
+                <Text style={[styles.togglePillText, editMemoryIsVault && { color: "#a855f7" }]}>
+                  Keep in Secret Vault (Requires PIN/Biometrics)
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.saveModalBtn, savingEditMemory && { opacity: 0.6 }]}
+                onPress={handleSaveEditedMemory}
+                disabled={savingEditMemory}
+              >
+                {savingEditMemory ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveModalBtnText}>Save Changes</Text>
+                )}
               </TouchableOpacity>
             </ScrollView>
           </View>

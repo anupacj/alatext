@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as LocalAuthentication from "expo-local-authentication";
+import { useAuth } from "./AuthContext";
+import { fetchAccountMemoryPin, saveAccountMemoryPin } from "../utils/memoriesAndNotes";
 
 interface AlaPinContextType {
   isLocked: boolean;
@@ -28,6 +30,7 @@ interface AlaPinContextType {
 const AlaPinContext = createContext<AlaPinContextType | undefined>(undefined);
 
 export const AlaPinProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [isPinEnabled, setIsPinEnabled] = useState(false);
   const [realPin, setRealPinState] = useState<string | null>(null);
   const [decoyPin, setDecoyPinState] = useState<string | null>(null);
@@ -47,6 +50,17 @@ export const AlaPinProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadPinSettings();
     checkBiometrics();
   }, []);
+
+  // Sync account-linked PIN from Supabase cloud whenever user is available
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchAccountMemoryPin(user.id).then((cloudPin) => {
+      if (cloudPin) {
+        setRealPinState(cloudPin);
+        AsyncStorage.setItem("@alapin_real_pin", cloudPin).catch(() => {});
+      }
+    });
+  }, [user?.id]);
 
   const checkBiometrics = async () => {
     try {
@@ -152,6 +166,9 @@ export const AlaPinProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setIsPinEnabled(true);
     await AsyncStorage.setItem("@alapin_real_pin", pin);
     await AsyncStorage.setItem("@alapin_enabled", "true");
+    if (user?.id) {
+      await saveAccountMemoryPin(user.id, pin);
+    }
   };
 
   const setupDecoyPin = async (pin: string | null) => {
