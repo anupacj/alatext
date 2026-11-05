@@ -14,6 +14,7 @@ import {
   Modal,
   Animated as RNAnimated,
   Easing,
+  Switch,
 } from "react-native";
 import {
   ArrowLeft,
@@ -61,6 +62,7 @@ import {
   Link as LinkIcon,
   ChevronUp,
   ChevronDown,
+  KeyRound,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -95,6 +97,8 @@ import {
   saveNote,
   deleteNote,
   toggleChecklistItem,
+  fetchLockAllMemoriesSetting,
+  saveLockAllMemoriesSetting,
 } from "../utils/memoriesAndNotes";
 
 type ActiveTab = "media" | "memories" | "notes" | "vault" | "members" | "settings";
@@ -319,13 +323,19 @@ export default function ChatInfoScreen() {
   const [peekingMemoryId, setPeekingMemoryId] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<string | null>(null);
 
+  // Security: Lock/Hide All Memories Behind Secret Vault PIN
+  const [lockAllMemories, setLockAllMemories] = useState(false);
+
   useEffect(() => {
     if (chatId) {
       AsyncStorage.getItem(`@chat_${chatId}_privacy_veil`).then((val) => {
         if (val === "true") setPrivacyVeil(true);
       });
+      fetchLockAllMemoriesSetting(currentUserId, chatId).then((val) => {
+        setLockAllMemories(val);
+      });
     }
-  }, [chatId]);
+  }, [chatId, currentUserId]);
 
   const togglePrivacyVeil = () => {
     setPrivacyVeil((prev) => {
@@ -333,6 +343,16 @@ export default function ChatInfoScreen() {
       AsyncStorage.setItem(`@chat_${chatId}_privacy_veil`, next ? "true" : "false");
       return next;
     });
+  };
+
+  const handleToggleLockAllMemories = async (nextVal: boolean) => {
+    if (nextVal && !realPin) {
+      // Must have PIN set to lock behind vault
+      setVaultModalVisible(true);
+      return;
+    }
+    setLockAllMemories(nextVal);
+    await saveLockAllMemoriesSetting(currentUserId, chatId, nextVal);
   };
 
   // Notes & Interactive Checklists
@@ -1248,14 +1268,26 @@ export default function ChatInfoScreen() {
 
   const vaultCount = useMemo(() => {
     if (isDecoyMode) return 0;
+    if (lockAllMemories) {
+      return notes.filter(n => n.is_vault).length + memories.length;
+    }
     return notes.filter(n => n.is_vault).length + memories.filter(m => m.is_vault).length;
-  }, [notes, memories, isDecoyMode]);
+  }, [notes, memories, isDecoyMode, lockAllMemories]);
 
-  // Filtered Memories (Decoy Vanish Mode & Filters)
+  // Filtered Memories (Decoy Vanish Mode, Vault Lock & Filters)
   const visibleMemories = useMemo(() => {
+    // If all memories are locked behind vault and vault is NOT unlocked:
+    if (lockAllMemories && !vaultUnlocked) {
+      return [];
+    }
+
     let list = memories;
     // Decoy Mode: Completely vanishes all secret vault memories!
     if (isDecoyMode) {
+      list = list.filter(m => !m.is_vault);
+    }
+    // If vault is locked, individual vault memories remain hidden:
+    if (!vaultUnlocked) {
       list = list.filter(m => !m.is_vault);
     }
 
@@ -1269,10 +1301,14 @@ export default function ChatInfoScreen() {
       list = list.filter(m => !!m.is_vault);
     }
     return list;
-  }, [memories, isDecoyMode, memoryFilter]);
+  }, [memories, isDecoyMode, memoryFilter, lockAllMemories, vaultUnlocked]);
 
   // "On This Day" Time Capsule Memories
   const onThisDayMemories = useMemo(() => {
+    if (lockAllMemories && !vaultUnlocked) {
+      return [];
+    }
+
     const today = new Date();
     const todayMonth = today.getMonth();
     const todayDate = today.getDate();
@@ -1281,6 +1317,7 @@ export default function ChatInfoScreen() {
     return memories.filter(m => {
       if (!m.memory_date) return false;
       if (isDecoyMode && m.is_vault) return false;
+      if (!vaultUnlocked && m.is_vault) return false;
       const d = new Date(m.memory_date);
       return (
         d.getMonth() === todayMonth &&
@@ -1288,7 +1325,7 @@ export default function ChatInfoScreen() {
         d.getFullYear() !== thisYear
       );
     });
-  }, [memories, isDecoyMode]);
+  }, [memories, isDecoyMode, lockAllMemories, vaultUnlocked]);
 
   // Grouped by Place for Places & Map View
   const placesMap = useMemo(() => {
@@ -1804,10 +1841,19 @@ export default function ChatInfoScreen() {
 
               <TouchableOpacity
                 style={[styles.actionPillBtn, activeTab === "memories" && styles.actionPillBtnActive]}
-                onPress={() => setActiveTab("memories")}
+                onPress={() => {
+                  if (lockAllMemories && !vaultUnlocked) {
+                    handleTriggerUnlockVault();
+                  }
+                  setActiveTab("memories");
+                }}
                 activeOpacity={0.8}
               >
-                <Heart size={14} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
+                {lockAllMemories && !vaultUnlocked ? (
+                  <Lock size={14} color={activeTab === "memories" ? "#ffffff" : "#a855f7"} />
+                ) : (
+                  <Heart size={14} color={activeTab === "memories" ? "#ffffff" : theme.textMuted} />
+                )}
                 <Text style={[styles.actionPillText, activeTab === "memories" && styles.actionPillTextActive]} numberOfLines={1}>
                   Memories
                 </Text>
@@ -2340,94 +2386,192 @@ export default function ChatInfoScreen() {
         {/* ========================================================= */}
         {!isGroup && activeTab === "memories" && (
           <View style={styles.tabContentContainer}>
-            {/* Romantic Anniversary Banner if set */}
-            {anniversaryDate && (
-              <View style={styles.anniversaryBanner}>
-                <View style={styles.anniversaryIconCircle}>
-                  <Heart size={26} color="#ec4899" fill="#ec4899" />
+            {lockAllMemories && !vaultUnlocked ? (
+              /* LOCKED MEMORIES GATE: Requires PIN to reveal */
+              <View style={styles.lockedVaultGateCard}>
+                <View style={styles.lockedVaultGateIconCircle}>
+                  <Lock size={36} color="#a855f7" />
                 </View>
-                <View style={{ flex: 1, marginLeft: 14 }}>
-                  <Text style={styles.anniversaryTitle}>
-                    {daysTogether !== null ? `Day ${daysTogether} Together 💕` : "Special Anniversary"}
-                  </Text>
-                  <Text style={styles.anniversarySub}>
-                    Celebrating your journey since {new Date(anniversaryDate).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+                <Text style={[styles.lockedVaultGateTitle, { color: theme.text }]}>Memories are Locked</Text>
+                <Text style={styles.lockedVaultGateSub}>
+                  All cherished moments, photos, and time capsules in this chat are secured inside the Secret Vault.
+                </Text>
+                <TouchableOpacity
+                  style={styles.lockedVaultGateBtn}
+                  onPress={handleTriggerUnlockVault}
+                  activeOpacity={0.85}
+                >
+                  <KeyRound size={16} color="#ffffff" style={{ marginRight: 8 }} />
+                  <Text style={styles.lockedVaultGateBtnText}>Unlock Memories with PIN</Text>
+                </TouchableOpacity>
+
+                <View style={{ marginTop: 20, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Shield size={14} color={theme.textMuted} />
+                  <Text style={{ fontSize: 12, color: theme.textMuted, fontFamily: "Josefin Sans" }}>
+                    Account PIN Protection Active
                   </Text>
                 </View>
               </View>
-            )}
-
-            {/* "On This Day" Time Capsule Hero Banner */}
-            {onThisDayMemories.length > 0 && (
-              <View style={styles.timeCapsuleHeroCard}>
-                <View style={styles.timeCapsuleHeader}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Sparkles size={18} color="#ec4899" />
-                    <Text style={styles.timeCapsuleHeaderTitle}>On This Day in Your Journey ✨</Text>
-                  </View>
-                  <Text style={styles.timeCapsuleHeaderSub}>Relive this exact day from past years</Text>
-                </View>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeCapsuleScroll}>
-                  {onThisDayMemories.map((mem) => {
-                    const yrDiff = new Date().getFullYear() - new Date(mem.memory_date).getFullYear();
-                    return (
-                      <TouchableOpacity
-                        key={mem.id}
-                        style={styles.timeCapsuleCard}
-                        onPress={() => (mem.media_url ? setSelectedViewerImage(mem.media_url) : null)}
-                        activeOpacity={0.85}
-                      >
-                        {mem.media_url ? (
-                          <Image source={{ uri: mem.media_url }} style={styles.timeCapsuleImage} />
-                        ) : (
-                          <View style={styles.timeCapsuleImagePlaceholder}>
-                            <Heart size={24} color="#ec4899" fill="#ec4899" />
+            ) : (
+              <>
+                {/* Security Setting: Vault-Lock All Memories */}
+                <View
+                  style={[
+                    styles.memoriesSecuritySettingCard,
+                    {
+                      backgroundColor: isAmoled
+                        ? "#15151c"
+                        : theme.isDark !== false
+                        ? "rgba(168, 85, 247, 0.08)"
+                        : "rgba(168, 85, 247, 0.06)",
+                      borderColor: lockAllMemories
+                        ? "rgba(168, 85, 247, 0.35)"
+                        : isAmoled
+                        ? "#24242e"
+                        : "rgba(0,0,0,0.06)",
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: 12 }}>
+                    <View
+                      style={[
+                        styles.memoriesSecurityIconCircle,
+                        {
+                          backgroundColor: lockAllMemories
+                            ? "rgba(168, 85, 247, 0.2)"
+                            : "rgba(150, 150, 150, 0.15)",
+                        },
+                      ]}
+                    >
+                      <Lock size={18} color={lockAllMemories ? "#a855f7" : theme.textMuted} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={[styles.memoriesSecurityTitle, { color: theme.text }]}>
+                          Lock All Memories in Vault
+                        </Text>
+                        {lockAllMemories && (
+                          <View style={styles.memoriesProtectedBadge}>
+                            <Text style={styles.memoriesProtectedBadgeText}>SECURED</Text>
                           </View>
                         )}
-                        <View style={styles.timeCapsuleBadge}>
-                          <Text style={styles.timeCapsuleBadgeText}>
-                            {yrDiff <= 1 ? "1 Year Ago" : `${yrDiff} Years Ago`}
-                          </Text>
-                        </View>
-                        <Text style={styles.timeCapsuleCardTitle} numberOfLines={1}>{mem.title}</Text>
+                      </View>
+                      <Text style={[styles.memoriesSecuritySub, { color: theme.textMuted }]}>
+                        {lockAllMemories
+                          ? "All memories require your account PIN to view"
+                          : "Hide all cherished moments behind your Secret Vault PIN"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Switch
+                    value={lockAllMemories}
+                    onValueChange={handleToggleLockAllMemories}
+                    trackColor={{ false: "rgba(150,150,150,0.3)", true: "#a855f7" }}
+                    thumbColor={lockAllMemories ? "#ffffff" : "#f4f3f4"}
+                  />
+                </View>
+
+                {/* Romantic Anniversary Banner if set */}
+                {anniversaryDate && (
+                  <View style={styles.anniversaryBanner}>
+                    <View style={styles.anniversaryIconCircle}>
+                      <Heart size={26} color="#ec4899" fill="#ec4899" />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 14 }}>
+                      <Text style={styles.anniversaryTitle}>
+                        {daysTogether !== null ? `Day ${daysTogether} Together 💕` : "Special Anniversary"}
+                      </Text>
+                      <Text style={styles.anniversarySub}>
+                        Celebrating your journey since {new Date(anniversaryDate).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* "On This Day" Time Capsule Hero Banner */}
+                {onThisDayMemories.length > 0 && (
+                  <View style={styles.timeCapsuleHeroCard}>
+                    <View style={styles.timeCapsuleHeader}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Sparkles size={18} color="#ec4899" />
+                        <Text style={styles.timeCapsuleHeaderTitle}>On This Day in Your Journey ✨</Text>
+                      </View>
+                      <Text style={styles.timeCapsuleHeaderSub}>Relive this exact day from past years</Text>
+                    </View>
+
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeCapsuleScroll}>
+                      {onThisDayMemories.map((mem) => {
+                        const yrDiff = new Date().getFullYear() - new Date(mem.memory_date).getFullYear();
+                        return (
+                          <TouchableOpacity
+                            key={mem.id}
+                            style={styles.timeCapsuleCard}
+                            onPress={() => (mem.media_url ? setSelectedViewerImage(mem.media_url) : null)}
+                            activeOpacity={0.85}
+                          >
+                            {mem.media_url ? (
+                              <Image source={{ uri: mem.media_url }} style={styles.timeCapsuleImage} />
+                            ) : (
+                              <View style={styles.timeCapsuleImagePlaceholder}>
+                                <Heart size={24} color="#ec4899" fill="#ec4899" />
+                              </View>
+                            )}
+                            <View style={styles.timeCapsuleBadge}>
+                              <Text style={styles.timeCapsuleBadgeText}>
+                                {yrDiff <= 1 ? "1 Year Ago" : `${yrDiff} Years Ago`}
+                              </Text>
+                            </View>
+                            <Text style={styles.timeCapsuleCardTitle} numberOfLines={1}>{mem.title}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Memories Control Bar */}
+                <View style={styles.sectionActionBar}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={styles.sectionHeading}>Cherished Moments ({visibleMemories.length})</Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    {/* Quick Lock Button if Vault Unlocked & Lock All Memories is ON */}
+                    {lockAllMemories && vaultUnlocked && (
+                      <TouchableOpacity
+                        style={styles.memoriesQuickLockBtn}
+                        onPress={lockVault}
+                        activeOpacity={0.8}
+                      >
+                        <Lock size={13} color="#f43f5e" />
+                        <Text style={styles.memoriesQuickLockBtnText}>Lock Now</Text>
                       </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            )}
+                    )}
 
-            {/* Memories Control Bar */}
-            <View style={styles.sectionActionBar}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Text style={styles.sectionHeading}>Cherished Moments ({visibleMemories.length})</Text>
-              </View>
+                    {/* Privacy Veil Toggle */}
+                    <TouchableOpacity
+                      style={[styles.veilToggleBtn, privacyVeil && styles.veilToggleBtnActive]}
+                      onPress={togglePrivacyVeil}
+                      activeOpacity={0.8}
+                    >
+                      {privacyVeil ? <EyeOff size={14} color="#f43f5e" /> : <Eye size={14} color={theme.textMuted} />}
+                      <Text style={[styles.veilToggleBtnText, privacyVeil && { color: "#f43f5e" }]}>
+                        {privacyVeil ? "Veil: ON" : "Privacy Veil"}
+                      </Text>
+                    </TouchableOpacity>
 
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                {/* Privacy Veil Toggle */}
-                <TouchableOpacity
-                  style={[styles.veilToggleBtn, privacyVeil && styles.veilToggleBtnActive]}
-                  onPress={togglePrivacyVeil}
-                  activeOpacity={0.8}
-                >
-                  {privacyVeil ? <EyeOff size={14} color="#f43f5e" /> : <Eye size={14} color={theme.textMuted} />}
-                  <Text style={[styles.veilToggleBtnText, privacyVeil && { color: "#f43f5e" }]}>
-                    {privacyVeil ? "Veil: ON" : "Privacy Veil"}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Add Memory Button */}
-                <TouchableOpacity
-                  style={styles.addPrimaryBtn}
-                  onPress={() => setMemoryModalVisible(true)}
-                  activeOpacity={0.8}
-                >
-                  <Sparkles size={15} color="#fff" style={{ marginRight: 6 }} />
-                  <Text style={styles.addPrimaryBtnText}>Add Memory</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+                    {/* Add Memory Button */}
+                    <TouchableOpacity
+                      style={styles.addPrimaryBtn}
+                      onPress={() => setMemoryModalVisible(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Sparkles size={15} color="#fff" style={{ marginRight: 6 }} />
+                      <Text style={styles.addPrimaryBtnText}>Add Memory</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
             {/* View Mode Switcher */}
             <View style={styles.viewModeSwitcher}>
@@ -2712,6 +2856,8 @@ export default function ChatInfoScreen() {
                   </View>
                 ))}
               </View>
+            )}
+              </>
             )}
           </View>
         )}
@@ -5244,6 +5390,121 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       color: theme.textMuted,
       fontSize: 10,
       fontWeight: "600",
+      fontFamily: "Josefin Sans",
+    },
+
+    // Locked Memories Gate & Security Setting
+    lockedVaultGateCard: {
+      padding: 36,
+      borderRadius: 24,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: isAmoled ? "#121216" : cardBg,
+      borderWidth: 1,
+      borderColor: "rgba(168, 85, 247, 0.25)",
+      marginVertical: 18,
+    },
+    lockedVaultGateIconCircle: {
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      backgroundColor: "rgba(168, 85, 247, 0.15)",
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: "rgba(168, 85, 247, 0.3)",
+    },
+    lockedVaultGateTitle: {
+      fontSize: 20,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+      marginBottom: 8,
+      textAlign: "center",
+    },
+    lockedVaultGateSub: {
+      fontSize: 13,
+      fontFamily: "Josefin Sans",
+      textAlign: "center",
+      color: theme.textMuted,
+      lineHeight: 20,
+      maxWidth: 320,
+      marginBottom: 24,
+    },
+    lockedVaultGateBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#a855f7",
+      paddingHorizontal: 22,
+      paddingVertical: 13,
+      borderRadius: 14,
+      shadowColor: "#a855f7",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.35,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    lockedVaultGateBtnText: {
+      color: "#ffffff",
+      fontSize: 14,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    memoriesSecuritySettingCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: 14,
+      borderRadius: 18,
+      borderWidth: 1,
+      marginBottom: 16,
+    },
+    memoriesSecurityIconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    memoriesSecurityTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      fontFamily: "Josefin Sans",
+    },
+    memoriesSecuritySub: {
+      fontSize: 12,
+      fontFamily: "Josefin Sans",
+      marginTop: 2,
+    },
+    memoriesProtectedBadge: {
+      backgroundColor: "rgba(168, 85, 247, 0.2)",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: "rgba(168, 85, 247, 0.4)",
+    },
+    memoriesProtectedBadgeText: {
+      fontSize: 9,
+      fontWeight: "800",
+      color: "#a855f7",
+      letterSpacing: 0.5,
+    },
+    memoriesQuickLockBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      backgroundColor: "rgba(244, 63, 94, 0.12)",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: "rgba(244, 63, 94, 0.3)",
+    },
+    memoriesQuickLockBtnText: {
+      color: "#f43f5e",
+      fontSize: 12,
+      fontWeight: "700",
       fontFamily: "Josefin Sans",
     },
   });

@@ -108,6 +108,52 @@ export async function saveAccountMemoryPin(userId: string, pin: string): Promise
   return false;
 }
 
+export async function fetchLockAllMemoriesSetting(userId: string, chatId: string): Promise<boolean> {
+  try {
+    const local = await AsyncStorage.getItem(`@chat_${chatId}_lock_all_memories`);
+    if (local !== null) {
+      return local === "true";
+    }
+  } catch (e) {}
+
+  if (!userId) return false;
+  try {
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", `lock_memories_${userId}_${chatId}`)
+      .single();
+
+    if (!error && data?.value?.locked !== undefined) {
+      const isLocked = !!data.value.locked;
+      await AsyncStorage.setItem(`@chat_${chatId}_lock_all_memories`, isLocked ? "true" : "false");
+      return isLocked;
+    }
+  } catch (e) {}
+  return false;
+}
+
+export async function saveLockAllMemoriesSetting(userId: string, chatId: string, locked: boolean): Promise<boolean> {
+  try {
+    await AsyncStorage.setItem(`@chat_${chatId}_lock_all_memories`, locked ? "true" : "false");
+  } catch (e) {}
+
+  if (!userId) return true;
+  try {
+    const { error } = await supabase
+      .from("app_settings")
+      .upsert({
+        key: `lock_memories_${userId}_${chatId}`,
+        value: { locked, updated_at: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      });
+    return !error;
+  } catch (e) {
+    console.warn("[LockMemoriesSetting] save error:", e);
+  }
+  return false;
+}
+
 // -------------------------------------------------------------
 // MEMORIES API
 // -------------------------------------------------------------
