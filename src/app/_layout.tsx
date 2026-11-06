@@ -151,7 +151,7 @@ export default function Layout() {
         :fullscreen, :-webkit-full-screen, :-moz-full-screen, :-ms-fullscreen {
           height: 100% !important;
           width: 100% !important;
-          background-color: transparent !important;
+          background-color: #000000 !important;
         }
         :fullscreen body, :-webkit-full-screen body {
           height: 100% !important;
@@ -159,14 +159,14 @@ export default function Layout() {
           margin: 0 !important;
           padding: 0 !important;
           overflow: hidden !important;
-          background-color: transparent !important;
+          background-color: #000000 !important;
         }
         :fullscreen #root, :-webkit-full-screen #root {
           height: 100% !important;
           width: 100% !important;
           display: flex !important;
           flex-direction: column !important;
-          background-color: transparent !important;
+          background-color: #000000 !important;
         }
         :fullscreen #root > div, :-webkit-full-screen #root > div {
           height: 100% !important;
@@ -176,7 +176,7 @@ export default function Layout() {
           flex-direction: column !important;
         }
         ::backdrop {
-          background-color: transparent;
+          background-color: #000000 !important;
         }
       `;
       document.head.appendChild(globalStyle);

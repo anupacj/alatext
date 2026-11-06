@@ -11,7 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText, Lock, Navigation, Camera } from "lucide-react-native";
+import { ChevronLeft, Phone, Video, Hash, Plus, Send, User, MoreVertical, Trash2, Edit2, X, Check, CheckCheck, Reply, Heart, Smile, Type, Sticker, Users, Mic, Pin, Search, Settings, Info, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Download, Copy, ExternalLink, Sparkles, Bold, Italic, Strikethrough, Code, Keyboard as KeyboardIcon, Ghost, FileText, Lock, Navigation, Camera, RotateCcw } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import CustomEmojiPicker from '../components/CustomEmojiPicker';
 import { AlaGlassKeyboard } from "../components/AlaGlassKeyboard";
@@ -1052,6 +1052,7 @@ export default function ChatScreen() {
   const fileInputRef = useRef<any>(null);
   const cameraInputRef = useRef<any>(null);
   const textInputRef = useRef<TextInput>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ file: File; previewUrl: string; caption: string } | null>(null);
 
   useEffect(() => {
     if (replyingTo || editingMsgId) {
@@ -2859,6 +2860,97 @@ export default function ChatScreen() {
     e.target.value = "";
   }, [handleUploadFiles]);
 
+  const handleCameraCaptureChange = useCallback((e: any) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setPhotoPreview({
+      file,
+      previewUrl,
+      caption: inputText.trim() || "",
+    });
+    e.target.value = "";
+  }, [inputText]);
+
+  const handleSendCapturedPhoto = useCallback(async () => {
+    if (!photoPreview || !id || !user) return;
+    const { file, caption, previewUrl } = photoPreview;
+    setPhotoPreview(null);
+    try {
+      URL.revokeObjectURL(previewUrl);
+    } catch (e) {}
+
+    setUploadingImage(true);
+    try {
+      const prefix = `chat-images/${id}-${Date.now()}-cam`;
+      const url = await uploadBlobToR2(prefix, file);
+
+      const msgsToSend: any[] = [
+        {
+          chat_id: id,
+          sender_id: user.id,
+          content: url,
+          type: "image",
+          reply_to_id: replyingTo?.id || null,
+          reply_to_content: replyingTo?.text || null,
+          reply_to_sender: replyingTo?.sender || null,
+        }
+      ];
+
+      if (caption && caption.trim().length > 0) {
+        msgsToSend.push({
+          chat_id: id,
+          sender_id: user.id,
+          content: caption.trim(),
+          type: "text",
+          reply_to_id: replyingTo?.id || null,
+          reply_to_content: replyingTo?.text || null,
+          reply_to_sender: replyingTo?.sender || null,
+        });
+        if (inputText.trim() === caption.trim()) {
+          setInputText("");
+        }
+      }
+
+      const { data: insertedMsgs, error: insertErr } = await supabase
+        .from("messages")
+        .insert(msgsToSend)
+        .select("id, content, type, created_at, sender_id, reply_to_id, reply_to_content, reply_to_sender, custom_font, profiles(username, avatar_url)");
+
+      if (!insertErr && insertedMsgs && insertedMsgs.length > 0) {
+        const formatted = insertedMsgs.map(formatMsg);
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const additions = formatted.filter(m => !existingIds.has(m.id));
+          return [...additions, ...prev];
+        });
+      }
+      setReplyingTo(null);
+    } catch (e: any) {
+      console.error("Camera upload failed:", e);
+      alert("Failed to send photo: " + (e.message || e));
+    } finally {
+      setUploadingImage(false);
+    }
+  }, [photoPreview, id, user, replyingTo, formatMsg, inputText]);
+
+  const handleRetakePhoto = useCallback(() => {
+    if (photoPreview?.previewUrl) {
+      try { URL.revokeObjectURL(photoPreview.previewUrl); } catch (e) {}
+    }
+    setPhotoPreview(null);
+    setTimeout(() => {
+      cameraInputRef.current?.click();
+    }, 120);
+  }, [photoPreview]);
+
+  const handleCancelPhoto = useCallback(() => {
+    if (photoPreview?.previewUrl) {
+      try { URL.revokeObjectURL(photoPreview.previewUrl); } catch (e) {}
+    }
+    setPhotoPreview(null);
+  }, [photoPreview]);
+
   const getLastSeen = useCallback((d?: string) => {
     if (!d) return "Offline";
     const diff = (Date.now() - new Date(d).getTime()) / 60000;
@@ -3257,7 +3349,8 @@ export default function ChatScreen() {
         borderRadius: screenRadius,
         opacity: screenFadeAnim,
         transform: [{ translateX: screenSlideAnim }],
-      }}
+        transition: (!isDesktop && Platform.OS === "web") ? "height 0.22s cubic-bezier(0.16, 1, 0.3, 1), max-height 0.22s cubic-bezier(0.16, 1, 0.3, 1)" : undefined,
+      } as any}
     >
       <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive} screenRadius={screenRadius} />
       <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />
@@ -4462,7 +4555,7 @@ export default function ChatScreen() {
                           accept="image/*"
                           capture="environment"
                           style={{ display: "none" } as any}
-                          onChange={handleWebFileChange}
+                          onChange={handleCameraCaptureChange}
                         />
                       </>
                     )}
@@ -4673,6 +4766,146 @@ export default function ChatScreen() {
         open={emojiOpen} 
         onClose={() => setEmojiOpen(false)} 
       />
+
+      {/* ========================================================= */}
+      {/* INSTANT CAMERA PHOTO PREVIEW & CAPTION MODAL (MOBILE WEB) */}
+      {/* ========================================================= */}
+      {photoPreview && (
+        <Modal visible={true} transparent animationType="fade" onRequestClose={handleCancelPhoto}>
+          <Pressable
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.85)",
+              justifyContent: "center",
+              alignItems: "center",
+              padding: 16,
+              zIndex: 2000,
+            }}
+            onPress={handleCancelPhoto}
+          >
+            <Pressable
+              style={{
+                width: Math.min(380, width - 32),
+                backgroundColor: isAmoled ? "#000000" : (theme.id === "light" ? "#ffffff" : "#1e1f22"),
+                borderRadius: 24,
+                borderWidth: 1,
+                borderColor: isAmoled ? "#2a2a2a" : (theme.id === "light" ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.12)"),
+                padding: 16,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 16 },
+                shadowOpacity: 0.5,
+                shadowRadius: 30,
+              }}
+              onPress={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Camera size={16} color={theme.accent || "#3b82f6"} />
+                  <Text style={{ color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111827" : "#dbdee1"), fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans", letterSpacing: 0.5 }}>
+                    PHOTO PREVIEW
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={handleCancelPhoto} style={{ padding: 4 }}>
+                  <X size={18} color="#949ba4" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Photo Display */}
+              <View
+                style={{
+                  width: "100%",
+                  height: 280,
+                  borderRadius: 16,
+                  overflow: "hidden",
+                  backgroundColor: "#000000",
+                  marginBottom: 12,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <Image
+                  source={{ uri: photoPreview.previewUrl }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="contain"
+                />
+              </View>
+
+              {/* Caption Input */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: isAmoled ? "#121212" : (theme.id === "light" ? "#f3f4f6" : "#2b2d31"),
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: isAmoled ? "#222222" : (theme.id === "light" ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)"),
+                  marginBottom: 12,
+                }}
+              >
+                <TextInput
+                  style={{
+                    flex: 1,
+                    color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111827" : "#f2f3f5"),
+                    fontSize: 14,
+                    fontFamily: "Josefin Sans",
+                    paddingVertical: 8,
+                  }}
+                  value={photoPreview.caption}
+                  onChangeText={(text) => setPhotoPreview((prev) => prev ? { ...prev, caption: text } : null)}
+                  placeholder="Add a caption... ✨"
+                  placeholderTextColor="#72767d"
+                />
+              </View>
+
+              {/* Action Buttons: Retake vs Send */}
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    paddingVertical: 12,
+                    borderRadius: 14,
+                    backgroundColor: isAmoled ? "#161616" : (theme.id === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.08)"),
+                    borderWidth: 1,
+                    borderColor: isAmoled ? "#2a2a2a" : (theme.id === "light" ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.12)"),
+                  }}
+                  onPress={handleRetakePhoto}
+                >
+                  <RotateCcw size={16} color="#949ba4" />
+                  <Text style={{ color: theme.id === "light" ? "#374151" : "#dbdee1", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" }}>
+                    Retake
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    flex: 1.5,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    paddingVertical: 12,
+                    borderRadius: 14,
+                    backgroundColor: theme.accent || "#3b82f6",
+                  }}
+                  onPress={handleSendCapturedPhoto}
+                >
+                  <Send size={15} color="#ffffff" />
+                  <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" }}>
+                    Send Photo
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
       {settingsVisible && user && (
         <ChatSettingsModal 
           visible={settingsVisible} 

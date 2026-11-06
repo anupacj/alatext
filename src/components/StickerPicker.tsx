@@ -13,6 +13,7 @@ import {
   Platform,
   ScrollView,
   useWindowDimensions,
+  Pressable,
 } from "react-native";
 import {
   X,
@@ -29,6 +30,8 @@ import {
   Trophy,
   Car,
   Hash,
+  Star,
+  Send,
 } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
@@ -87,6 +90,34 @@ export async function getTopRecentStickers(limit: number = 20): Promise<StickerU
   }
 }
 
+export async function getFavoriteStickers(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem("@favorite_stickers");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+export async function toggleFavoriteSticker(url: string): Promise<boolean> {
+  try {
+    const current = await getFavoriteStickers();
+    let updated: string[];
+    const isFav = current.includes(url);
+    if (isFav) {
+      updated = current.filter((u) => u !== url);
+    } else {
+      updated = [url, ...current];
+    }
+    await AsyncStorage.setItem("@favorite_stickers", JSON.stringify(updated));
+    return !isFav;
+  } catch (e) {
+    return false;
+  }
+}
+
 const EMOJI_CATEGORIES = [
   { id: "recent", label: "Recent", icon: Clock },
   { id: "smileys", label: "Smileys", icon: Smile },
@@ -130,6 +161,8 @@ export default function StickerPicker({
   // Sticker State
   const [packs, setPacks] = useState<any[]>([]);
   const [recentStickers, setRecentStickers] = useState<StickerUsageItem[]>([]);
+  const [favoriteStickers, setFavoriteStickers] = useState<string[]>([]);
+  const [previewStickerUrl, setPreviewStickerUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [stickers, setStickers] = useState<any[]>([]);
@@ -154,6 +187,7 @@ export default function StickerPicker({
       setImportProgress("");
       setImportingState(false);
       loadRecentStickers();
+      loadFavoriteStickers();
       loadRecentEmojis();
       fetchPacks();
     }
@@ -161,7 +195,12 @@ export default function StickerPicker({
 
   useEffect(() => {
     if (!selectedPackId || isImporting) return;
-    if (selectedPackId === "recent") {
+    if (selectedPackId === "favorites") {
+      getFavoriteStickers().then((favs) => {
+        setFavoriteStickers(favs);
+        setStickers(favs.map((url, idx) => ({ id: `fav-${idx}`, file_url: url })));
+      });
+    } else if (selectedPackId === "recent") {
       getTopRecentStickers(20).then((items) => {
         setStickers(items);
         setRecentStickers(items);
@@ -170,6 +209,20 @@ export default function StickerPicker({
       fetchStickers(selectedPackId);
     }
   }, [selectedPackId, isImporting]);
+
+  const loadFavoriteStickers = async () => {
+    const favs = await getFavoriteStickers();
+    setFavoriteStickers(favs);
+  };
+
+  const handleToggleFavorite = async (url: string) => {
+    await toggleFavoriteSticker(url);
+    const updated = await getFavoriteStickers();
+    setFavoriteStickers(updated);
+    if (selectedPackId === "favorites") {
+      setStickers(updated.map((u, idx) => ({ id: `fav-${idx}`, file_url: u })));
+    }
+  };
 
   const loadRecentStickers = async () => {
     const top = await getTopRecentStickers(20);
@@ -670,10 +723,56 @@ export default function StickerPicker({
                   numColumns={isWeb ? 5 : 4}
                   contentContainerStyle={{ padding: 12, gap: 10 }}
                   columnWrapperStyle={{ gap: 10 }}
+                  ListHeaderComponent={
+                    favoriteStickers.length > 0 && selectedPackId !== "favorites" ? (
+                      <View style={{ marginBottom: 12 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, paddingHorizontal: 2 }}>
+                          <Star size={13} color="#f59e0b" fill="#f59e0b" />
+                          <Text style={{ color: "#dbdee1", fontSize: 12, fontWeight: "700", fontFamily: "Josefin Sans", letterSpacing: 0.3 }}>
+                            FAVORITES
+                          </Text>
+                          <Text style={{ color: "#949ba4", fontSize: 11, fontFamily: "Josefin Sans" }}>
+                            ({favoriteStickers.length})
+                          </Text>
+                        </View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
+                          {favoriteStickers.map((favUrl, idx) => (
+                            <TouchableOpacity
+                              key={`pinned-fav-${idx}`}
+                              style={[
+                                styles.stickerWrapper,
+                                { width: 62, height: 62, minHeight: 62, maxHeight: 62, padding: 4 },
+                                isWeb && ({ cursor: "pointer" } as any),
+                              ]}
+                              onPress={() => {
+                                recordStickerUsage(favUrl);
+                                onSelectSticker(favUrl);
+                                onClose();
+                              }}
+                              onLongPress={() => setPreviewStickerUrl(favUrl)}
+                              delayLongPress={280}
+                              {...(isWeb ? ({ onContextMenu: (e: any) => { e.preventDefault(); setPreviewStickerUrl(favUrl); } } as any) : {})}
+                            >
+                              {favUrl.includes(".json") && isWeb ? (
+                                <LottieSticker url={favUrl} size={54} />
+                              ) : favUrl.includes(".webm") && isWeb ? (
+                                <video src={favUrl} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none", borderRadius: 4 }} />
+                              ) : (
+                                <Image source={{ uri: getThumbnailUrl(favUrl, 120, 120, 80) }} style={styles.stickerImg} resizeMode="contain" />
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                        <View style={{ height: 1, backgroundColor: borderCol, marginTop: 10 }} />
+                      </View>
+                    ) : null
+                  }
                   ListEmptyComponent={
                     <View style={{ padding: 32, alignItems: "center" }}>
-                      <Text style={{ color: "#949ba4", fontSize: 13, fontFamily: "Josefin Sans" }}>
-                        {selectedPackId === "recent"
+                      <Text style={{ color: "#949ba4", fontSize: 13, fontFamily: "Josefin Sans", textAlign: "center" }}>
+                        {selectedPackId === "favorites"
+                          ? "No favorite stickers yet.\nLong-press any sticker to preview & favorite it!"
+                          : selectedPackId === "recent"
                           ? "No frequently used stickers yet. Send stickers to see them here!"
                           : "No stickers in this pack."}
                       </Text>
@@ -694,6 +793,9 @@ export default function StickerPicker({
                           onSelectSticker(item.file_url);
                           onClose();
                         }}
+                        onLongPress={() => setPreviewStickerUrl(item.file_url)}
+                        delayLongPress={280}
+                        {...(isWeb ? ({ onContextMenu: (e: any) => { e.preventDefault(); setPreviewStickerUrl(item.file_url); } } as any) : {})}
                         activeOpacity={0.7}
                       >
                         {isLottie && isWeb ? (
@@ -726,13 +828,30 @@ export default function StickerPicker({
                   }}
                 />
 
-                {/* Pack Tabs Bar (Recent & Top first, then packs) */}
+                {/* Pack Tabs Bar (Favorites, Recent & Top first, then packs) */}
                 <View style={[styles.tabsContainer, { borderTopColor: borderCol }]}>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ paddingHorizontal: 12, gap: 8, paddingVertical: 8 }}
                   >
+                    {/* Favorites Tab */}
+                    {favoriteStickers.length > 0 && (
+                      <TouchableOpacity
+                        style={[
+                          styles.tabBtn,
+                          selectedPackId === "favorites" && styles.tabBtnActive,
+                          isWeb && ({ cursor: "pointer" } as any),
+                        ]}
+                        onPress={() => {
+                          setSelectedPackId("favorites");
+                        }}
+                        accessibilityLabel="Favorite Stickers"
+                      >
+                        <Star size={18} color={selectedPackId === "favorites" ? "#f59e0b" : "#949ba4"} fill={selectedPackId === "favorites" ? "#f59e0b" : "transparent"} />
+                      </TouchableOpacity>
+                    )}
+
                     {/* Recent & Frequently Used Tab */}
                     {recentStickers.length > 0 && (
                       <TouchableOpacity
@@ -881,6 +1000,145 @@ export default function StickerPicker({
                 )}
               />
             </View>
+          )}
+
+          {/* ========================================================= */}
+          {/* ENLARGED STICKER PREVIEW & FAVORITING MODAL OVERLAY       */}
+          {/* ========================================================= */}
+          {previewStickerUrl && (
+            <Pressable
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(0,0,0,0.85)",
+                justifyContent: "center",
+                alignItems: "center",
+                padding: 20,
+                zIndex: 1000,
+              }}
+              onPress={() => setPreviewStickerUrl(null)}
+            >
+              <Pressable
+                style={{
+                  backgroundColor: isAmoled ? "#000000" : (theme.id === "light" ? "#ffffff" : "#1e1f22"),
+                  borderRadius: 24,
+                  borderWidth: 1,
+                  borderColor: isAmoled ? "#2e2e2e" : (theme.id === "light" ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.14)"),
+                  padding: 20,
+                  alignItems: "center",
+                  width: Math.min(320, windowWidth - 48),
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 12 },
+                  shadowOpacity: 0.5,
+                  shadowRadius: 24,
+                }}
+                onPress={(e: any) => e?.stopPropagation?.()}
+              >
+                {/* Header with Title and Close */}
+                <View style={{ width: "100%", flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <Text style={{ color: isAmoled ? "#ffffff" : (theme.id === "light" ? "#111827" : "#dbdee1"), fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans", letterSpacing: 0.5 }}>
+                    STICKER PREVIEW
+                  </Text>
+                  <TouchableOpacity onPress={() => setPreviewStickerUrl(null)} style={{ padding: 4 }}>
+                    <X size={18} color="#949ba4" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Large Animated Preview */}
+                <View style={{ width: 180, height: 180, justifyContent: "center", alignItems: "center", marginVertical: 8 }}>
+                  {previewStickerUrl.includes(".json") && isWeb ? (
+                    <LottieSticker url={previewStickerUrl} size={170} />
+                  ) : previewStickerUrl.includes(".webm") && isWeb ? (
+                    <video
+                      src={previewStickerUrl}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      style={{
+                        width: "170px",
+                        height: "170px",
+                        objectFit: "contain",
+                        borderRadius: "12px",
+                      }}
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: getThumbnailUrl(previewStickerUrl, 320, 320, 90) }}
+                      style={{ width: 170, height: 170 }}
+                      resizeMode="contain"
+                    />
+                  )}
+                </View>
+
+                {/* Action Row: Favorite toggle & Send button */}
+                <View style={{ width: "100%", flexDirection: "row", gap: 10, marginTop: 14 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      paddingVertical: 11,
+                      borderRadius: 14,
+                      backgroundColor: favoriteStickers.includes(previewStickerUrl)
+                        ? "rgba(245, 158, 11, 0.16)"
+                        : (isAmoled ? "#161616" : (theme.id === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.08)")),
+                      borderWidth: 1,
+                      borderColor: favoriteStickers.includes(previewStickerUrl)
+                        ? "#f59e0b"
+                        : (isAmoled ? "#2a2a2a" : (theme.id === "light" ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.12)")),
+                    }}
+                    onPress={() => handleToggleFavorite(previewStickerUrl)}
+                  >
+                    <Star
+                      size={16}
+                      color={favoriteStickers.includes(previewStickerUrl) ? "#f59e0b" : "#949ba4"}
+                      fill={favoriteStickers.includes(previewStickerUrl) ? "#f59e0b" : "transparent"}
+                    />
+                    <Text
+                      style={{
+                        color: favoriteStickers.includes(previewStickerUrl) ? "#f59e0b" : (theme.id === "light" ? "#374151" : "#dbdee1"),
+                        fontSize: 13,
+                        fontWeight: "700",
+                        fontFamily: "Josefin Sans",
+                      }}
+                    >
+                      {favoriteStickers.includes(previewStickerUrl) ? "Favorited" : "Favorite"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{
+                      flex: 1.2,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      paddingVertical: 11,
+                      borderRadius: 14,
+                      backgroundColor: theme.accent || "#5865F2",
+                    }}
+                    onPress={() => {
+                      const url = previewStickerUrl;
+                      setPreviewStickerUrl(null);
+                      recordStickerUsage(url);
+                      onSelectSticker(url);
+                      onClose();
+                    }}
+                  >
+                    <Send size={15} color="#ffffff" />
+                    <Text style={{ color: "#ffffff", fontSize: 13, fontWeight: "700", fontFamily: "Josefin Sans" }}>
+                      Send
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Pressable>
+            </Pressable>
           )}
         </View>
       </View>
