@@ -4529,7 +4529,9 @@ export default function ChatScreen() {
                       { overflow: "hidden" }
                     ]}
                   >
-                    <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                    {Platform.OS !== "web" && (
+                      <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                    )}
                     <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                       {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
                     </TouchableOpacity>
@@ -4677,7 +4679,9 @@ export default function ChatScreen() {
                       }
                     }}
                   >
-                    <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                    {Platform.OS !== "web" && (
+                      <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                    )}
                     <RNAnimated.View
                       style={{
                         transform: [
@@ -5643,6 +5647,8 @@ const createStyles = (isAmoled: boolean, theme: any, isDesktop: boolean = false)
     paddingHorizontal: 8,
     outlineStyle: "none" as any,
     textAlignVertical: "center",
+    position: "relative",
+    zIndex: 10,
     fontFamily: Platform.OS === "web" ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif' : undefined,
   },
   circularSendBtn: {
