@@ -1707,22 +1707,23 @@ export default function ChatInfoScreen() {
                 </TouchableOpacity>
               </View>
 
-              {customAvatar && (
-                <View style={styles.heroSecretBadge}>
-                  <Lock size={11} color="#ffffff" style={{ marginRight: 3 }} />
-                  <Text style={styles.heroSecretBadgeText}>Secret PFP</Text>
-                </View>
-              )}
-
               {/* Bottom of Hero Card: Name on Left, Call Buttons on Right (sits over the gradient) */}
               <View style={styles.heroBottomRow}>
                 <View style={styles.heroNameCol}>
-                  {/* Nickname (or Real Name if no nickname set) */}
-                  <Text style={styles.heroBigTitle} numberOfLines={1}>
-                    {partnerNickname
-                      ? partnerNickname
-                      : (partnerUser?.display_name || partnerUser?.username || targetDisplayNameParam || targetUsernameParam || "Partner")}
-                  </Text>
+                  {/* Nickname with sleek inline Secret PFP badge */}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <Text style={styles.heroBigTitle} numberOfLines={1}>
+                      {partnerNickname
+                        ? partnerNickname
+                        : (partnerUser?.display_name || partnerUser?.username || targetDisplayNameParam || targetUsernameParam || "Partner")}
+                    </Text>
+                    {customAvatar && (
+                      <View style={styles.heroSecretBadge}>
+                        <Lock size={10} color="#f472b6" style={{ marginRight: 4 }} />
+                        <Text style={styles.heroSecretBadgeText}>Secret PFP</Text>
+                      </View>
+                    )}
+                  </View>
                   {/* Real Name (or @handle if no nickname set) */}
                   <Text style={styles.heroSubtitle} numberOfLines={1}>
                     {partnerNickname
@@ -3524,8 +3525,8 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
     oceanHeroContainer: {
       width: "100%",
       maxWidth: isDesktop ? 680 : "100%",
-      height: 380,
-      backgroundColor: "#0d5c66",
+      height: isDesktop ? 400 : 430,
+      backgroundColor: "#000000",
       borderBottomLeftRadius: 32,
       borderBottomRightRadius: 32,
       paddingTop: Platform.OS === "web" ? 20 : 52,
@@ -3536,23 +3537,22 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       justifyContent: "space-between",
       ...(Platform.OS === "web"
         ? ({
-            boxShadow: "0 12px 36px rgba(13, 92, 102, 0.35)",
+            boxShadow: "0 12px 36px rgba(0, 0, 0, 0.45)",
           } as any)
         : {}),
     },
     heroBlurredBackdrop: {
       position: "absolute",
-      top: -30,
-      left: -30,
-      right: -30,
-      bottom: -30,
-      width: "120%",
-      height: "120%",
-      opacity: 0.65,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: "100%",
+      height: "100%",
+      opacity: 0.25,
       ...(Platform.OS === "web"
         ? ({
-            filter: "blur(24px)",
-            transform: "scale(1.2)",
+            filter: "blur(20px)",
             objectFit: "cover",
           } as any)
         : {}),
@@ -3565,11 +3565,10 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       bottom: 0,
       width: "100%",
       height: "100%",
-      transform: [{ scale: 1.08 }],
       ...(Platform.OS === "web"
         ? ({
             objectFit: "cover",
-            objectPosition: "center 25%",
+            objectPosition: "center top",
           } as any)
         : {}),
     },
@@ -3578,13 +3577,13 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       left: 0,
       right: 0,
       bottom: 0,
-      height: 220,
+      height: 180,
       ...(Platform.OS === "web"
         ? ({
-            background: "linear-gradient(to top, rgba(6, 45, 52, 0.98) 0%, rgba(6, 45, 52, 0.65) 45%, transparent 100%)",
+            background: "linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.42) 45%, transparent 100%)",
           } as any)
         : {
-            backgroundColor: "rgba(6, 45, 52, 0.75)",
+            backgroundColor: "transparent",
           }),
     },
     heroTopNavBar: {
@@ -3617,22 +3616,22 @@ function createStyles(theme: any, isDesktop: boolean, isAmoled: boolean) {
       backgroundColor: "rgba(255, 255, 255, 0.25)",
     },
     heroSecretBadge: {
-      alignSelf: "flex-start",
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: "#a855f7",
-      paddingHorizontal: 10,
-      paddingVertical: 3,
-      borderRadius: 12,
-      borderWidth: 1.5,
-      borderColor: "#ffffff",
+      backgroundColor: "rgba(244, 63, 94, 0.22)",
+      paddingHorizontal: 8,
+      paddingVertical: 2.5,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: "rgba(244, 63, 94, 0.45)",
       zIndex: 5,
-      marginTop: 4,
     },
     heroSecretBadgeText: {
-      color: "#ffffff",
+      color: "#fbcfe8",
       fontSize: 10,
       fontWeight: "700",
+      fontFamily: "Josefin Sans",
+      letterSpacing: 0.3,
     },
     heroBottomRow: {
       flexDirection: "row",
