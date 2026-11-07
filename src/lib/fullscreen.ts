@@ -28,7 +28,14 @@ export function tryEnterFullscreen(forceOnDesktop = false) {
     const el = document.documentElement as any;
     const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
     if (rfs) {
-      const p = rfs.call(el);
+      let p: any;
+      try {
+        p = rfs.call(el, { navigationUI: "hide" });
+      } catch (err) {
+        try {
+          p = rfs.call(el);
+        } catch (e2) {}
+      }
       if (p && typeof p.catch === "function") {
         p.catch(() => {});
       }

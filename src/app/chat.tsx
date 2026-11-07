@@ -1096,7 +1096,7 @@ export default function ChatScreen() {
     const handleViewport = () => {
       resetScroll();
       if (window.visualViewport) {
-        const visualHeight = Math.round(window.visualViewport.height);
+        const visualHeight = Math.ceil(window.visualViewport.height);
         const layoutHeight = Math.round(document.documentElement.clientHeight || window.innerHeight);
         const offsetTop = Math.round(window.visualViewport.offsetTop || 0);
         const diff = layoutHeight - (visualHeight + offsetTop);
@@ -1111,11 +1111,14 @@ export default function ChatScreen() {
           setTimeout(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           }, 100);
+        } else {
+          resetScroll();
         }
       } else {
         setIsKeyboardOpen(false);
         setVisualViewportHeight(null);
         setViewportBottom(0);
+        resetScroll();
       }
     };
 
@@ -3344,13 +3347,12 @@ export default function ChatScreen() {
         flexShrink: 0,
         height: (!isDesktop && Platform.OS === "web" && visualViewportHeight) ? visualViewportHeight : "100%",
         maxHeight: (!isDesktop && Platform.OS === "web" && visualViewportHeight) ? visualViewportHeight : "100%",
-        backgroundColor: showWallpaper ? "transparent" : (isAmoled ? "#000000" : theme.background),
+        backgroundColor: (isAmoled || showWallpaper) ? "#000000" : theme.background,
         overflow: "hidden",
         borderRadius: screenRadius,
         opacity: screenFadeAnim,
         transform: [{ translateX: screenSlideAnim }],
-        transition: (!isDesktop && Platform.OS === "web") ? "height 0.22s cubic-bezier(0.16, 1, 0.3, 1), max-height 0.22s cubic-bezier(0.16, 1, 0.3, 1)" : undefined,
-      } as any}
+      }}
     >
       <AppleIntelligenceGlow visible={!!thinkingOfYou || loveGlowActive} screenRadius={screenRadius} />
       <FloatingHearts active={floatingHeartsActive} onComplete={() => setFloatingHeartsActive(false)} />

@@ -40,6 +40,7 @@ function RootNavigator() {
           headerShown: false,
           animation: 'slide_from_right',
           fullScreenGestureEnabled: true,
+          contentStyle: { backgroundColor: "#000000" },
         }}
       />
       <Stack.Screen
