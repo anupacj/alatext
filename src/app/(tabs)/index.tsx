@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity, Image,
   SafeAreaView, Platform, ActivityIndicator, Modal, TextInput, ScrollView,
-  useWindowDimensions, Pressable,
+  useWindowDimensions, Pressable, AppState,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import {
@@ -19,6 +19,13 @@ import { BlurView, BlurTargetView } from "expo-blur";
 import { useTheme, THEMES } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useAlaPin } from "../../context/AlaPinContext";
+import {
+  getInitialCachedChats,
+  prewarmChatsListCache,
+  saveCachedChats,
+  updateChatInCachedList,
+  addMessageToLocalCache,
+} from "../../lib/chatCache";
 
 import ChatSidebar from "../../components/ChatSidebar";
 import DesktopLandingPlaceholder from "../../components/DesktopLandingPlaceholder";
@@ -39,10 +46,25 @@ export default function Home() {
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const { user } = useAuth();
-  const [chats, setChats] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [chats, setChats] = useState<any[]>(() => {
+    return getInitialCachedChats(user?.id);
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    return getInitialCachedChats(user?.id).length === 0;
+  });
   const { setIsTabsLoading } = useTabsLoading();
   const indexBlurTargetRef = useRef<View | null>(null);
+
+  useEffect(() => {
+    if (user?.id) {
+      prewarmChatsListCache(user.id).then((cached) => {
+        if (cached && cached.length > 0) {
+          setChats((prev) => (prev.length === 0 ? cached : prev));
+          setLoading(false);
+        }
+      });
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     setIsTabsLoading(loading);
@@ -289,7 +311,7 @@ export default function Home() {
       formatted.sort((a, b) => b.timestamp - a.timestamp);
 
       setChats(formatted);
-      AsyncStorage.setItem(cacheKey, JSON.stringify(formatted)).catch(() => {});
+      saveCachedChats(user.id, formatted);
     } catch (e) {
       console.error("Error fetching chats", e);
     } finally {
@@ -303,6 +325,69 @@ export default function Home() {
       import("../../lib/push").then((m) => m.registerPushNotifications(user.id));
     }
   }, [fetchChats, user]);
+
+  // Real-time incoming message background listener for all user's chats
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`global_inbox_${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload: any) => {
+          const newMsg = payload.new;
+          if (!newMsg) return;
+          const isFromMe = newMsg.sender_id === user.id;
+          const textPreview =
+            newMsg.type === "image"
+              ? "📷 Photo"
+              : newMsg.type === "video"
+              ? "🎥 Video"
+              : newMsg.type === "voice"
+              ? "🎤 Voice message"
+              : newMsg.type === "sticker"
+              ? "🎭 Sticker"
+              : newMsg.content || "New message";
+
+          setChats(() => {
+            return updateChatInCachedList(
+              user.id,
+              newMsg.chat_id,
+              textPreview,
+              new Date(newMsg.created_at).getTime(),
+              !isFromMe
+            );
+          });
+
+          // Pre-cache into message cache so tapping that chat opens with zero loading time
+          addMessageToLocalCache(newMsg.chat_id, {
+            id: newMsg.id,
+            text: newMsg.content,
+            content: newMsg.content,
+            type: newMsg.type || "text",
+            sender: isFromMe ? "You" : "Partner",
+            isMe: isFromMe,
+            time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+            timestamp: new Date(newMsg.created_at).getTime(),
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [user]);
+
+  // Sync deltas silently when app resumes from background
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        fetchChats();
+      }
+    });
+    return () => sub.remove();
+  }, [fetchChats]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);

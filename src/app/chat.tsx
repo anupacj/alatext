@@ -29,6 +29,12 @@ import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
 import { BlurView, BlurTargetView } from "expo-blur";
+import {
+  getInitialCachedMessages,
+  prewarmChatCache,
+  saveCachedMessages,
+  addMessageToLocalCache,
+} from "../lib/chatCache";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
 import { FloatingHearts } from "../components/FloatingHearts";
 import { SleepyByeBlocker } from "../components/SleepyByeBlocker";
@@ -171,9 +177,22 @@ export default function ChatScreen() {
   const { user } = useAuth();
   const router = useRouter();
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    return (id ? getInitialCachedMessages(id as string) : []) as Message[];
+  });
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
+
+  // Instant synchronous pre-warm on screen mount
+  useEffect(() => {
+    if (id) {
+      prewarmChatCache(id as string).then((cached) => {
+        if (cached && cached.length > 0) {
+          setMessages((prev) => (prev.length === 0 ? cached : prev));
+        }
+      });
+    }
+  }, [id]);
   const [inputText, setInputText] = useState("");
   const [targetUser, setTargetUser] = useState<any>(null);
   const [groupChatData, setGroupChatData] = useState<any>(null);
@@ -1053,7 +1072,7 @@ export default function ChatScreen() {
   const fileInputRef = useRef<any>(null);
   const cameraInputRef = useRef<any>(null);
   const textInputRef = useRef<TextInput>(null);
-  const [photoPreview, setPhotoPreview] = useState<{ file: File; previewUrl: string; caption: string } | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ file?: File; uri?: string; base64?: string; mimeType?: string; previewUrl: string; caption: string } | null>(null);
 
   useEffect(() => {
     if (replyingTo || editingMsgId) {
@@ -1720,10 +1739,9 @@ export default function ChatScreen() {
 
     const fetchMsgs = async () => {
       try {
-        const cachedMsgs = await AsyncStorage.getItem(`chat_${id}_messages`);
-        if (cachedMsgs) {
-          const parsed = JSON.parse(cachedMsgs);
-          setMessages(prev => prev.length === 0 ? parsed : prev);
+        const cachedMsgs = await prewarmChatCache(id as string);
+        if (cachedMsgs && cachedMsgs.length > 0) {
+          setMessages(prev => prev.length === 0 ? cachedMsgs : prev);
         }
       } catch (e) {}
 
@@ -1750,7 +1768,7 @@ export default function ChatScreen() {
         const formatted = filtered.map(formatMsg);
         setMessages(formatted); 
         setHasMore(data.length === PAGE_SIZE); 
-        AsyncStorage.setItem(`chat_${id}_messages`, JSON.stringify(formatted)).catch(() => {});
+        saveCachedMessages(id as string, formatted);
       }
     };
     fetchMsgs();
@@ -1853,15 +1871,21 @@ export default function ChatScreen() {
           }
           setMessages(prev => {
             if (prev.some(m => m.id === nm.id)) return prev;
+            let next: Message[];
             if (nm.sender_id === user?.id) {
               const tempIndex = prev.findIndex(m => (m.id.startsWith("temp-") || m.client_id) && m.text === nm.text);
               if (tempIndex !== -1) {
                 const updated = [...prev];
                 updated[tempIndex] = { ...nm, client_id: updated[tempIndex].client_id || updated[tempIndex].id, status: "sent" };
-                return updated;
+                next = updated;
+              } else {
+                next = [nm, ...prev];
               }
+            } else {
+              next = [nm, ...prev];
             }
-            return [nm, ...prev];
+            saveCachedMessages(id as string, next);
+            return next;
           });
           checkLiveByeTrigger(nm, messagesRef.current);
           checkLiveLoveTrigger(nm);
@@ -2633,7 +2657,11 @@ export default function ChatScreen() {
         reply_to_sender: curReply?.sender || null,
       };
       
-      setMessages(prev => [tempMsg, ...prev]);
+      setMessages(prev => {
+        const next = [tempMsg, ...prev];
+        saveCachedMessages(id as string, next);
+        return next;
+      });
       checkLiveByeTrigger(tempMsg, messagesRef.current);
       checkLiveLoveTrigger(tempMsg);
 
@@ -2648,10 +2676,14 @@ export default function ChatScreen() {
         setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "failed" } : m));
       } else if (data) {
         setMessages(prev => {
+          let next: Message[];
           if (prev.some(m => m.id === data.id)) {
-            return prev.filter(m => m.id !== tempId);
+            next = prev.filter(m => m.id !== tempId);
+          } else {
+            next = prev.map(m => m.id === tempId ? { ...m, id: data.id, client_id: tempId, status: "sent" } : m);
           }
-          return prev.map(m => m.id === tempId ? { ...m, id: data.id, client_id: tempId, status: "sent" } : m);
+          saveCachedMessages(id as string, next);
+          return next;
         });
       }
     }
@@ -2659,7 +2691,11 @@ export default function ChatScreen() {
 
   const deleteMessage = useCallback(async (msgId: string) => {
     // 1. Optimistically remove from state immediately
-    setMessages(prev => prev.filter(m => m.id !== msgId));
+    setMessages(prev => {
+      const next = prev.filter(m => m.id !== msgId);
+      saveCachedMessages(id as string, next);
+      return next;
+    });
 
     // 2. Broadcast deletion event immediately to all other participants
     try {
@@ -2784,13 +2820,24 @@ export default function ChatScreen() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") return;
     const result = await ImagePicker.launchImageLibraryAsync({
-      quality: 0.8,
+      quality: 0.85,
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
       selectionLimit: 10,
       base64: true,
     });
     if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (result.assets.length === 1 && result.assets[0].type !== "video") {
+        const asset = result.assets[0];
+        setPhotoPreview({
+          uri: asset.uri,
+          base64: asset.base64 || undefined,
+          mimeType: asset.mimeType || "image/jpeg",
+          previewUrl: asset.uri,
+          caption: inputText.trim() || "",
+        });
+        return;
+      }
       const assets = result.assets.slice(0, 10);
       setUploadingImage(true);
       const totalFiles = assets.length;
@@ -2842,7 +2889,9 @@ export default function ChatScreen() {
             setMessages(prev => {
               const existingIds = new Set(prev.map(m => m.id));
               const additions = formatted.filter(m => !existingIds.has(m.id));
-              return [...additions, ...prev];
+              const next = [...additions, ...prev];
+              saveCachedMessages(id as string, next);
+              return next;
             });
           }
           setReplyingTo(null);
@@ -2855,7 +2904,33 @@ export default function ChatScreen() {
         setUploadProgress({ active: false, current: 0, total: 0, percent: 0 });
       }
     }
-  }, [id, user?.id, replyingTo, formatMsg]);
+  }, [id, user?.id, replyingTo, formatMsg, inputText]);
+
+  const handleMobileCameraCapture = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        alert("Camera permission is required to snap photos.");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.85,
+        base64: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setPhotoPreview({
+          uri: asset.uri,
+          base64: asset.base64 || undefined,
+          mimeType: asset.mimeType || "image/jpeg",
+          previewUrl: asset.uri,
+          caption: inputText.trim() || "",
+        });
+      }
+    } catch (e: any) {
+      console.error("Camera error:", e);
+    }
+  }, [inputText]);
 
   const handleWebFileChange = useCallback((e: any) => {
     const files = Array.from(e.target.files || []).slice(0, 10) as File[];
@@ -2878,16 +2953,29 @@ export default function ChatScreen() {
 
   const handleSendCapturedPhoto = useCallback(async () => {
     if (!photoPreview || !id || !user) return;
-    const { file, caption, previewUrl } = photoPreview;
+    const { file, uri, base64, mimeType, caption, previewUrl } = photoPreview;
     setPhotoPreview(null);
     try {
-      URL.revokeObjectURL(previewUrl);
+      if (file && typeof URL !== "undefined" && URL.revokeObjectURL) {
+        URL.revokeObjectURL(previewUrl);
+      }
     } catch (e) {}
 
     setUploadingImage(true);
     try {
       const prefix = `chat-images/${id}-${Date.now()}-cam`;
-      const url = await uploadBlobToR2(prefix, file);
+      let url: string;
+      if (file) {
+        url = await uploadBlobToR2(prefix, file);
+      } else if (base64) {
+        url = await uploadImageToR2(prefix, base64, mimeType || "image/jpeg");
+      } else if (uri) {
+        const resp = await fetch(uri);
+        const blob = await resp.blob();
+        url = await uploadBlobToR2(prefix, blob);
+      } else {
+        return;
+      }
 
       const msgsToSend: any[] = [
         {
@@ -2926,7 +3014,9 @@ export default function ChatScreen() {
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id));
           const additions = formatted.filter(m => !existingIds.has(m.id));
-          return [...additions, ...prev];
+          const next = [...additions, ...prev];
+          saveCachedMessages(id as string, next);
+          return next;
         });
       }
       setReplyingTo(null);
@@ -2939,17 +3029,21 @@ export default function ChatScreen() {
   }, [photoPreview, id, user, replyingTo, formatMsg, inputText]);
 
   const handleRetakePhoto = useCallback(() => {
-    if (photoPreview?.previewUrl) {
+    if (photoPreview?.previewUrl && photoPreview?.file && typeof URL !== "undefined" && URL.revokeObjectURL) {
       try { URL.revokeObjectURL(photoPreview.previewUrl); } catch (e) {}
     }
     setPhotoPreview(null);
     setTimeout(() => {
-      cameraInputRef.current?.click();
+      if (Platform.OS === "web") {
+        cameraInputRef.current?.click();
+      } else {
+        handleMobileCameraCapture();
+      }
     }, 120);
-  }, [photoPreview]);
+  }, [photoPreview, handleMobileCameraCapture]);
 
   const handleCancelPhoto = useCallback(() => {
-    if (photoPreview?.previewUrl) {
+    if (photoPreview?.previewUrl && photoPreview?.file && typeof URL !== "undefined" && URL.revokeObjectURL) {
       try { URL.revokeObjectURL(photoPreview.previewUrl); } catch (e) {}
     }
     setPhotoPreview(null);
@@ -4579,11 +4673,17 @@ export default function ChatScreen() {
                     {Platform.OS === "web" && (
                       <input ref={fileInputRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.txt,.zip,.csv" multiple style={{ display: "none" } as any} onChange={handleWebFileChange} />
                     )}
-                    {Platform.OS === "web" && !isDesktop && (
+                    {!isDesktop && (
                       <>
                         <TouchableOpacity
                           style={styles.inputIconButton}
-                          onPress={() => cameraInputRef.current?.click()}
+                          onPress={() => {
+                            if (Platform.OS === "web") {
+                              cameraInputRef.current?.click();
+                            } else {
+                              handleMobileCameraCapture();
+                            }
+                          }}
                           disabled={uploadingImage}
                           accessibilityLabel="Take Photo with Camera"
                         >
@@ -4592,14 +4692,16 @@ export default function ChatScreen() {
                             color={theme.id === "pink" ? (theme.accent || "#f472b6") : (isAmoled ? "#888888" : theme.textMuted)}
                           />
                         </TouchableOpacity>
-                        <input
-                          ref={cameraInputRef}
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          style={{ display: "none" } as any}
-                          onChange={handleCameraCaptureChange}
-                        />
+                        {Platform.OS === "web" && (
+                          <input
+                            ref={cameraInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            style={{ display: "none" } as any}
+                            onChange={handleCameraCaptureChange}
+                          />
+                        )}
                       </>
                     )}
                     {isDesktop && isFeatureEnabled("custom_fonts", myProfile, publicFeatures) && (
