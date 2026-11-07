@@ -8,6 +8,7 @@ import {
   Animated,
   Easing,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import {
   RotateCw,
   Lock,
@@ -279,9 +280,19 @@ export default function AlaContextMenu() {
               : theme.id === "light"
               ? "rgba(0,0,0,0.1)"
               : "rgba(255,255,255,0.14)",
+            overflow: "hidden",
           },
         ]}
       >
+        <BlurView
+          blurMethod="dimezisBlurView"
+          experimentalBlurMethod="dimezisBlurView"
+          blurReductionFactor={4}
+          intensity={(Platform.OS as string) === "android" ? 50 : 30}
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
         {menuType === "message" && msgData ? (
           <>
             {/* Message Action Header */}

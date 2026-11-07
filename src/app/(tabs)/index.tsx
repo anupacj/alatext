@@ -15,6 +15,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
+import { BlurView, BlurTargetView } from "expo-blur";
 import { useTheme, THEMES } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useAlaPin } from "../../context/AlaPinContext";
@@ -41,6 +42,7 @@ export default function Home() {
   const [chats, setChats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { setIsTabsLoading } = useTabsLoading();
+  const indexBlurTargetRef = useRef<View | null>(null);
 
   useEffect(() => {
     setIsTabsLoading(loading);
@@ -749,6 +751,8 @@ export default function Home() {
           </View>
         )}
 
+        {/* TAB CONTENT INSIDE BLUR TARGET FOR ANDROID GLASS BLUR */}
+        <BlurTargetView ref={indexBlurTargetRef} style={{ flex: 1 }}>
         {/* TAB 1: CHATS (Dribbble Card Feed) */}
         {webTab === "chats" && (
           <View style={{ flex: 1 }}>
@@ -1021,6 +1025,7 @@ export default function Home() {
             </View>
           </ScrollView>
         )}
+        </BlurTargetView>
 
         {/* FLOATING GLASSY 4-TAB NAVIGATION BAR + FLOATING + BUTTON */}
         <View style={webStyles.floatingNavContainer} pointerEvents="box-none">
@@ -1030,9 +1035,20 @@ export default function Home() {
               {
                 backgroundColor: theme.isDark !== false ? "rgba(20, 20, 28, 0.62)" : "rgba(255, 255, 255, 0.72)",
                 borderColor: theme.isDark !== false ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)",
+                overflow: "hidden",
               },
             ]}
           >
+            <BlurView
+              blurTarget={indexBlurTargetRef}
+              blurMethod="dimezisBlurView"
+              experimentalBlurMethod="dimezisBlurView"
+              blurReductionFactor={4}
+              intensity={Platform.OS === "android" ? 50 : 30}
+              tint="dark"
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             {/* 1. Chats */}
             <TouchableOpacity
               style={[webStyles.navItemBtn, webTab === "chats" && webStyles.navItemBtnActive]}

@@ -316,6 +316,7 @@ export function DynamicIslandExpandedView({
   onOpenVault,
   onOpenChatInfo,
   onCollapse,
+  blurTarget,
 }: {
   targetUser?: any;
   isTargetOnline?: boolean;
@@ -351,6 +352,7 @@ export function DynamicIslandExpandedView({
   onOpenVault?: () => void;
   onOpenChatInfo: () => void;
   onCollapse: () => void;
+  blurTarget?: any;
 }) {
   const contactName =
     targetUser?.nickname || targetUser?.display_name || targetUser?.username || "Partner";
@@ -452,7 +454,15 @@ export function DynamicIslandExpandedView({
 
   return (
     <View {...panResponder.panHandlers} style={[visualStyles.expandedContainer, { overflow: "hidden" }]}>
-      <BlurView intensity={Platform.OS === "android" ? 50 : 35} tint="dark" style={StyleSheet.absoluteFill} />
+      <BlurView
+        blurTarget={blurTarget}
+        blurMethod="dimezisBlurView"
+        experimentalBlurMethod="dimezisBlurView"
+        blurReductionFactor={4}
+        intensity={Platform.OS === "android" ? 50 : 35}
+        tint="dark"
+        style={StyleSheet.absoluteFill}
+      />
       {/* Top Header Row */}
       <View style={visualStyles.expandedTopRow}>
         <View

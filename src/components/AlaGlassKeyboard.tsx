@@ -12,6 +12,7 @@ import {
   PanResponder,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { BlurView } from "expo-blur";
 import Svg, { Path, Circle } from "react-native-svg";
 import {
   ArrowUp,
@@ -657,6 +658,7 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
     <View
       style={[
         styles.keyboardContainer,
+        { overflow: "hidden" },
         isAmoled
           ? {
               backgroundColor: "#000000",
@@ -672,6 +674,15 @@ export const AlaGlassKeyboard: React.FC<AlaGlassKeyboardProps> = React.memo(({
           : { backgroundColor: "rgba(18, 20, 26, 0.86)", borderTopColor: "rgba(255, 255, 255, 0.12)" },
       ]}
     >
+      <BlurView
+        blurMethod="dimezisBlurView"
+        experimentalBlurMethod="dimezisBlurView"
+        blurReductionFactor={4}
+        intensity={Platform.OS === "android" ? 50 : 30}
+        tint="dark"
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       {/* 1. Quick Phrases & Keyboard Switcher Bar */}
       <View style={styles.topBar}>
         <ScrollView

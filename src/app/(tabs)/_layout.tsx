@@ -1,6 +1,7 @@
 import { Tabs, useRouter } from 'expo-router';
 import { MessageCircle, User, MessageSquare, Phone, CircleDot, Plus } from 'lucide-react-native';
 import { Platform, View, StyleSheet, TouchableOpacity, Text, useWindowDimensions } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useTheme } from '../../context/ThemeContext';
 import { TabsLoadingProvider, useTabsLoading } from '../../context/TabsLoadingContext';
 
@@ -30,9 +31,19 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
           {
             backgroundColor: theme.isDark !== false ? "rgba(20, 20, 28, 0.62)" : "rgba(255, 255, 255, 0.72)",
             borderColor: theme.isDark !== false ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)",
+            overflow: "hidden",
           },
         ]}
       >
+        <BlurView
+          blurMethod="dimezisBlurView"
+          experimentalBlurMethod="dimezisBlurView"
+          blurReductionFactor={4}
+          intensity={Platform.OS === "android" ? 50 : 30}
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
         {/* 1. Chats */}
         <TouchableOpacity
           style={webNavStyles.navItemBtn}

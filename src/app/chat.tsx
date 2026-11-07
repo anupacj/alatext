@@ -28,7 +28,7 @@ import AudioPlayerBubble from "../components/AudioPlayerBubble";
 import VideoPlayerBubble from "../components/VideoPlayerBubble";
 import VoiceRecorder from "../components/VoiceRecorder";
 import ChatSidebar from "../components/ChatSidebar";
-import { BlurView } from "expo-blur";
+import { BlurView, BlurTargetView } from "expo-blur";
 import { AppleIntelligenceGlow } from "../components/AppleIntelligenceGlow";
 import { FloatingHearts } from "../components/FloatingHearts";
 import { SleepyByeBlocker } from "../components/SleepyByeBlocker";
@@ -1042,6 +1042,7 @@ export default function ChatScreen() {
   }, [activateHeartGlowAndBlink, showThinkingNotification, targetUser, name, user, myNicknameFromPartner, id]);
 
   const flatListRef = useRef<FlatList>(null);
+  const chatBlurTargetRef = useRef<View | null>(null);
   const typingTimeoutRef = useRef<any>(null);
   const typingDebounceTimeoutRef = useRef<any>(null);
   const typingIdleTimeoutRef = useRef<any>(null);
@@ -3388,14 +3389,18 @@ export default function ChatScreen() {
           }).eq("id", currentChatId).then(() => {}, () => {});
         }}
       />
-      {showWallpaper && (
-        <ParallaxWallpaper
-          uri={chatSettings!.wallpaper_url}
-          zoom={chatSettings?.wallpaper_zoom || 1}
-          blur={chatSettings?.wallpaper_blur || 0}
-          dim={chatSettings?.wallpaper_dim || 0}
-        />
-      )}
+      <BlurTargetView ref={chatBlurTargetRef} style={StyleSheet.absoluteFill}>
+        {showWallpaper ? (
+          <ParallaxWallpaper
+            uri={chatSettings!.wallpaper_url}
+            zoom={chatSettings?.wallpaper_zoom || 1}
+            blur={chatSettings?.wallpaper_blur || 0}
+            dim={chatSettings?.wallpaper_dim || 0}
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: isAmoled ? "#000000" : theme.background }]} />
+        )}
+      </BlurTargetView>
       {/* Night Screen Soft Dim & Contrast Reduction Overlay */}
       {((chatSettings?.screen_dim || 0) > 0) && (
         <View
@@ -3477,7 +3482,15 @@ export default function ChatScreen() {
                     activeOpacity={0.7}
                     accessibilityLabel="Back"
                   >
-                    <BlurView intensity={Platform.OS === "android" ? 50 : 30} tint="dark" style={StyleSheet.absoluteFill} />
+                    <BlurView
+                      blurTarget={chatBlurTargetRef}
+                      blurMethod="dimezisBlurView"
+                      experimentalBlurMethod="dimezisBlurView"
+                      blurReductionFactor={4}
+                      intensity={Platform.OS === "android" ? 50 : 30}
+                      tint="dark"
+                      style={StyleSheet.absoluteFill}
+                    />
                     <ChevronLeft size={24} color={headerIconColor} />
                   </TouchableOpacity>
                 )}
@@ -3647,6 +3660,7 @@ export default function ChatScreen() {
                     onOpenVault={handleOpenVaultFromIsland}
                     onOpenChatInfo={handleOpenProfileFromIsland}
                     onCollapse={() => setIsIslandExpanded(false)}
+                    blurTarget={chatBlurTargetRef}
                   />
                 ) : (
                   <TouchableOpacity 
@@ -3735,7 +3749,15 @@ export default function ChatScreen() {
                   },
                   { overflow: "hidden" },
                 ]}>
-                  <BlurView intensity={Platform.OS === "android" ? 50 : 30} tint="dark" style={StyleSheet.absoluteFill} />
+                  <BlurView
+                    blurTarget={chatBlurTargetRef}
+                    blurMethod="dimezisBlurView"
+                    experimentalBlurMethod="dimezisBlurView"
+                    blurReductionFactor={4}
+                    intensity={Platform.OS === "android" ? 50 : 30}
+                    tint="dark"
+                    style={StyleSheet.absoluteFill}
+                  />
                   {!isGroup && (
                     <TouchableOpacity
                       style={[
@@ -3960,7 +3982,15 @@ export default function ChatScreen() {
                   }}
                   activeOpacity={0.8}
                 >
-                  <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} />
+                  <BlurView
+                    blurTarget={chatBlurTargetRef}
+                    blurMethod="dimezisBlurView"
+                    experimentalBlurMethod="dimezisBlurView"
+                    blurReductionFactor={4}
+                    intensity={Platform.OS === "android" ? 45 : 30}
+                    tint="dark"
+                    style={StyleSheet.absoluteFill}
+                  />
                   {isAnniversaryUnlocked ? (
                     <Heart
                       size={12}
@@ -4532,7 +4562,16 @@ export default function ChatScreen() {
                     ]}
                   >
                     {Platform.OS !== "web" && (
-                      <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                      <BlurView
+                        blurTarget={chatBlurTargetRef}
+                        blurMethod="dimezisBlurView"
+                        experimentalBlurMethod="dimezisBlurView"
+                        blurReductionFactor={4}
+                        intensity={Platform.OS === "android" ? 45 : 30}
+                        tint="dark"
+                        style={StyleSheet.absoluteFill}
+                        pointerEvents="none"
+                      />
                     )}
                     <TouchableOpacity style={styles.attachButton} onPress={handlePickImage} disabled={uploadingImage}>
                       {uploadingImage ? <ActivityIndicator size="small" color="#ffffff" /> : <Plus size={20} color="#ffffff" />}
@@ -4682,7 +4721,16 @@ export default function ChatScreen() {
                     }}
                   >
                     {Platform.OS !== "web" && (
-                      <BlurView intensity={Platform.OS === "android" ? 45 : 30} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                      <BlurView
+                        blurTarget={chatBlurTargetRef}
+                        blurMethod="dimezisBlurView"
+                        experimentalBlurMethod="dimezisBlurView"
+                        blurReductionFactor={4}
+                        intensity={Platform.OS === "android" ? 45 : 30}
+                        tint="dark"
+                        style={StyleSheet.absoluteFill}
+                        pointerEvents="none"
+                      />
                     )}
                     <RNAnimated.View
                       style={{
